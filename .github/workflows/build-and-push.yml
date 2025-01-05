@@ -28,3 +28,6 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: cmoe640/dev-environment:latest                  # Hardcode username here - if you make your own image, just replace the username with your org...
+          build-args: |    # Set build-time variables
+            NODE_VERSION=22.3.0
+            GO_VERSION=1.21

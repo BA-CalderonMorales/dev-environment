@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-ARG NODE_VERSION=20.x
+ARG NODE_VERSION=22.x
 ARG GO_VERSION=1.21
 
 FROM ubuntu:latest
