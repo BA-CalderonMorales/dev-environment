@@ -1,79 +1,132 @@
 # Development Environment Setup
 
-This project provides a consistent and easy-to-use development environment based on Docker.
 
-## Prerequisites
 
-* Docker Desktop installed
-* Docker Hub Account (request access to the dev-environment image)
 
-## Setup Steps
 
-1. Create your development directory structure:
-   ```bash
-   mkdir C:\dev
-   cd C:\dev
-   mkdir projects
-   ```
+  
+*  ocker Compose
+*   GitHub Account
+  
 
-2. Create a docker-compose.yml file in C:\dev with the following content:
-   ```yaml
-   version: '3.8'
-   services:
-     dev:
-       image: cmoe640/dev-environment:latest
-       container_name: dev-environment
-       ports:
-         - "8080:8080"    # VS Code
-         - "3000-3010:3000-3010"  # Frontend apps
-         - "8000-8010:8000-8010"  # Backend services
-       volumes:
-         - ./projects:/usr/src/projects
-         - ~/.ssh:/home/devuser/.ssh:ro
-         - ~/.gitconfig:/home/devuser/.gitconfig:ro
-         - vscode-server:/home/devuser/.vscode-server
-         - npm-cache:/home/devuser/.npm
-         - cargo-cache:/home/devuser/.cargo
-         - go-cache:/home/devuser/go
-       restart: unless-stopped
-       stdin_open: true
-       tty: true
+## EVariables
 
-   volumes:
-     vscode-server:
-     npm-cache:
-     cargo-cache:
-     go-cache:
-   ```
+ **a `.env` fil**
 
-3. Generate a Docker Hub Access Token:
-   - Go to Docker Hub → Account Settings → Security → New Access Token
-   - Create a token with read-only permissions
-   - Save the token somewhere secure - you'll need it for the next step
+ 
+ Prerp .env.example .env
+ * Dock
 
-4. Log in to Docker Hub (choose one method):
-   ```bash
-   # Method 1: Interactive login (if you have a TTY terminal)
-   docker login
-   
-   # Method 2: Direct login with credentials
-   docker login -u your-username -p your-access-token
-   
-   # Method 3: Secure login using password-stdin
-   echo "your-access-token" | docker login -u your-username --password-stdin
-   ```
-   Note: Replace 'your-username' with your Docker Hub username and 'your-access-token' with your Docker Hub access token
+er  **Set environment variables:** Open `.env` and fill in the required values:
 
-5. Start the development environment:
-   ```bash
-   cd C:\dev
-   docker compose up -d
-   ```
+tru *   **`REMOTE_REPO_TOKEN`:** Your GitHub personal access token with `repo` and `workflow` scopes.
+ctur*e:**`GIT_AUTHOR_NAME`:** Your GitHub username.
+***`GIT_AUTHOR_EMAIL`:** Your email associated with your GitHub account.
+***`DOCKERHUB_USERNAME`:** Your Docker Hub username.
+***`DOCKERHUB_TOKEN`:** Your Docker Hub password or acs token.
 
-6. Access the container:
-   ```bash
-   docker exec -it dev-environment bash
-   ```
+**Important:** Do not commit your `.env` file to the repository.
+
+3.  **Source environment variables:**
+
+```bash
+source .env
+```
+
+## Starting the Development Environment
+
+1.  Clone the repository:
+
+```bash
+  mkgit clone <your-repository-url>
+dir cd <your-repository-name>
+```
+
+2.Set up environment variables (as described above).
+
+3.  Start the development environment:
+
+```bash
+ docker compose up -d
+```
+
+ This will pull the pre-built develm2. Creat environment image from Docker Hub and start the container.
+
+4.teAttach toathe ckntainose
+
+.yml```bash
+\devdocker exec -it dev-environment bash
+ s:
+
+## Creating a New Project
+
+To initializnew project, run the following command from within the 40/dev-eainer (replace `my-new-project` with your desired project name and `full-stack`nvironthe desimed stack types):
+
+```bash
+./init-project.sh my-new-project full-stack
+
+```
+
+## Understanding the Container Environment
+
+When you first access the container, you'll be in `/home/devuser`:
+
+      -
+$ pwd
+/home/devuser
+
+$ ls -lah
+total 40K
+drwxr-x--- 1 devuser devuser 4.0K Jan  5 19:48 .
+drwxr-xr-x 1 root    root    4.0K Jan  5 18:53 ..
+-rw-r--r-- 1 devuser devuser  220 Ma -31  2024 .bash_ ~/fit
+-gw:r--r-- 1 dev/hom devuser 3.7K Mar 31  2024 .bashrc
+drwxr-xr-x 2 root    root    4.0K Jan  5 19:48 .cargo
+-rw-rwxrwx 1 root    root      48 Jun 15  2023 .gitconfig
+drwxr-xr-x 2 root    root    4.0K Jan  5 19:48 .npm
+-rw-r--r-- 1 devuser devstop  807 Mar 31  2024 .profile
+drwxrwxrwx 1 root    root    512  Jan  5 19:48 .ssh
+drwxr-xr-x 2 root    root    4.0K Jan  5 19:48 .vscode-server
+drwxr-xr-x 2 root    root    4.0K Jan  5 19:48 go
+  n
+
+The projects directory structure:
+```3. G
+$ ls -la /usr/src/projects
+total 4
+drwxrwxrwx 1 root root  512 Jan  5 19:34 .
+drwxr-xr-x 1 root root 4096 Janen5e18:53 ..
+rat
+
+File system structure overview:
+```
+/ (root)
+├── home
+│   └── devuser/           # User's home
+│       ├── .cargo/        # Rust configuration
+│       ├── .gitconfig     # Git  # figuration
+│       ├── .npm/         # Node.js packages
+│       ├── .vscode-server/ # VS Code configuration
+│       └── go/           #Methworkspace
+└── usr
+    └── src
+        └── projects/     # Mounted to C:\dev\projects
+
+
+Verify the mount:
+bash
+$ mount | grep projects
+C: on /usr/src/projects type 9p (rw,noatime,dirsync,aname=drvfs;path=C:;uid=0;gid=0;metadata;symlinkroot=/mnt/host/,mmap,=client,msize=65536,trans=fd,rfd=4,wfd=4)
+```
+
+Host machine structure:
+```
+C:\
+└── dev
+    ├──
+    └── projects/         # Mounted to /usr/src/projects
+```
+
 
 ## Working with Projects
 
