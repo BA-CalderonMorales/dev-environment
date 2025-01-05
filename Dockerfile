@@ -2,7 +2,7 @@
 FROM ubuntu:latest
 
 ARG NODE_VERSION=22.3.0
-ARG GO_VERSION=1.21
+ARG GO_VERSION=1.21.7
 
 # Install Node.js
 RUN apt-get update && \
@@ -16,7 +16,7 @@ RUN apt-get update && \
 ENV PATH="/root/.nvm/versions/node/v${NODE_VERSION}/bin:${PATH}"
 
 # Install Go
-RUN curl -sL https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz | tar -xz -C /usr/local
+RUN curl -sL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
 
 # Add Go to PATH
 ENV PATH="/usr/local/go/bin:${PATH}"
