@@ -4,8 +4,9 @@ ARG GO_VERSION=1.21
 
 FROM ubuntu:latest
 
+# Install Node.js
 RUN apt-get update && \
-    apt-get install -y wget && \
+    apt-get install -y wget curl && \
     wget https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz && \
     tar -xf node-v$NODE_VERSION-linux-x64.tar.xz -C /usr/local --strip-components=1 && \
     rm node-v$NODE_VERSION-linux-x64.tar.xz
