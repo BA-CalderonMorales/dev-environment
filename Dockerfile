@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
+FROM ubuntu:latest
+
 ARG NODE_VERSION=22.3.0
 ARG GO_VERSION=1.21
-
-FROM ubuntu:latest
 
 # Install Node.js
 RUN apt-get update && \
