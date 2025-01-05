@@ -11,7 +11,7 @@ WORKFLOWS_DIR="./templates/workflows"
 
 # --- Function: create_github_repo ---
 # Creates a new private GitHub repository with the given project name.
-# Uses the GITHUB_TOKEN environment variable for authentication.
+# Uses the REMOTE_REPO_TOKEN environment variable for authentication.
 #
 # Arguments: None (uses global variable PROJECT_NAME)
 # Returns: 0 if successful, 1 otherwise.
@@ -19,7 +19,7 @@ create_github_repo() {
     # Construct the API request to create a new repository.
     # The repository is created as private by default.
     response=$(curl -s -X POST \
-        -H "Authorization: token $GITHUB_TOKEN" \
+        -H "Authorization: token $REMOTE_REPO_TOKEN" \
         -H "Accept: application/vnd.github.v3+json" \
         "$GITHUB_API/user/repos" \
         -d "{\"name\":\"$PROJECT_NAME\",\"private\":true}")
@@ -210,9 +210,9 @@ if [ -z "$PROJECT_NAME" ] || ! [[ "$PROJECT_NAME" =~ ^[a-zA-Z0-9-]+$ ]]; then
     exit 1
 fi
 
-# Check if the GITHUB_TOKEN environment variable is set.
-if [ -z "$GITHUB_TOKEN" ]; then
-    echo "Error: GITHUB_TOKEN environment variable not set"
+# Check if the REMOTE_REPO_TOKEN environment variable is set.
+if [ -z "$REMOTE_REPO_TOKEN" ]; then
+    echo "Error: REMOTE_REPO_TOKEN environment variable not set"
     exit 1
 fi
 
