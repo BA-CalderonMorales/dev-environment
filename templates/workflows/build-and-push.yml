@@ -1,18 +1,13 @@
 name: Build and Push Dev Image
 
 on:
-
   push:
-
     branches:
-      - main
+      - main  # Trigger only on push to main branch
 
 jobs:
-
   build-and-push:
-
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -32,4 +27,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/dev-environment:latest
+          tags: cmoe640/dev-environment:latest                  # Hardcode username here - if you make your own image, just replace the username with your org...

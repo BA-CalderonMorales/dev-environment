@@ -4,7 +4,7 @@ services:
 
   dev:
 
-    image: your-dockerhub-username/dev-environment:latest  # Pull from Docker Hub
+    image: cmoe640/dev-environment:latest  # Pull from Docker Hub
 
     container_name: dev-environment
 
@@ -37,3 +37,4 @@ volumes:
   cargo-cache:
 
   go-cache:
+
