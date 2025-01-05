@@ -7,9 +7,13 @@ FROM ubuntu:latest
 # Install Node.js
 RUN apt-get update && \
     apt-get install -y wget curl && \
-    wget "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" && \
-    tar -xf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C /usr/local --strip-components=1 && \
-    rm "node-v${NODE_VERSION}-linux-x64.tar.xz"
+    wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+    . /root/.nvm/nvm.sh && \
+    nvm install ${NODE_VERSION} && \
+    nvm use ${NODE_VERSION}
+
+# Add Node to PATH
+ENV PATH="/root/.nvm/versions/node/v${NODE_VERSION}/bin:${PATH}"
 
 # Install Go
 RUN curl -sL https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz | tar -xz -C /usr/local
