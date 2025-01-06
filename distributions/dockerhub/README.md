@@ -1,11 +1,56 @@
 # Development Environment Setup
 
-This project provides a consistent development environment using Docker.
+> ⚠️ **IMPORTANT: DockerHub Rate Limits**
+> 
+> This repository's Docker image (`cmoe640/dev-environment`) is subject to DockerHub's rate limits:
+> - Anonymous: 100 pulls/6 hours
+> - Authenticated: 200 pulls/6 hours
+>
+> **Recommended Usage:**
+> 1. Fork this repository
+> 2. Build and push the image to your own DockerHub account
+> 3. Update the docker-compose.yml to use your image
+>
+> Example:
+> ```yaml
+> image: your-dockerhub-username/dev-environment:latest
+> ```
+>
+> This ensures your team has dedicated pull limits and control over the environment.
 
-## Prerequisites
+This project provides a consistent development environment using Docker, designed for seamless team collaboration and individual development.
 
-* Docker Desktop installed
-* Docker Hub Account (request access to the dev-environment image)
+## Quick Start (5 Minutes)
+
+1. Prerequisites:
+   * Docker Desktop installed
+   * Docker Hub Account (request access to the dev-environment image)
+
+2. Fork First (Recommended):
+   ```bash
+   # Clone your fork
+   git clone https://github.com/YOUR_USERNAME/dev-environment.git
+   
+   # Build your own image
+   cd dev-environment/distributions/dockerhub
+   docker build -t YOUR_USERNAME/dev-environment:latest .
+   
+   # Push to your DockerHub
+   docker push YOUR_USERNAME/dev-environment:latest
+   ```
+
+3. Or Use Direct Setup (Subject to rate limits):
+   ```bash
+   mkdir -p C:/dev/projects && cd C:/dev && curl -O https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/distributions/dockerhub/docker-compose.yml && docker compose up -d
+   ```
+
+## Why Use This Environment?
+
+- ✨ **Consistent Setup**: Same environment for all team members
+- 🚀 **Pre-configured Tools**: Latest stable versions of Node.js, Go, Rust
+- 🔄 **Version Control**: Use specific tags for team-wide consistency
+- 📦 **Cached Dependencies**: Shared volume mounts for package caches
+- 🛠️ **IDE Ready**: VS Code remote development support
 
 ## Available Image Tags
 
@@ -56,100 +101,67 @@ docker pull cmoe640/dev-environment:latest-8325b1a411ad382a64fd6c69ad2f5f50084d2
      go-cache:
    ```
 
-3. Log in to Docker Hub:
-   ```bash
-   # For Windows Git Bash:
-   docker login -u your-username -p your-access-token
-   ```
-   Note: Create an access token in Docker Hub → Account Settings → Security → New Access Token
+## Development Workflow
 
-4. Start the development environment:
-   ```bash
-   cd C:\dev
-   docker compose up -d
-   ```
-
-5. Access the container:
-   ```bash
-   # For Windows Git Bash (MinGW) users:
-   winpty docker exec -it dev-environment bash
-
-   # For Windows CMD or PowerShell users:
-   docker exec -it dev-environment bash
-   ```
-
-## Understanding the Container Environment
-
-When you first access the container, you'll be in `/home/devuser`:
-
+### 1. Daily Startup
 ```bash
-$ pwd
-/home/devuser
+# Start your day
+cd C:/dev
+docker compose up -d
 
-$ ls -lah
-total 40K
-drwxr-x--- 1 devuser devuser 4.0K Jan  5 19:48 .
-drwxr-xr-x 1 root    root    4.0K Jan  5 18:53 ..
--rw-r--r-- 1 devuser devuser  220 Mar 31  2024 .bash_logout
--rw-r--r-- 1 devuser devuser 3.7K Mar 31  2024 .bashrc
-drwxr-xr-x 2 root    root    4.0K Jan  5 19:48 .cargo
--rw-rwxrwx 1 root    root      48 Jun 15  2023 .gitconfig
-drwxr-xr-x 2 root    root    4.0K Jan  5 19:48 .npm
--rw-r--r-- 1 devuser devuser  807 Mar 31  2024 .profile
-drwxrwxrwx 1 root    root    512  Jan  5 19:48 .ssh
-drwxr-xr-x 2 root    root    4.0K Jan  5 19:48 .vscode-server
-drwxr-xr-x 2 root    root    4.0K Jan  5 19:48 go
+# Access container (Git Bash)
+winpty docker exec -it dev-environment bash
+
+# Access container (CMD/PowerShell)
+docker exec -it dev-environment bash
 ```
 
-Directory Structure Overview:
+### 2. Project Structure
 ```
-/ (root)
-├── home
-│   └── devuser/           # User's home directory
-│       ├── .cargo/        # Rust configuration
-│       ├── .gitconfig     # Git configuration
-│       ├── .npm/          # Node.js packages
-│       ├── .vscode-server/ # VS Code configuration
-│       └── go/            # Go workspace
-└── usr
-    └── src
-        └── projects/      # Mounted to C:\dev\projects
+C:/dev/                    Container:
+├── projects/             /usr/src/projects/
+│   ├── project1/         ├── project1/
+│   └── project2/         └── project2/
+└── docker-compose.yml
 ```
 
-Host Machine Structure:
-```
-C:\
-└── dev
-    ├── docker-compose.yml
-    └── projects/          # Mounted to /usr/src/projects
-```
+### 3. Common Tasks
 
-## Working with Projects
-
-All development work should be done in `/usr/src/projects` (mounted to `C:\dev\projects` on your host machine).
-
-To verify the mount:
+#### Start New Project
 ```bash
-$ mount | grep projects
-C: on /usr/src/projects type 9p (rw,noatime,dirsync,aname=drvfs;path=C:;uid=0;gid=0;metadata;symlinkroot=/mnt/host/,mmap,access=client,msize=65536,trans=fd,rfd=4,wfd=4)
+cd /usr/src/projects
+mkdir my-new-project && cd my-new-project
+
+# Node.js Project
+npm init -y
+
+# Go Project
+go mod init myproject
+
+# Rust Project
+cargo init
 ```
 
-## Available Development Tools
+## Pro Tips 💡
 
-The development environment comes with:
-- Node.js v22.3.0
-- Go v1.21.7
-- Rust (latest stable)
-- Git
-- SQLite3
+1. **VS Code Integration**
+   ```bash
+   # Install Remote Development extension
+   code --install-extension ms-vscode-remote.vscode-remote-extensionpack
+   ```
 
-## Stopping the Environment
+2. **Shell Aliases**
+   Add to your `.bashrc` or `.zshrc`:
+   ```bash
+   alias dev='cd C:/dev'
+   alias devsh='winpty docker exec -it dev-environment bash'
+   ```
 
-To stop the development environment:
-```bash
-cd C:\dev
-docker compose down
-```
+3. **Version Management**
+   ```bash
+   # Pin specific version in docker-compose.yml
+   image: cmoe640/dev-environment:latest-8325b1a411ad382a64fd6c69ad2f5f50084d2dcc
+   ```
 
 ## Image Maintenance
 
@@ -173,20 +185,25 @@ Best Practices:
 
 ## Troubleshooting
 
-If you encounter issues:
-1. Ensure you're logged in to Docker Hub
-2. Verify your access token hasn't expired
-3. Check that Docker Desktop is running
-4. Ensure all paths in docker-compose.yml exist on your system
-5. For Git Bash users, remember to use `winpty` when executing interactive commands
-
-Additional considerations:
 1. Rate Limits
-   - DockerHub has pull rate limits
-   - Authenticate to increase limits: `docker login`
-   - Consider using specific tags to avoid frequent pulls
+   - Ensure you're logged in to Docker Hub
+   - Consider forking and using your own image
+   - Use specific tags to avoid frequent pulls
 
-2. Version Management
-   - Use `latest` for development
-   - Use specific tags for stability
-   - Keep track of working versions
+2. Common Issues
+   - Verify Docker Desktop is running
+   - Check port conflicts (8080, 3000-3010, 8000-8010)
+   - Ensure proper file permissions in mounted volumes
+   - For Git Bash users, remember to use `winpty`
+
+## Need Help?
+
+- 📝 [Report Issues](https://github.com/BA-CalderonMorales/dev-environment/issues)
+- 💬 [Team Discussion](https://github.com/BA-CalderonMorales/dev-environment/discussions)
+- 📚 [Full Documentation](https://github.com/BA-CalderonMorales/dev-environment/wiki)
+- 🔄 [Latest Releases](https://github.com/BA-CalderonMorales/dev-environment/releases)
+- 🌟 [Star this repo](https://github.com/BA-CalderonMorales/dev-environment)
+
+## Contributing
+
+Found a bug or want to suggest an improvement? Check out our [contribution guidelines](https://github.com/BA-CalderonMorales/dev-environment/blob/main/CONTRIBUTING.md) or [open an issue](https://github.com/BA-CalderonMorales/dev-environment/issues/new).
