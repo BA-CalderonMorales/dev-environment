@@ -126,45 +126,53 @@ docker pull cmoe640/dev-environment:latest-8325b1a411ad382a64fd6c69ad2f5f50084d2
      go-cache:
    ```
 
-## Development Workflow
+## Working with the Environment
 
-### 1. Daily Startup
+### Basic Usage
 ```bash
-# Start your day
-cd C:/dev
+# 1. Create local docker-compose.yml file (see github repo)
+# 2. Start the environment
 docker compose up -d
 
-# Access container (Git Bash)
+# 3. Enter the development environment
+# For Git Bash:
 winpty docker exec -it dev-environment bash
-
-# Access container (CMD/PowerShell)
+# For other terminals:
 docker exec -it dev-environment bash
+
+# 4. Shut down when finished
+docker compose down
 ```
 
-### 2. Project Structure
-```
-C:/dev/                    Container:
-├── projects/             /usr/src/projects/
-│   ├── project1/         ├── project1/
-│   └── project2/         └── project2/
-└── docker-compose.yml
-```
+### Development Workflow (For Contributors)
+If you plan on iterating on the image or forking the repository:
 
-### 3. Common Tasks
-
-#### Start New Project
+1. Clean up existing environment:
 ```bash
-cd /usr/src/projects
-mkdir my-new-project && cd my-new-project
+# Shut down the environment
+docker compose down
 
-# Node.js Project
-npm init -y
+# Remove local version of the image
+docker rmi cmoe640/dev-environment:latest
+```
 
-# Go Project
-go mod init myproject
+2. Make your changes to the `Dockerfile` in the `distributions/dockerhub` directory
 
-# Rust Project
-cargo init
+3. Build and test locally:
+```bash
+# From distributions/dockerhub directory
+docker build -t your-username/dev-environment:latest .
+```
+
+4. Update your docker-compose.yml to use your image:
+```yaml
+image: your-username/dev-environment:latest
+```
+
+5. Test your changes:
+```bash
+docker compose up -d
+winpty docker exec -it dev-environment bash
 ```
 
 ## Pro Tips 💡
@@ -238,7 +246,7 @@ Found a bug or want to suggest an improvement? Check out our [contribution guide
 After starting the container, you should see this welcome message:
 ```
 ╔══════════════════════════════════════════════════╗
-║          Development Environment Versions         ║
+║          Development Environment Versions        ║
 ╠══════════════════════════════════════════════════╣
 ║ Node.js:  <dynamic-version>                      ║
 ║ Go:       <dynamic-version>                      ║
@@ -246,6 +254,6 @@ After starting the container, you should see this welcome message:
 ║ Git:      <dynamic-version>                      ║
 ║ SQLite:   <dynamic-version>                      ║
 ╠══════════════════════════════════════════════════╣
-║ Working Directory: /usr/src/projects            ║
+║ Working Directory: /usr/src/projects             ║
 ╚══════════════════════════════════════════════════╝
 ```

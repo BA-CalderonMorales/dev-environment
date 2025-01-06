@@ -33,18 +33,18 @@ WORKDIR /home/devuser
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     . $HOME/.cargo/env
 
-# Add welcome message with dynamic version checking
-RUN echo 'echo "╔══════════════════════════════════════════════════╗"' >> ~/.bashrc && \
-    echo 'echo "║----------Development Environment Versions--------║"' >> ~/.bashrc && \
-    echo 'echo "╠══════════════════════════════════════════════════╣"' >> ~/.bashrc && \
-    echo 'echo "║-Node.js:--$(node --version)----------------------║"' >> ~/.bashrc && \
-    echo 'echo "║-Go:-------$(go version | cut -d" " -f3)----------║"' >> ~/.bashrc && \
-    echo 'echo "║-Rust:-----$(rustc --version | cut -d" " -f2)-----║"' >> ~/.bashrc && \
-    echo 'echo "║-Git:------$(git --version | cut -d" " -f3)-------║"' >> ~/.bashrc && \
-    echo 'echo "║-SQLite:---$(sqlite3 --version | cut -d" " -f1)---║"' >> ~/.bashrc && \
-    echo 'echo "╠══════════════════════════════════════════════════╣"' >> ~/.bashrc && \
-    echo 'echo "║-Working Directory: \$(pwd)-----------------------║"' >> ~/.bashrc && \
-    echo 'echo "╚══════════════════════════════════════════════════╝\n"' >> ~/.bashrc
+# Add colorful welcome message with emojis
+RUN echo 'echo ""' >> ~/.bashrc && \
+    echo 'echo "🛠️  Development Environment Versions"' >> ~/.bashrc && \
+    echo 'echo ""' >> ~/.bashrc && \
+    echo 'echo -e "\033[1;32m⚡ Node.js:\033[0m  $(node --version)"' >> ~/.bashrc && \
+    echo 'echo -e "\033[1;36m🔷 Go:\033[0m       $(go version | cut -d" " -f3)"' >> ~/.bashrc && \
+    echo 'echo -e "\033[1;31m🦀 Rust:\033[0m     $(rustc --version | cut -d" " -f2)"' >> ~/.bashrc && \
+    echo 'echo -e "\033[1;35m📦 Git:\033[0m      $(git --version | cut -d" " -f3)"' >> ~/.bashrc && \
+    echo 'echo -e "\033[1;33m💾 SQLite:\033[0m   $(sqlite3 --version | cut -d" " -f1)"' >> ~/.bashrc && \
+    echo 'echo ""' >> ~/.bashrc && \
+    echo 'echo -e "\033[1;34m📂 Working Directory:\033[0m $(pwd)"' >> ~/.bashrc && \
+    echo 'echo ""' >> ~/.bashrc
 
 # Set final working directory
 WORKDIR /usr/src/projects
