@@ -22,13 +22,28 @@ This project provides a consistent development environment using Docker, designe
 
 ## Current Tool Versions
 
-| Tool     | Version    | Notes                    |
-|----------|------------|--------------------------|
-| Node.js  | v22.12.0  | Includes npm v10.8.1     |
-| Go       | 1.22.4    | Latest secure version    |
-| Rust     | 1.83.0    | With cargo package manager|
-| Git      | 2.43.0    | Latest stable version    |
-| SQLite   | 3.45.1    | Latest stable version    |
+The environment includes the latest stable versions of:
+- Node.js with npm
+- Go (secure version)
+- Rust with cargo
+- Git
+- SQLite
+
+Exact versions are displayed in the welcome message when you access the container:
+
+```
+╔══════════════════════════════════════════════════╗
+║          Development Environment Versions         ║
+╠══════════════════════════════════════════════════╣
+║ Node.js:  <dynamic-version>                      ║
+║ Go:       <dynamic-version>                      ║
+║ Rust:     <dynamic-version>                      ║
+║ Git:      <dynamic-version>                      ║
+║ SQLite:   <dynamic-version>                      ║
+╠══════════════════════════════════════════════════╣
+║ Working Directory: /usr/src/projects            ║
+╚══════════════════════════════════════════════════╝
+```
 
 ## Quick Start (5 Minutes)
 
@@ -225,11 +240,11 @@ After starting the container, you should see this welcome message:
 ╔══════════════════════════════════════════════════╗
 ║          Development Environment Versions         ║
 ╠══════════════════════════════════════════════════╣
-║ Node.js:  v22.12.0                              ║
-║ Go:       go1.22.4                              ║
-║ Rust:     1.83.0                                ║
-║ Git:      2.43.0                                ║
-║ SQLite:   3.45.1                                ║
+║ Node.js:  <dynamic-version>                      ║
+║ Go:       <dynamic-version>                      ║
+║ Rust:     <dynamic-version>                      ║
+║ Git:      <dynamic-version>                      ║
+║ SQLite:   <dynamic-version>                      ║
 ╠══════════════════════════════════════════════════╣
 ║ Working Directory: /usr/src/projects            ║
 ╚══════════════════════════════════════════════════╝

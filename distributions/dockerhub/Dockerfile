@@ -33,17 +33,17 @@ WORKDIR /home/devuser
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     . $HOME/.cargo/env
 
-# Add welcome message with centered text
+# Add welcome message with dynamic version checking
 RUN echo 'echo "╔══════════════════════════════════════════════════╗"' >> ~/.bashrc && \
-    echo 'echo "║          Development Environment Versions         ║"' >> ~/.bashrc && \
+    echo 'echo "║          Development Environment Versions        ║"' >> ~/.bashrc && \
     echo 'echo "╠══════════════════════════════════════════════════╣"' >> ~/.bashrc && \
-    echo 'echo "║ Node.js:  v22.12.0                              ║"' >> ~/.bashrc && \
-    echo 'echo "║ Go:       go1.22.4                              ║"' >> ~/.bashrc && \
-    echo 'echo "║ Rust:     1.83.0                                ║"' >> ~/.bashrc && \
-    echo 'echo "║ Git:      2.43.0                                ║"' >> ~/.bashrc && \
-    echo 'echo "║ SQLite:   3.45.1                                ║"' >> ~/.bashrc && \
+    echo 'echo "║ Node.js:  $(node --version)                      ║"' >> ~/.bashrc && \
+    echo 'echo "║ Go:       $(go version | cut -d" " -f3)          ║"' >> ~/.bashrc && \
+    echo 'echo "║ Rust:     $(rustc --version | cut -d" " -f2)     ║"' >> ~/.bashrc && \
+    echo 'echo "║ Git:      $(git --version | cut -d" " -f3)       ║"' >> ~/.bashrc && \
+    echo 'echo "║ SQLite:   $(sqlite3 --version | cut -d" " -f1)   ║"' >> ~/.bashrc && \
     echo 'echo "╠══════════════════════════════════════════════════╣"' >> ~/.bashrc && \
-    echo 'echo "║ Working Directory: /usr/src/projects            ║"' >> ~/.bashrc && \
+    echo 'echo "║ Working Directory: \$(pwd)                       ║"' >> ~/.bashrc && \
     echo 'echo "╚══════════════════════════════════════════════════╝\n"' >> ~/.bashrc
 
 # Set final working directory
