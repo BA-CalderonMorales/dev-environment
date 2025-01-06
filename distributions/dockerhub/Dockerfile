@@ -21,25 +21,21 @@ RUN curl -sL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -xz -C /
 # Add Go to PATH
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# Install other dependencies
+# Install git and SQLite
 RUN apt-get install -y git sqlite3
 
-# Create a non-root user
-RUN useradd -m -s /bin/bash devuser
-USER devuser
-
-# Set working directory
-WORKDIR /home/devuser
+# Create projects directory and user
+RUN mkdir -p /usr/src/projects && \
+    useradd -m -s /bin/bash devuser && \
+    chown -R devuser:devuser /usr/src/projects
 
 # Install Rust
 USER root
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/home/devuser/.cargo/bin:${PATH}"
+
+# Switch to devuser
 USER devuser
 
-# Create projects directory instead of copying
-RUN mkdir -p /usr/src/projects && \
-    chown -R devuser:devuser /usr/src/projects
-
-# Set up project directory
+# Set working directory
 WORKDIR /usr/src/projects
