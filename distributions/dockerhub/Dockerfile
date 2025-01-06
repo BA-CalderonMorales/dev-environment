@@ -4,12 +4,18 @@ FROM ubuntu:latest
 ARG NODE_VERSION=22.3.0
 ARG GO_VERSION=1.22.4
 
-# Create user first
+# Install system dependencies first
+RUN apt-get update && \
+    apt-get install -y wget curl git sqlite3
+
+# Create user
 RUN useradd -m -s /bin/bash devuser
 
-# Install Node.js for devuser
+# Switch to devuser for Node.js installation
 USER devuser
 WORKDIR /home/devuser
+
+# Install Node.js
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
     . ~/.nvm/nvm.sh && \
     nvm install ${NODE_VERSION} && \
@@ -18,12 +24,8 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | b
     echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc && \
     echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.bashrc
 
-# Switch back to root for system installations
+# Switch back to root for Go installation
 USER root
-
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y wget curl git sqlite3
 
 # Install Go
 RUN curl -sL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
