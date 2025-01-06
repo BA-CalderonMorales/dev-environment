@@ -33,7 +33,7 @@ Exact versions are displayed in the welcome message when you access the containe
 
 ```
 ╔══════════════════════════════════════════════════╗
-║          Development Environment Versions         ║
+║          Development Environment Versions        ║
 ╠══════════════════════════════════════════════════╣
 ║ Node.js:  <dynamic-version>                      ║
 ║ Go:       <dynamic-version>                      ║
@@ -41,7 +41,7 @@ Exact versions are displayed in the welcome message when you access the containe
 ║ Git:      <dynamic-version>                      ║
 ║ SQLite:   <dynamic-version>                      ║
 ╠══════════════════════════════════════════════════╣
-║ Working Directory: /usr/src/projects            ║
+║ Working Directory: /usr/src/projects             ║
 ╚══════════════════════════════════════════════════╝
 ```
 

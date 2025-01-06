@@ -35,15 +35,15 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
 
 # Add welcome message with dynamic version checking
 RUN echo 'echo "╔══════════════════════════════════════════════════╗"' >> ~/.bashrc && \
-    echo 'echo "║          Development Environment Versions        ║"' >> ~/.bashrc && \
+    echo 'echo "║----------Development Environment Versions--------║"' >> ~/.bashrc && \
     echo 'echo "╠══════════════════════════════════════════════════╣"' >> ~/.bashrc && \
-    echo 'echo "║ Node.js:  $(node --version)                      ║"' >> ~/.bashrc && \
-    echo 'echo "║ Go:       $(go version | cut -d" " -f3)          ║"' >> ~/.bashrc && \
-    echo 'echo "║ Rust:     $(rustc --version | cut -d" " -f2)     ║"' >> ~/.bashrc && \
-    echo 'echo "║ Git:      $(git --version | cut -d" " -f3)       ║"' >> ~/.bashrc && \
-    echo 'echo "║ SQLite:   $(sqlite3 --version | cut -d" " -f1)   ║"' >> ~/.bashrc && \
+    echo 'echo "║-Node.js:--$(node --version)----------------------║"' >> ~/.bashrc && \
+    echo 'echo "║-Go:-------$(go version | cut -d" " -f3)----------║"' >> ~/.bashrc && \
+    echo 'echo "║-Rust:-----$(rustc --version | cut -d" " -f2)-----║"' >> ~/.bashrc && \
+    echo 'echo "║-Git:------$(git --version | cut -d" " -f3)-------║"' >> ~/.bashrc && \
+    echo 'echo "║-SQLite:---$(sqlite3 --version | cut -d" " -f1)---║"' >> ~/.bashrc && \
     echo 'echo "╠══════════════════════════════════════════════════╣"' >> ~/.bashrc && \
-    echo 'echo "║ Working Directory: \$(pwd)                       ║"' >> ~/.bashrc && \
+    echo 'echo "║-Working Directory: \$(pwd)-----------------------║"' >> ~/.bashrc && \
     echo 'echo "╚══════════════════════════════════════════════════╝\n"' >> ~/.bashrc
 
 # Set final working directory
