@@ -1,9 +1,17 @@
-name: Build and Push Dev Image
+name: DockerHubBuild and Push
 
 on:
   push:
-    branches:
-      - main  # Trigger only on push to main branch
+    branches: [ main, develop ]
+    paths:
+      - 'distributions/dockerhub/**'
+      - 'init-project.sh'
+  
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'distributions/dockerhub/**'
+      - 'init-project.sh'
 
 jobs:
   build-and-push:
@@ -24,10 +32,13 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./distributions/dockerhub
+          file: ./distributions/dockerhub/Dockerfile
           push: true
-          tags: cmoe640/dev-environment:latest                  # Hardcode username here - if you make your own image, just replace the username with your org...
+            # Hardcode username in tags - you can make your own image, just replace the username with your org...
+          tags: |
+            cmoe640/dev-environment:latest
+            cmoe640/dev-environment:latest-${{ github.sha }}
           build-args: |    # Set build-time variables
             NODE_VERSION=22.3.0
             GO_VERSION=1.21.7

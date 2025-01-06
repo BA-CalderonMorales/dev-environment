@@ -14,7 +14,7 @@ services:
       - "8000-8010:8000-8010" # Backend services
 
     volumes:
-      - ./projects:/usr/src/projects # Mount projects
+      - ../../projects:/usr/src/projects # Mount projects
       - ~/.ssh:/home/devuser/.ssh:ro # Mount SSH keys
       - ~/.gitconfig:/home/devuser/.gitconfig:ro # Mount Git config
       - vscode-server:/home/devuser/.vscode-server # Persist VS Code settings
