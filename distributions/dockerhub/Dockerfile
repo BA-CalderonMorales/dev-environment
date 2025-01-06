@@ -37,5 +37,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/home/devuser/.cargo/bin:${PATH}"
 USER devuser
 
-# Copy project files - Adjust if necessary for initial setup
-COPY --chown=devuser:devuser projects /usr/src/projects
+# Create projects directory instead of copying
+RUN mkdir -p /usr/src/projects && \
+    chown -R devuser:devuser /usr/src/projects
+
+# Set up project directory
+WORKDIR /usr/src/projects
