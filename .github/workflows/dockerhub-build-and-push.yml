@@ -1,4 +1,4 @@
-name: DockerHubBuild and Push
+name: DockerHub Build and Push Workflow
 
 on:
   push:
@@ -41,4 +41,4 @@ jobs:
             cmoe640/dev-environment:latest-${{ github.sha }}
           build-args: |    # Set build-time variables
             NODE_VERSION=22.3.0
-            GO_VERSION=1.21.7
+            GO_VERSION=1.22.4

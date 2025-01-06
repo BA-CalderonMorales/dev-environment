@@ -2,7 +2,7 @@
 FROM ubuntu:latest
 
 ARG NODE_VERSION=22.3.0
-ARG GO_VERSION=1.21.7
+ARG GO_VERSION=1.22.4
 
 # Install Node.js
 RUN apt-get update && \

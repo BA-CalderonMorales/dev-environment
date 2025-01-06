@@ -7,6 +7,16 @@ This project provides a consistent development environment using Docker.
 * Docker Desktop installed
 * Docker Hub Account (request access to the dev-environment image)
 
+## Available Image Tags
+
+- `latest` - Current stable version
+- `latest-<commit-hash>` - Specific version tied to a commit
+
+Example using specific version:
+```bash
+docker pull cmoe640/dev-environment:latest-8325b1a411ad382a64fd6c69ad2f5f50084d2dcc
+```
+
 ## Initial Setup
 
 1. Create your development directory structure:
@@ -141,6 +151,26 @@ cd C:\dev
 docker compose down
 ```
 
+## Image Maintenance
+
+Clean up unused images:
+```bash
+# Remove unused images
+docker image prune
+
+# Remove specific version
+docker rmi cmoe640/dev-environment:tag-name
+
+# Remove dangling images
+docker image prune --filter="dangling=true"
+```
+
+Best Practices:
+- Keep `latest` for current stable version
+- Maintain last 2-3 versions for potential rollback
+- Regularly prune older versions
+- Use specific tags for production deployments
+
 ## Troubleshooting
 
 If you encounter issues:
@@ -149,3 +179,14 @@ If you encounter issues:
 3. Check that Docker Desktop is running
 4. Ensure all paths in docker-compose.yml exist on your system
 5. For Git Bash users, remember to use `winpty` when executing interactive commands
+
+Additional considerations:
+1. Rate Limits
+   - DockerHub has pull rate limits
+   - Authenticate to increase limits: `docker login`
+   - Consider using specific tags to avoid frequent pulls
+
+2. Version Management
+   - Use `latest` for development
+   - Use specific tags for stability
+   - Keep track of working versions
