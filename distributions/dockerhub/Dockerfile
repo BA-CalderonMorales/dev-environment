@@ -6,26 +6,14 @@ ARG GO_VERSION=1.22.4
 
 # Install system dependencies first
 RUN apt-get update && \
-    apt-get install -y wget curl git sqlite3
+    apt-get install -y wget curl git sqlite3 ca-certificates
+
+# Install Node.js directly
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs
 
 # Create user
 RUN useradd -m -s /bin/bash devuser
-
-# Switch to devuser for Node.js installation
-USER devuser
-WORKDIR /home/devuser
-
-# Install Node.js
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
-    . ~/.nvm/nvm.sh && \
-    nvm install ${NODE_VERSION} && \
-    nvm use ${NODE_VERSION} && \
-    echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc && \
-    echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc && \
-    echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.bashrc
-
-# Switch back to root for Go installation
-USER root
 
 # Install Go
 RUN curl -sL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
