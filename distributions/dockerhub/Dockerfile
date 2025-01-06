@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM ubuntu:latest
 
-ARG NODE_VERSION=22.3.0
+ARG NODE_VERSION=22.12.0
 ARG GO_VERSION=1.22.4
 
 # Install system dependencies first
@@ -10,7 +10,9 @@ RUN apt-get update && \
 
 # Install Node.js directly
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs
+    apt-get install -y nodejs && \
+    npm install -g npm@10.8.1 && \
+    npm cache clean --force
 
 # Create user
 RUN useradd -m -s /bin/bash devuser
@@ -31,18 +33,18 @@ WORKDIR /home/devuser
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
     . $HOME/.cargo/env
 
-# Add welcome message
-RUN echo 'echo "╔════════════════════════════════════════╗"' >> ~/.bashrc && \
-    echo 'echo "║    Development Environment Versions    ║"' >> ~/.bashrc && \
-    echo 'echo "╠════════════════════════════════════════╣"' >> ~/.bashrc && \
-    echo 'echo "║ Node.js: $(node --version)"' >> ~/.bashrc && \
-    echo 'echo "║ Go:      $(go version | cut -d" " -f3)"' >> ~/.bashrc && \
-    echo 'echo "║ Rust:    $(rustc --version | cut -d" " -f2)"' >> ~/.bashrc && \
-    echo 'echo "║ Git:     $(git --version | cut -d" " -f3)"' >> ~/.bashrc && \
-    echo 'echo "║ SQLite:  $(sqlite3 --version | cut -d" " -f1)"' >> ~/.bashrc && \
-    echo 'echo "╠════════════════════════════════════════╣"' >> ~/.bashrc && \
-    echo 'echo "║ Working Directory: $(pwd)"' >> ~/.bashrc && \
-    echo 'echo "╚════════════════════════════════════════╝\n"' >> ~/.bashrc
+# Add welcome message with centered text
+RUN echo 'echo "╔══════════════════════════════════════════════════╗"' >> ~/.bashrc && \
+    echo 'echo "║          Development Environment Versions         ║"' >> ~/.bashrc && \
+    echo 'echo "╠══════════════════════════════════════════════════╣"' >> ~/.bashrc && \
+    echo 'echo "║ Node.js:  v22.12.0                              ║"' >> ~/.bashrc && \
+    echo 'echo "║ Go:       go1.22.4                              ║"' >> ~/.bashrc && \
+    echo 'echo "║ Rust:     1.83.0                                ║"' >> ~/.bashrc && \
+    echo 'echo "║ Git:      2.43.0                                ║"' >> ~/.bashrc && \
+    echo 'echo "║ SQLite:   3.45.1                                ║"' >> ~/.bashrc && \
+    echo 'echo "╠══════════════════════════════════════════════════╣"' >> ~/.bashrc && \
+    echo 'echo "║ Working Directory: /usr/src/projects            ║"' >> ~/.bashrc && \
+    echo 'echo "╚══════════════════════════════════════════════════╝\n"' >> ~/.bashrc
 
 # Set final working directory
 WORKDIR /usr/src/projects

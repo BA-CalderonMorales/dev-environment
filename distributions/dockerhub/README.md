@@ -20,6 +20,16 @@
 
 This project provides a consistent development environment using Docker, designed for seamless team collaboration and individual development.
 
+## Current Tool Versions
+
+| Tool     | Version    | Notes                    |
+|----------|------------|--------------------------|
+| Node.js  | v22.12.0  | Includes npm v10.8.1     |
+| Go       | 1.22.4    | Latest secure version    |
+| Rust     | 1.83.0    | With cargo package manager|
+| Git      | 2.43.0    | Latest stable version    |
+| SQLite   | 3.45.1    | Latest stable version    |
+
 ## Quick Start (5 Minutes)
 
 1. Prerequisites:
@@ -207,3 +217,20 @@ Best Practices:
 ## Contributing
 
 Found a bug or want to suggest an improvement? Check out our [contribution guidelines](https://github.com/BA-CalderonMorales/dev-environment/blob/main/CONTRIBUTING.md) or [open an issue](https://github.com/BA-CalderonMorales/dev-environment/issues/new).
+
+## Verifying Installation
+
+After starting the container, you should see this welcome message:
+```
+╔══════════════════════════════════════════════════╗
+║          Development Environment Versions         ║
+╠══════════════════════════════════════════════════╣
+║ Node.js:  v22.12.0                              ║
+║ Go:       go1.22.4                              ║
+║ Rust:     1.83.0                                ║
+║ Git:      2.43.0                                ║
+║ SQLite:   3.45.1                                ║
+╠══════════════════════════════════════════════════╣
+║ Working Directory: /usr/src/projects            ║
+╚══════════════════════════════════════════════════╝
+```
