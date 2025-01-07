@@ -19,6 +19,11 @@ on:
   # Allow manual triggers for testing
   workflow_dispatch:
 
+permissions:
+  contents: write    # Required for creating releases
+  packages: write   # If you need to push packages
+  actions: read     # For workflow access
+
 jobs:
   build-and-seed:
     runs-on: ubuntu-latest
