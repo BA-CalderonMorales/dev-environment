@@ -62,14 +62,16 @@ jobs:
       - name: Create and seed torrent
         run: |
           cd distributions/bittorrent
+          docker save dev-environment:latest > dev-environment.tar
           chmod +x scripts/torrent/create-torrent.sh
           chmod +x scripts/torrent/generate-magnet.sh
           ./scripts/torrent/create-torrent.sh
           ./scripts/torrent/generate-magnet.sh
 
-      # Prepare and upload artifacts for release workflow
+      # Prepare and upload artifacts
       - name: Prepare Artifacts
         run: |
+          cd distributions/bittorrent
           mkdir -p artifacts/bittorrent
           cp dev-environment.torrent artifacts/bittorrent/
           cp magnet.txt artifacts/bittorrent/
@@ -78,5 +80,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bittorrent-artifacts
-          path: artifacts/bittorrent/
+          path: distributions/bittorrent/artifacts/bittorrent/
           retention-days: 1
