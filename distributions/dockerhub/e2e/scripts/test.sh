@@ -24,11 +24,14 @@ docker exec dev-environment bash -c '
     echo "Git: $(git --version)"
 '
 
+# Copy startup scripts into container
+docker cp $GITHUB_WORKSPACE/startup/. dev-environment:/usr/src/startup/
+
 # Test Project Initialization
 echo "📁 Testing project initialization..."
 docker exec dev-environment bash -c '
     cd /usr/src/projects &&
-    ../startup/init-project.sh test-project full-stack &&
+    /usr/src/startup/init-project.sh test-project full-stack &&
     test -d test-project
 '
 

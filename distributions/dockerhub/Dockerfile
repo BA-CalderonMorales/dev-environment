@@ -30,8 +30,8 @@ USER devuser
 WORKDIR /home/devuser
 
 # Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-    . $HOME/.cargo/env
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Add colorful welcome message with emojis
 RUN echo 'echo ""' >> ~/.bashrc && \
@@ -48,3 +48,6 @@ RUN echo 'echo ""' >> ~/.bashrc && \
 
 # Set final working directory
 WORKDIR /usr/src/projects
+
+COPY startup/ /usr/src/startup/
+RUN chmod +x /usr/src/startup/init-project.sh
