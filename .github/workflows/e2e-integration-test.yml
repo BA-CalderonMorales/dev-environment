@@ -1,5 +1,6 @@
 name: E2E Integration Tests
 
+# Trigger on completion of distribution workflows
 on:
   workflow_run:
     workflows: ['DockerHub Build and Push', 'BitTorrent Build and Seed']
@@ -10,33 +11,56 @@ on:
 jobs:
   e2e-tests:
     runs-on: ubuntu-latest
+    # Only run if the triggering workflow succeeded
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
+      # Test DockerHub distribution method
       - name: Test DockerHub Distribution
         id: dockerhub
         run: |
           chmod +x distributions/dockerhub/e2e/scripts/test.sh
           ./distributions/dockerhub/e2e/scripts/test.sh
 
+      # Test BitTorrent distribution method
       - name: Test BitTorrent Distribution
         id: bittorrent
         run: |
           chmod +x distributions/bittorrent/e2e/scripts/test.sh
           ./distributions/bittorrent/e2e/scripts/test.sh
 
+      # Test distribution switching mechanism
       - name: Test Distribution Switching
         id: switching
         run: |
           chmod +x startup/e2e/scripts/test-distribution-switch.sh
           ./startup/e2e/scripts/test-distribution-switch.sh
 
+      # Report results of all tests
       - name: Report Test Results
-        if: always()
+        if: always()  # Run even if previous steps failed
         run: |
           echo "📊 E2E Test Summary"
           echo "=================="
           echo "DockerHub Distribution: ${{ steps.dockerhub.outcome }}"
           echo "BitTorrent Distribution: ${{ steps.bittorrent.outcome }}"
-          echo "Distribution Switching: ${{ steps.switching.outcome }}" 
+          echo "Distribution Switching: ${{ steps.switching.outcome }}"
+
+      # After test results
+      - name: Prepare Test Results
+        run: |
+          mkdir -p artifacts/tests
+          echo "{
+            \"dockerhub\": \"${{ steps.dockerhub.outcome }}\",
+            \"bittorrent\": \"${{ steps.bittorrent.outcome }}\",
+            \"switching\": \"${{ steps.switching.outcome }}\",
+            \"date\": \"$(date -u +"%Y-%m-%d %H:%M UTC")\"
+          }" > artifacts/tests/results.json
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/tests/
+          retention-days: 1 

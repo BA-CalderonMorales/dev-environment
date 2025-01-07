@@ -1,0 +1,87 @@
+name: Create Comprehensive Release
+
+# Only trigger after E2E tests complete successfully
+on:
+  workflow_run:
+    workflows: ['E2E Integration Tests']
+    types:
+      - completed
+    branches: [main, develop]
+
+permissions:
+  contents: write    # For creating releases
+  packages: write    # For package operations
+  actions: read      # For workflow access
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download artifacts from previous workflows
+      - name: Download Workflow Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # Generate release notes with important disclaimers
+      - name: Generate Release Notes
+        run: |
+          cat > RELEASE_NOTES.md << EOL
+          # Development Environment Release
+
+          ## ⚠️ Important Disclaimers
+          - This development environment is provided as-is for experimental and personal use
+          - Distribution methods are subject to rate limits and availability constraints:
+            - DockerHub: Subject to Docker's rate limiting policies
+            - BitTorrent: Dependent on peer availability and network conditions
+          - Users should not rely solely on this repository for production environments
+          - Consider building and hosting your own images for commercial use
+
+          ## 🔄 Distribution Methods
+
+          ### DockerHub Distribution
+          - Image: \`cmoe640/dev-environment:${GITHUB_SHA}\`
+          - Status: Available (subject to rate limits)
+          - Pull Command: \`docker pull cmoe640/dev-environment:${GITHUB_SHA}\`
+
+          ### BitTorrent Distribution
+          - Magnet Link: $(cat artifacts/bittorrent/magnet.txt)
+          - Torrent File: Attached to this release
+          - Status: Experimental
+
+          ## 🛠️ Included Tools
+          - Node.js: v22.3.0
+          - Go: v1.22.4
+          - Rust: v1.75.0
+          - Git: v2.43.0
+
+          ## 📝 Usage Notes
+          - For personal/development use only
+          - Test thoroughly before using in any production environment
+          - Consider security implications of using pre-built environments
+
+          ## 🔍 Verification
+          - E2E Tests Passed: ✅
+          - Build Date: $(date -u +"%Y-%m-%d %H:%M UTC")
+          - Commit: ${GITHUB_SHA}
+          EOL
+
+      # Create GitHub release with all artifacts
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(date +%Y%m%d%H%M)
+          gh release create "v${VERSION}" \
+            --title "Development Environment v${VERSION}" \
+            --notes-file RELEASE_NOTES.md \
+            artifacts/bittorrent/dev-environment.torrent \
+            artifacts/dockerhub/image-info.json
+
+      # Cleanup artifacts
+      - name: Cleanup
+        if: always()
+        run: rm -rf artifacts 

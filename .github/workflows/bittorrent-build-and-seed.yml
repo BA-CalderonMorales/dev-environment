@@ -1,14 +1,16 @@
 name: BitTorrent Build and Seed
 
+# Trigger conditions
 on:
   push:
+    # Only run when specific paths are modified
     paths:
-      - 'distributions/bittorrent/**'
-      - 'distributions/dockerhub/Dockerfile'
-      - 'startup/**'
-      - '.github/workflows/**'
-      - 'docs/**'
-    branches: [ main, develop ]
+      - 'distributions/bittorrent/**'  # Changes to BitTorrent distribution
+      - 'distributions/dockerhub/Dockerfile'  # Base Dockerfile changes
+      - 'startup/**'                   # Changes to startup scripts
+      - '.github/workflows/**'         # Changes to workflows
+      - 'docs/**'                     # Changes to documentation
+    branches: [ main, develop ]        # Only on main branches
   pull_request:
     paths:
       - 'distributions/bittorrent/**'
@@ -16,36 +18,47 @@ on:
       - 'startup/**'
       - '.github/workflows/bittorrent-build-and-seed.yml'
     branches: [ main, develop ]
-  # Allow manual triggers for testing
-  workflow_dispatch:
+  workflow_dispatch:                   # Manual trigger option
 
+# Required permissions for GitHub Actions
 permissions:
-  contents: write    # Required for creating releases
-  packages: write   # If you need to push packages
-  actions: read     # For workflow access
+  contents: write    # For creating releases
+  packages: write    # For package operations
+  actions: read      # For workflow access
 
 jobs:
   build-and-seed:
     runs-on: ubuntu-latest
     steps:
+      # Checkout repository
       - uses: actions/checkout@v4
 
+      # Install required system packages
       - name: Set up environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y transmission-cli
+          sudo apt-get install -y transmission-cli  # Required for torrent operations
 
+      # Copy startup scripts into build context
+      # This is necessary because Docker COPY can't access parent directories
+      - name: Copy startup scripts to build context
+        run: |
+          cp -r startup distributions/bittorrent/
+
+      # Build the Docker image
       - name: Build Docker image
         run: |
           cd distributions/bittorrent
           docker build -t dev-environment:latest .
           
+      # Save the image as a tar file for distribution
       - name: Save Docker image
         run: |
           cd distributions/bittorrent
           chmod +x scripts/build/save-image.sh
           ./scripts/build/save-image.sh
 
+      # Create and prepare torrent file
       - name: Create and seed torrent
         run: |
           cd distributions/bittorrent
@@ -54,6 +67,7 @@ jobs:
           ./scripts/torrent/create-torrent.sh
           ./scripts/torrent/generate-magnet.sh
 
+      # Create GitHub release with artifacts
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -62,14 +76,30 @@ jobs:
           chmod +x scripts/release/create-release.sh
           ./scripts/release/create-release.sh
 
+      # Update repository with new magnet link
       - name: Update Repository
         run: |
           cd distributions/bittorrent
           chmod +x scripts/release/update-repo.sh
           ./scripts/release/update-repo.sh
 
+      # Setup persistent seeding for availability
       - name: Setup Persistent Seeding
         run: |
           cd distributions/bittorrent
           chmod +x scripts/seeding/setup-persistent.sh
           ./scripts/seeding/setup-persistent.sh
+
+      # After torrent creation
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p artifacts/bittorrent
+          cp dev-environment.torrent artifacts/bittorrent/
+          cp magnet.txt artifacts/bittorrent/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bittorrent-artifacts
+          path: artifacts/bittorrent/
+          retention-days: 1

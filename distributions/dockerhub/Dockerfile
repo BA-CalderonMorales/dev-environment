@@ -21,9 +21,13 @@ RUN useradd -m -s /bin/bash devuser
 RUN curl -sL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# Create and set projects directory
-RUN mkdir -p /usr/src/projects && \
-    chown -R devuser:devuser /usr/src/projects
+# Create necessary directories
+RUN mkdir -p /usr/src/projects
+WORKDIR /usr/src/projects
+
+# Copy startup scripts (now relative to build context)
+COPY startup/ /usr/src/startup/
+RUN chmod +x /usr/src/startup/init-project.sh
 
 # Switch to devuser for Rust installation
 USER devuser

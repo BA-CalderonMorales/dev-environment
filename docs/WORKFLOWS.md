@@ -123,3 +123,10 @@ When adding new distribution methods:
 2. Define appropriate triggers
 3. Add to E2E test suite
 4. Update this documentation 
+
+## Release Process
+- Triggered after successful E2E tests
+- Collects artifacts from all workflows
+- Generates comprehensive release notes
+- Includes all distribution methods
+- Documents availability constraints 
