@@ -4,8 +4,8 @@
 # --- Configuration ---
 # Define constants for the GitHub API endpoint, the directory containing project templates, and the CI/CD workflow templates.
 GITHUB_API="https://api.github.com"
-TEMPLATES_DIR="./templates"
-WORKFLOWS_DIR="./templates/workflows"
+TEMPLATES_DIR="$(dirname "$0")/templates"
+WORKFLOWS_DIR="$(dirname "$0")/templates/workflows"
 
 # --- Helper Functions ---
 
