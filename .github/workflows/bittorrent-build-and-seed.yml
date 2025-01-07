@@ -6,7 +6,8 @@ on:
       - 'distributions/bittorrent/**'
       - 'distributions/dockerhub/Dockerfile'
       - 'startup/**'
-      - '.github/workflows/bittorrent-build-and-seed.yml'
+      - '.github/workflows/**'
+      - 'docs/**'
     branches: [ main, develop ]
   pull_request:
     paths:

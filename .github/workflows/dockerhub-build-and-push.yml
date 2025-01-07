@@ -5,13 +5,15 @@ on:
     paths:
       - 'distributions/dockerhub/**'
       - 'startup/**'
-      - '.github/workflows/dockerhub-build-and-push.yml'
+      - '.github/workflows/**'
+      - 'docs/**'
     branches: [ main, develop ]
   pull_request:
     paths:
       - 'distributions/dockerhub/**'
       - 'startup/**'
-      - '.github/workflows/dockerhub-build-and-push.yml'
+      - '.github/workflows/**'
+      - 'docs/**'
     branches: [ main, develop ]
   # Allow manual triggers for testing
   workflow_dispatch:
@@ -20,20 +22,19 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: ./distributions/dockerhub
           file: ./distributions/dockerhub/Dockerfile
@@ -41,7 +42,7 @@ jobs:
             # Hardcode username in tags - you can make your own image, just replace the username with your org...
           tags: |
             cmoe640/dev-environment:latest
-            cmoe640/dev-environment:latest-${{ github.sha }}
+            cmoe640/dev-environment:${{ github.sha }}
           build-args: |    # Set build-time variables
             NODE_VERSION=22.3.0
             GO_VERSION=1.22.4
