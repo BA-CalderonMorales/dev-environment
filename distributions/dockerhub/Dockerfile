@@ -36,7 +36,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
 # Add colorful welcome message with emojis
 RUN echo 'echo ""' >> ~/.bashrc && \
     echo 'echo "🛠️  Development Environment Versions"' >> ~/.bashrc && \
-    echo 'echo ""' >> ~/.bashrc && \
+    echo 'echo "' >> ~/.bashrc && \
     echo 'echo -e "\033[1;32m⚡ Node.js:\033[0m  $(node --version)"' >> ~/.bashrc && \
     echo 'echo -e "\033[1;36m🔷 Go:\033[0m       $(go version | cut -d" " -f3)"' >> ~/.bashrc && \
     echo 'echo -e "\033[1;31m🦀 Rust:\033[0m     $(rustc --version | cut -d" " -f2)"' >> ~/.bashrc && \
@@ -51,8 +51,9 @@ USER root
 
 # Copy and set permissions for startup scripts
 COPY startup/ /usr/src/startup/
-RUN chmod +x /usr/src/startup/init-project.sh && \
-    chown -R devuser:devuser /usr/src/startup
+RUN chmod -R 755 /usr/src/startup && \
+    chown -R devuser:devuser /usr/src/startup && \
+    chmod -R +x /usr/src/startup/*.sh
 
 # Switch back to devuser for final setup
 USER devuser
