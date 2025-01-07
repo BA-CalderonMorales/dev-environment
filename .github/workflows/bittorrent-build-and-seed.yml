@@ -5,8 +5,17 @@ on:
     paths:
       - 'distributions/bittorrent/**'
       - 'distributions/dockerhub/Dockerfile'
-    branches:
-      - main
+      - 'startup/**'
+      - '.github/workflows/bittorrent-build-and-seed.yml'
+    branches: [ main, develop ]
+  pull_request:
+    paths:
+      - 'distributions/bittorrent/**'
+      - 'distributions/dockerhub/Dockerfile'
+      - 'startup/**'
+      - '.github/workflows/bittorrent-build-and-seed.yml'
+    branches: [ main, develop ]
+  # Allow manual triggers for testing
   workflow_dispatch:
 
 jobs:

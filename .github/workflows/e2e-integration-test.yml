@@ -1,0 +1,42 @@
+name: E2E Integration Tests
+
+on:
+  workflow_run:
+    workflows: ['DockerHub Build and Push', 'BitTorrent Build and Seed']
+    types:
+      - completed
+    branches: [main, develop]
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Test DockerHub Distribution
+        id: dockerhub
+        run: |
+          chmod +x distributions/dockerhub/e2e/scripts/test.sh
+          ./distributions/dockerhub/e2e/scripts/test.sh
+
+      - name: Test BitTorrent Distribution
+        id: bittorrent
+        run: |
+          chmod +x distributions/bittorrent/e2e/scripts/test.sh
+          ./distributions/bittorrent/e2e/scripts/test.sh
+
+      - name: Test Distribution Switching
+        id: switching
+        run: |
+          chmod +x startup/e2e/scripts/test-distribution-switch.sh
+          ./startup/e2e/scripts/test-distribution-switch.sh
+
+      - name: Report Test Results
+        if: always()
+        run: |
+          echo "📊 E2E Test Summary"
+          echo "=================="
+          echo "DockerHub Distribution: ${{ steps.dockerhub.outcome }}"
+          echo "BitTorrent Distribution: ${{ steps.bittorrent.outcome }}"
+          echo "Distribution Switching: ${{ steps.switching.outcome }}" 

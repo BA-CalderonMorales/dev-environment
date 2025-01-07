@@ -1,17 +1,20 @@
-name: DockerHub Build and Push Workflow
+name: DockerHub Build and Push
 
 on:
   push:
-    branches: [ main, develop ]
     paths:
       - 'distributions/dockerhub/**'
-      - 'startup/init-project.sh'
-  
+      - 'startup/**'
+      - '.github/workflows/dockerhub-build-and-push.yml'
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
     paths:
       - 'distributions/dockerhub/**'
-      - 'startup/init-project.sh'
+      - 'startup/**'
+      - '.github/workflows/dockerhub-build-and-push.yml'
+    branches: [ main, develop ]
+  # Allow manual triggers for testing
+  workflow_dispatch:
 
 jobs:
   build-and-push:
