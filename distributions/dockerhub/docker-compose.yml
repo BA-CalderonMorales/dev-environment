@@ -25,8 +25,6 @@ services:
       - npm-cache:/home/devuser/.npm
       - cargo-cache:/home/devuser/.cargo
       - go-cache:/home/devuser/go
-      # Optional: Mount SSH keys for Git operations
-      # - ~/.ssh:/home/devuser/.ssh:ro
 
     stdin_open: true # Add this line
 

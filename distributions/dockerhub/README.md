@@ -110,7 +110,6 @@ docker pull cmoe640/dev-environment:latest-8325b1a411ad382a64fd6c69ad2f5f50084d2
        volumes:
          - ./projects:/usr/src/projects
          - ~/.ssh:/home/devuser/.ssh:ro
-         - ~/.gitconfig:/home/devuser/.gitconfig:ro
          - vscode-server:/home/devuser/.vscode-server
          - npm-cache:/home/devuser/.npm
          - cargo-cache:/home/devuser/.cargo
