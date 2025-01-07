@@ -10,17 +10,23 @@ This repository provides multiple distribution methods for a consistent developm
 - Simple setup process
 - [DockerHub Distribution Documentation](distributions/dockerhub/README.md)
 
-### 2. More Coming Soon...
-- IPFS Distribution (In Development)
-- Other distribution methods welcome!
+### 2. BitTorrent Distribution (Experimental)
+- Decentralized distribution
+- No rate limits
+- [BitTorrent Distribution Documentation](distributions/bittorrent/README.md)
 
 ## Project Structure
 ```
 repository/
 ├── distributions/        # Different distribution methods
-│   └── dockerhub/       # Standard DockerHub distribution
-├── projects/            # Your development workspace
-├── templates/           # Project templates
+│   ├── dockerhub/       # Standard DockerHub distribution
+│   └── bittorrent/      # BitTorrent-based distribution
+├── startup/             # Setup and initialization scripts
+│   ├── lib/            # Shared library functions
+│   ├── templates/      # Project templates
+│   ├── init-project.sh # Project initialization script
+│   └── start-dev.sh    # Environment startup script
+├── projects/           # Your development workspace
 └── .github/            # GitHub Actions and workflows
 ```
 
