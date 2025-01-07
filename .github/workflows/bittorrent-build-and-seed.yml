@@ -67,30 +67,7 @@ jobs:
           ./scripts/torrent/create-torrent.sh
           ./scripts/torrent/generate-magnet.sh
 
-      # Create GitHub release with artifacts
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd distributions/bittorrent
-          chmod +x scripts/release/create-release.sh
-          ./scripts/release/create-release.sh
-
-      # Update repository with new magnet link
-      - name: Update Repository
-        run: |
-          cd distributions/bittorrent
-          chmod +x scripts/release/update-repo.sh
-          ./scripts/release/update-repo.sh
-
-      # Setup persistent seeding for availability
-      - name: Setup Persistent Seeding
-        run: |
-          cd distributions/bittorrent
-          chmod +x scripts/seeding/setup-persistent.sh
-          ./scripts/seeding/setup-persistent.sh
-
-      # After torrent creation
+      # Prepare and upload artifacts for release workflow
       - name: Prepare Artifacts
         run: |
           mkdir -p artifacts/bittorrent
