@@ -4,7 +4,13 @@ services:
 
   dev:
 
-    image: cmoe640/dev-environment:latest  # Pull from Docker Hub
+    # This image is pulled directly from DockerHub
+    # Default distribution method - subject to DockerHub rate limits
+    # For unlimited pulls, consider:
+    # 1. Authenticating with DockerHub
+    # 2. Using the BitTorrent distribution method
+    # 3. Building and hosting your own image
+    image: cmoe640/dev-environment:latest
 
     container_name: dev-environment
 
@@ -15,18 +21,19 @@ services:
 
     volumes:
       - ../../projects:/usr/src/projects # Mount projects
-      - ~/.ssh:/home/devuser/.ssh:ro # Mount SSH keys
-      - ~/.gitconfig:/home/devuser/.gitconfig:ro # Mount Git config
-      - vscode-server:/home/devuser/.vscode-server # Persist VS Code settings
-      - npm-cache:/home/devuser/.npm # Persist NPM cache
-      - cargo-cache:/home/devuser/.cargo # Persist Cargo cache
-      - go-cache:/home/devuser/go # Persist Go cache
-
-    restart: unless-stopped
+      # Optional: Mount SSH keys for Git operations
+      # - ~/.ssh:/home/devuser/.ssh:ro
 
     stdin_open: true # Add this line
 
     tty: true        # Add this line
+
+    # Environment variables can be added here if needed
+    environment:
+      - DISTRIBUTION_METHOD=dockerhub  # Helps identify how this environment was set up
+
+    # Restart policy - useful for production environments
+    # restart: unless-stopped
 
 volumes:
 

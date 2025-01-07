@@ -1,0 +1,60 @@
+name: BitTorrent Build and Seed
+
+on:
+  push:
+    paths:
+      - 'distributions/bittorrent/**'
+      - 'distributions/dockerhub/Dockerfile'
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y transmission-cli
+
+      - name: Build Docker image
+        run: |
+          cd distributions/bittorrent
+          docker build -t dev-environment:latest .
+          
+      - name: Save Docker image
+        run: |
+          cd distributions/bittorrent
+          chmod +x scripts/build/save-image.sh
+          ./scripts/build/save-image.sh
+
+      - name: Create and seed torrent
+        run: |
+          cd distributions/bittorrent
+          chmod +x scripts/torrent/create-torrent.sh
+          chmod +x scripts/torrent/generate-magnet.sh
+          ./scripts/torrent/create-torrent.sh
+          ./scripts/torrent/generate-magnet.sh
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd distributions/bittorrent
+          chmod +x scripts/release/create-release.sh
+          ./scripts/release/create-release.sh
+
+      - name: Update Repository
+        run: |
+          cd distributions/bittorrent
+          chmod +x scripts/release/update-repo.sh
+          ./scripts/release/update-repo.sh
+
+      - name: Setup Persistent Seeding
+        run: |
+          cd distributions/bittorrent
+          chmod +x scripts/seeding/setup-persistent.sh
+          ./scripts/seeding/setup-persistent.sh

@@ -5,13 +5,13 @@ on:
     branches: [ main, develop ]
     paths:
       - 'distributions/dockerhub/**'
-      - 'init-project.sh'
+      - 'startup/init-project.sh'
   
   pull_request:
     branches: [ main, develop ]
     paths:
       - 'distributions/dockerhub/**'
-      - 'init-project.sh'
+      - 'startup/init-project.sh'
 
 jobs:
   build-and-push:

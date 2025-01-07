@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+
+  dev:
+
+    # This image is loaded locally from the BitTorrent-downloaded tar file
+    # The image tag must match what's created by the BitTorrent distribution scripts
+    # If you're seeing "image not found" errors, ensure you've properly downloaded
+    # and loaded the image using the BitTorrent distribution method first
+    image: dev-environment:latest
+
+    container_name: dev-environment
+
+    ports:
+      - "8080:8080" # VS Code
+      - "3000-3010:3000-3010" # Frontend apps
+      - "8000-8010:8000-8010" # Backend services
+
+    volumes:
+      - ../../projects:/usr/src/projects # Mount projects
+      # Optional: Mount SSH keys for Git operations
+      # - ~/.ssh:/home/devuser/.ssh:ro
+
+    restart: unless-stopped
+
+    stdin_open: true
+
+    tty: true
+
+    # Environment variables can be added here if needed
+    environment:
+      - DISTRIBUTION_METHOD=bittorrent  # Helps identify how this environment was set up
+
+volumes:
+
+  vscode-server:
+
+  npm-cache:
+
+  cargo-cache:
+
+  go-cache:
+
