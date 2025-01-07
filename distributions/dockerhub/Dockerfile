@@ -14,28 +14,24 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     npm install -g npm@10.8.1 && \
     npm cache clean --force
 
-# Create user
-RUN useradd -m -s /bin/bash devuser
+# Create user and setup directories
+RUN useradd -m -s /bin/bash devuser && \
+    mkdir -p /usr/src/projects && \
+    mkdir -p /usr/src/startup && \
+    chown -R devuser:devuser /usr/src/projects && \
+    chown -R devuser:devuser /usr/src/startup
 
 # Install Go
 RUN curl -sL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# Create necessary directories
-RUN mkdir -p /usr/src/projects
-WORKDIR /usr/src/projects
-
-# Copy startup scripts (now relative to build context)
-COPY startup/ /usr/src/startup/
-RUN chmod +x /usr/src/startup/init-project.sh
-
 # Switch to devuser for Rust installation
 USER devuser
 WORKDIR /home/devuser
 
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Install Rust and source environment
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    echo 'source "$HOME/.cargo/env"' >> ~/.bashrc
 
 # Add colorful welcome message with emojis
 RUN echo 'echo ""' >> ~/.bashrc && \
@@ -50,8 +46,14 @@ RUN echo 'echo ""' >> ~/.bashrc && \
     echo 'echo -e "\033[1;34m📂 Working Directory:\033[0m $(pwd)"' >> ~/.bashrc && \
     echo 'echo ""' >> ~/.bashrc
 
-# Set final working directory
-WORKDIR /usr/src/projects
+# Switch back to root for file operations
+USER root
 
+# Copy and set permissions for startup scripts
 COPY startup/ /usr/src/startup/
-RUN chmod +x /usr/src/startup/init-project.sh
+RUN chmod +x /usr/src/startup/init-project.sh && \
+    chown -R devuser:devuser /usr/src/startup
+
+# Switch back to devuser for final setup
+USER devuser
+WORKDIR /usr/src/projects
