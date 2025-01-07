@@ -46,8 +46,3 @@ volumes:
   cargo-cache:
 
   go-cache:
-
-build-args: |
-    NODE_VERSION=22.3.0
-    GO_VERSION=1.22.4
-    RUST_VERSION=1.75.0

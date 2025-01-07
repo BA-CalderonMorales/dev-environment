@@ -12,6 +12,10 @@ mkdir -p projects
 
 # Download docker-compose.yml and modify for test environment
 curl -O https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/distributions/dockerhub/docker-compose.yml
+
+# Remove any potential .gitconfig mount that might be in the downloaded file
+sed -i '/\.gitconfig/d' docker-compose.yml
+
 # Replace relative path with absolute path
 sed -i "s|../../projects|$TEST_DIR/projects|g" docker-compose.yml
 
