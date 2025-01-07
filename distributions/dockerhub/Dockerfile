@@ -32,7 +32,8 @@ USER devuser
 WORKDIR /home/devuser
 
 # Setup Git config properly
-RUN git config --global user.email "dev@example.com" && \
+RUN mkdir -p ~/.git && \
+    git config --global user.email "dev@example.com" && \
     git config --global user.name "Developer"
 
 # Install Rust and configure environment
@@ -46,7 +47,7 @@ ENV PATH="/home/devuser/.cargo/bin:${PATH}"
 # Add colorful welcome message with emojis
 RUN echo 'echo ""' >> ~/.bashrc && \
     echo 'echo "🛠️  Development Environment Versions"' >> ~/.bashrc && \
-    echo 'echo ""' >> ~/.bashrc && \
+    echo 'echo "' >> ~/.bashrc && \
     echo 'echo -e "\033[1;32m⚡ Node.js:\033[0m  $(node --version)"' >> ~/.bashrc && \
     echo 'echo -e "\033[1;36m🔷 Go:\033[0m       $(go version | cut -d" " -f3)"' >> ~/.bashrc && \
     echo 'echo -e "\033[1;31m🦀 Rust:\033[0m     $(cargo --version | cut -d" " -f2)"' >> ~/.bashrc && \

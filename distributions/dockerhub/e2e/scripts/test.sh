@@ -7,8 +7,13 @@ echo "🧪 Running DockerHub Distribution E2E Tests..."
 TEST_DIR=$(mktemp -d)
 cd $TEST_DIR
 
-# Download docker-compose.yml
+# Create projects directory
+mkdir -p projects
+
+# Download docker-compose.yml and modify for test environment
 curl -O https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/distributions/dockerhub/docker-compose.yml
+# Replace relative path with absolute path
+sed -i "s|../../projects|$TEST_DIR/projects|g" docker-compose.yml
 
 # Test Container Startup
 echo "📦 Testing container startup..."
