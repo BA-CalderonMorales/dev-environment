@@ -2,11 +2,25 @@
 
 This repository provides multiple distribution methods for a consistent development environment.
 
+## 🚀 Features
+- Multiple distribution methods with fallback
+- Comprehensive E2E testing
+- Automated release process
+- Built-in development tools
+- VS Code integration
+
 ## ⚠️ Important Notice
 All distributions are subject to availability constraints:
 - DockerHub: Rate limits apply
 - BitTorrent: Peer availability dependent
 - Consider building locally for production use
+
+## 🛠️ Development Tools
+Pre-configured environment includes:
+- Node.js v22.3.0
+- Go v1.22.4
+- Rust v1.75.0
+- Git v2.43.0
 
 ## Latest Release
 The latest release includes:

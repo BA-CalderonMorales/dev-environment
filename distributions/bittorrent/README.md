@@ -2,85 +2,90 @@
 
 This distribution method uses BitTorrent to distribute the development environment image, bypassing traditional rate limits.
 
-## Quick Start
-```bash
-# From the repository root
-./startup/start-dev.sh --prefer-bittorrent
-```
+## Quick Start (5-10 Minutes)
 
-## Prerequisites
-- **transmission-cli**: This will be installed automatically if missing.
-- **Docker** and **Docker Compose**: Ensure these are installed on your system.
+1. **Prerequisites**:
+   * Docker Desktop installed
+   * Internet connection (for torrent download)
+   * transmission-cli (will be auto-installed if missing)
+
+2. **Start the Environment**:
+   ```bash
+   # From the repository root
+   ./startup/start-dev.sh --prefer-bittorrent
+   ```
 
 ## How It Works
-1. **Download the Image**: The script downloads the latest magnet link and uses `transmission-cli` to download the image.
-2. **Load the Image into Docker**: After downloading, the image is loaded into Docker using `docker load`.
-3. **Start the Environment**: The script then starts the Docker environment using `docker compose up -d`.
+1. Downloads the latest magnet link
+2. Uses transmission-cli to download the image
+3. Loads the image into Docker
+4. Starts the environment
 
-## Detailed Steps
+## Development Workflow
 
-1. **Install Prerequisites**:
-   - Ensure `transmission-cli` is installed. You can check this by running:
+1. **Clean Existing Environment**:
+   ```bash
+   # Shut down any running environment
+   docker compose down
+
+   # Remove local version of the image
+   docker rmi dev-environment:latest
+   ```
+
+2. **Build Locally** (for development):
+   ```bash
+   # From distributions/bittorrent directory
+   docker build -t dev-environment:latest .
+   ```
+
+3. **Test Your Changes**:
+   ```bash
+   # Start the environment
+   docker compose up -d
+
+   # Access the container
+   docker exec -it dev-environment bash
+   ```
+
+## Troubleshooting
+
+1. **Download Issues**:
+   - If torrent download fails, the system will automatically fall back to DockerHub
+   - Check torrent status:
      ```bash
-     transmission-cli --version
+     transmission-remote -l
      ```
-   - Ensure Docker and Docker Compose are installed:
+   - Force DockerHub fallback:
      ```bash
-     docker --version
-     docker-compose --version
+     export FORCE_BITTORRENT_FAIL=true
+     ./startup/start-dev.sh
      ```
 
-2. **Run the Download Script**:
-   - Execute the following command to start the download and setup:
-     ```bash
-     ./startup/start-dev.sh --prefer-bittorrent
-     ```
+2. **Slow Downloads**:
+   - Check your connection
+   - Verify peer availability
+   - Consider using DockerHub distribution instead
 
-3. **Verify the Download**:
-   - Check the output of the script to ensure that the image was downloaded successfully.
-   - If the download fails, ensure you have a stable internet connection and sufficient peers for the torrent.
+## Pro Tips 💡
 
-4. **Load the Image**:
-   - The script will automatically load the image into Docker. You can verify this by running:
-     ```bash
-     docker images
-     ```
-   - Look for `dev-environment:latest` in the list.
+1. **VS Code Integration**:
+   ```bash
+   # Install Remote Development extension
+   code --install-extension ms-vscode-remote.vscode-remote-extensionpack
+   ```
 
-5. **Start the Environment**:
-   - The script will start the Docker environment. You can check the status of the containers with:
-     ```bash
-     docker ps
-     ```
+2. **Shell Aliases**:
+   ```bash
+   # Add to your .bashrc or .zshrc
+   alias dev='cd path/to/workspace'
+   alias devsh='docker exec -it dev-environment bash'
+   ```
 
-6. **Verify the Setup**:
-   - Once the environment is running, you can access the services as defined in the `docker-compose.yml`.
-
-## Development
-
-If you plan on iterating on the image or forking the repository:
-
-1. Clean up existing environment:
+## E2E Testing
+Run the test suite to verify your changes:
 ```bash
-# Shut down the environment
-docker compose down
-
-# Remove local version of the image
-docker rmi dev-environment:latest
-```
-
-2. Make your changes to the `Dockerfile`.
-
-3. Build and test locally:
-```bash
-# From distributions/bittorrent directory
-docker build -t dev-environment:latest .
-```
-
-4. Test your changes:
-```bash
-docker compose up -d
-docker exec -it dev-environment bash
+# From the repository root
+./distributions/bittorrent/e2e/scripts/test.sh
 ```
 
 ## Directory Structure
@@ -93,33 +98,3 @@ bittorrent/
 ├── e2e/               # End-to-end tests
 └── docker-compose.yml # Container configuration
 ```
-
-## Pro Tips 💡
-
-1. **VS Code Integration**
-   ```bash
-   # Install Remote Development extension
-   code --install-extension ms-vscode-remote.vscode-remote-extensionpack
-   ```
-
-2. **Shell Aliases**
-   Add to your `.bashrc` or `.zshrc`:
-   ```bash
-   alias dev='cd path/to/workspace'
-   alias devsh='docker exec -it dev-environment bash'
-   ```
-
-3. **Troubleshooting**
-   ```bash
-   # Check torrent download status
-   transmission-remote -l
-   
-   # Force DockerHub fallback
-   export FORCE_BITTORRENT_FAIL=true
-   ./startup/start-dev.sh
-   ```
-
-## ⚠️ Important Notes
-- This is an experimental distribution method.
-- Availability depends on peer seeding.
-- Consider building locally for production use.

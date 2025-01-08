@@ -5,9 +5,6 @@ services:
   dev:
 
     # This image is loaded locally from the BitTorrent-downloaded tar file
-    # The image tag must match what's created by the BitTorrent distribution scripts
-    # If you're seeing "image not found" errors, ensure you've properly downloaded
-    # and loaded the image using the BitTorrent distribution method first
     image: dev-environment:latest
 
     container_name: dev-environment
