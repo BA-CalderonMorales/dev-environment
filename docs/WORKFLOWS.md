@@ -134,12 +134,12 @@ When adding new distribution methods:
 ## Workflow Development Guide
 
 ### Directory Structure
-- `.github/workflows/templates/`: Source workflow templates
-- `.github/workflows/scripts/`: Helper scripts for workflow development
+- `.github/workflows/`: All GitHub Actions workflow files
+- `startup/templates/workflows/`: Project-specific CI workflow templates
 
 ### Required Components
 For any new distribution method:
-1. Distribution workflow file in `.github/workflows/templates/`
+1. Distribution workflow file in `.github/workflows/`
 2. E2E test script in the appropriate distribution directory
 3. Entry in `e2e-integration-test.yml`
 4. Documentation updates in:
@@ -151,5 +151,4 @@ For any new distribution method:
 - Test locally before pushing
 - Document any new environment variables or secrets
 - Keep workflow files modular and reusable
-- Follow the existing patterns for consistency
-- Ensure all workflows are placed in the `.github/workflows/templates/` directory 
+- Follow the existing patterns for consistency 

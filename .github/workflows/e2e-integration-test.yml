@@ -33,7 +33,7 @@ jobs:
             const dockerhubRun = await github.rest.actions.listWorkflowRuns({
               owner,
               repo,
-              workflow_id: 'templates/dockerhub-build-and-push.yml',
+              workflow_id: 'dockerhub-build-and-push.yml',
               branch,
               per_page: 1
             });
@@ -41,7 +41,7 @@ jobs:
             const bittorrentRun = await github.rest.actions.listWorkflowRuns({
               owner,
               repo,
-              workflow_id: 'templates/bittorrent-build-and-seed.yml',
+              workflow_id: 'bittorrent-build-and-seed.yml',
               branch,
               per_page: 1
             });

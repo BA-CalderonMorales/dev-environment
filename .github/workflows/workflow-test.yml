@@ -3,7 +3,7 @@ name: Test Workflow Changes
 on:
   push:
     paths:
-      - '.github/workflows/templates/**'
+      - '.github/workflows/*.yml'
     branches:
       - 'workflow/**'
       - 'feature/**/workflow'
@@ -14,10 +14,10 @@ on:
         required: true
         type: choice
         options:
-          - templates/e2e-integration-test.yml
-          - templates/dockerhub-build-and-push.yml
-          - templates/bittorrent-build-and-seed.yml
-          - templates/create-release.yml
+          - e2e-integration-test.yml
+          - dockerhub-build-and-push.yml
+          - bittorrent-build-and-seed.yml
+          - create-release.yml
 
 jobs:
   validate:
@@ -36,7 +36,7 @@ jobs:
       - name: Simulate Workflow
         if: github.event_name == 'workflow_dispatch'
         run: |
-          act -W .github/workflows/templates/${{ github.event.inputs.workflow }} \
+          act -W .github/workflows/${{ github.event.inputs.workflow }} \
               -s GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} \
               --artifact-server-path /tmp/artifacts \
               -P ubuntu-latest=catthehacker/ubuntu:act-latest
