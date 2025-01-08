@@ -130,3 +130,26 @@ When adding new distribution methods:
 - Generates comprehensive release notes
 - Includes all distribution methods
 - Documents availability constraints 
+
+## Workflow Development Guide
+
+### Directory Structure
+- `.github/workflows/templates/`: Source workflow templates
+- `.github/workflows/scripts/`: Helper scripts for workflow development
+
+### Required Components
+For any new distribution method:
+1. Distribution workflow file in `.github/workflows/templates/`
+2. E2E test script in the appropriate distribution directory
+3. Entry in `e2e-integration-test.yml`
+4. Documentation updates in:
+   - This guide
+   - docs/ARCHITECTURE.md
+
+### Development Tips
+- Use meaningful commit messages for workflow changes
+- Test locally before pushing
+- Document any new environment variables or secrets
+- Keep workflow files modular and reusable
+- Follow the existing patterns for consistency
+- Ensure all workflows are placed in the `.github/workflows/templates/` directory 
