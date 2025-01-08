@@ -65,6 +65,13 @@ jobs:
           # Ensure we're using BitTorrent distribution
           export PREFER_BITTORRENT=true
           
+          # Test start-dev.sh directly first
+          echo "🧪 Testing start-dev.sh directly..."
+          if ! ./startup/start-dev.sh --test-mode; then
+            echo "❌ start-dev.sh verification failed"
+            exit 1
+          fi
+          
           # Run the BitTorrent E2E test suite
           if ! ./distributions/bittorrent/e2e/scripts/test.sh; then
             echo "❌ BitTorrent distribution test failed"
