@@ -40,13 +40,6 @@ jobs:
         id: bittorrent
         run: |
           chmod +x distributions/bittorrent/e2e/scripts/test.sh
-          chmod +x startup/start-dev.sh
-          
-          # Test direct BitTorrent download
-          export PREFER_BITTORRENT=true
-          ./startup/start-dev.sh
-          
-          # Run the full BitTorrent E2E test suite
           ./distributions/bittorrent/e2e/scripts/test.sh
 
       # Test distribution switching mechanism

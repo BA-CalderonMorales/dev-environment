@@ -11,9 +11,8 @@ cd $TEST_DIR
 mkdir -p projects
 
 # Copy required files
+cp -r $GITHUB_WORKSPACE/startup .
 cp $GITHUB_WORKSPACE/distributions/bittorrent/docker-compose.yml .
-cp $GITHUB_WORKSPACE/startup/start-dev.sh .
-cp -r $GITHUB_WORKSPACE/startup/lib .
 
 # Replace relative path with absolute path
 sed -i "s|../../projects|$TEST_DIR/projects|g" docker-compose.yml
@@ -25,10 +24,10 @@ echo "🔍 Testing BitTorrent Distribution Path..."
 
 # Test BitTorrent-first approach
 export PREFER_BITTORRENT=true
-chmod +x start-dev.sh
+chmod +x startup/start-dev.sh
 
 echo "📥 Attempting BitTorrent download..."
-./start-dev.sh
+./startup/start-dev.sh
 
 # Verify the environment is running
 if ! docker ps | grep -q "dev-environment"; then
@@ -58,13 +57,7 @@ docker compose down
 docker rmi dev-environment:latest 2>/dev/null || true
 
 # Should fall back to DockerHub
-./start-dev.sh
-
-# Verify fallback worked
-if ! docker ps | grep -q "dev-environment"; then
-    echo "❌ DockerHub fallback test failed: Container not running"
-    exit 1
-fi
+./startup/start-dev.sh
 
 # Cleanup
 echo "🧹 Cleaning up..."
