@@ -4,14 +4,18 @@ name: E2E Integration Tests
 on:
   workflow_run:
     workflows: ['DockerHub Build and Push', 'BitTorrent Build and Seed']
-    types:
-      - completed
+    types: [completed]
     branches: [main, develop]
 
 jobs:
   e2e-tests:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      (
+        (github.event.workflow_run.workflow == 'DockerHub Build and Push' && github.event.workflow_run.workflow != 'BitTorrent Build and Seed') ||
+        (github.event.workflow_run.workflow == 'BitTorrent Build and Seed' && github.event.workflow_run.workflow != 'DockerHub Build and Push')
+      )
     steps:
       - uses: actions/checkout@v4
         with:
