@@ -26,7 +26,27 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: bittorrent-artifacts
-          path: artifacts/bittorrent
+          path: distributions/bittorrent/artifacts
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      # Verify BitTorrent artifacts
+      - name: Verify BitTorrent Artifacts
+        run: |
+          echo "📦 Verifying BitTorrent artifacts..."
+          if [ ! -f "distributions/bittorrent/artifacts/dev-environment.torrent" ]; then
+            echo "❌ Torrent file missing"
+            exit 1
+          fi
+          if [ ! -f "distributions/bittorrent/artifacts/magnet.txt" ]; then
+            echo "❌ Magnet link file missing"
+            exit 1
+          fi
+          if [ ! -f "distributions/bittorrent/artifacts/checksum.txt" ]; then
+            echo "❌ Checksum file missing"
+            exit 1
+          fi
+          echo "✅ BitTorrent artifacts verified"
 
       # Test DockerHub distribution method
       - name: Test DockerHub Distribution
@@ -35,12 +55,21 @@ jobs:
           chmod +x distributions/dockerhub/e2e/scripts/test.sh
           ./distributions/dockerhub/e2e/scripts/test.sh
 
-      # Test BitTorrent distribution method
+      # Test BitTorrent distribution method with artifacts
       - name: Test BitTorrent Distribution
         id: bittorrent
         run: |
           chmod +x distributions/bittorrent/e2e/scripts/test.sh
-          ./distributions/bittorrent/e2e/scripts/test.sh
+          chmod +x startup/start-dev.sh
+          
+          # Ensure we're using BitTorrent distribution
+          export PREFER_BITTORRENT=true
+          
+          # Run the BitTorrent E2E test suite
+          if ! ./distributions/bittorrent/e2e/scripts/test.sh; then
+            echo "❌ BitTorrent distribution test failed"
+            exit 1
+          fi
 
       # Test distribution switching mechanism
       - name: Test Distribution Switching
@@ -53,11 +82,22 @@ jobs:
       - name: Report Test Results
         if: always()
         run: |
-          echo "📊 E2E Test Summary"
-          echo "=================="
-          echo "DockerHub Distribution: ${{ steps.dockerhub.outcome }}"
-          echo "BitTorrent Distribution: ${{ steps.bittorrent.outcome }}"
-          echo "Distribution Switching: ${{ steps.switching.outcome }}"
+          mkdir -p artifacts/tests
+          {
+            echo "📊 E2E Test Summary ($(date -u))"
+            echo "=================="
+            echo "DockerHub Distribution: ${{ steps.dockerhub.outcome }}"
+            echo "BitTorrent Distribution: ${{ steps.bittorrent.outcome }}"
+            echo "Distribution Switching: ${{ steps.switching.outcome }}"
+            echo ""
+            echo "🔍 Test Details"
+            echo "-------------"
+            if [ -f distributions/bittorrent/artifacts/magnet.txt ]; then
+              echo "BitTorrent Magnet Link: $(cat distributions/bittorrent/artifacts/magnet.txt)"
+            fi
+            echo "Docker Images Present:"
+            docker images | grep "dev-environment" || echo "No dev-environment images found"
+          } | tee artifacts/tests/summary.txt
 
       # Upload test results
       - name: Upload Test Results

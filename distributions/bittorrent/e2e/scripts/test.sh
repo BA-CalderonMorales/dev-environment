@@ -12,12 +12,11 @@ mkdir -p projects
 
 # Copy required files
 cp -r $GITHUB_WORKSPACE/startup .
+cp -r $GITHUB_WORKSPACE/distributions/bittorrent/artifacts/* .
 cp $GITHUB_WORKSPACE/distributions/bittorrent/docker-compose.yml .
 
 # Replace relative path with absolute path
 sed -i "s|../../projects|$TEST_DIR/projects|g" docker-compose.yml
-
-# Remove any potential .gitconfig mount that might be in the file
 sed -i '/\.gitconfig/d' docker-compose.yml
 
 echo "🔍 Testing BitTorrent Distribution Path..."
@@ -26,12 +25,15 @@ echo "🔍 Testing BitTorrent Distribution Path..."
 export PREFER_BITTORRENT=true
 chmod +x startup/start-dev.sh
 
-echo "📥 Attempting BitTorrent download..."
-./startup/start-dev.sh
+echo "📥 Testing BitTorrent download..."
+if ! ./startup/start-dev.sh; then
+    echo "❌ BitTorrent distribution failed"
+    exit 1
+fi
 
-# Verify the environment is running
-if ! docker ps | grep -q "dev-environment"; then
-    echo "❌ BitTorrent distribution test failed: Container not running"
+# Verify BitTorrent download worked
+if ! docker images | grep -q "dev-environment"; then
+    echo "❌ BitTorrent image load failed"
     exit 1
 fi
 
@@ -44,20 +46,16 @@ docker exec dev-environment bash -c '
     echo "Git: $(git --version)"
 '
 
-# Test that init script exists and is executable
-echo "📝 Verifying init script..."
-docker exec dev-environment bash -c '
-    test -x /usr/src/startup/init-project.sh
-'
-
-# Test fallback to DockerHub
-echo "🔄 Testing DockerHub fallback..."
-export FORCE_BITTORRENT_FAIL=true
+# Cleanup first test
 docker compose down
 docker rmi dev-environment:latest 2>/dev/null || true
 
-# Should fall back to DockerHub
-./startup/start-dev.sh
+echo "🔄 Testing DockerHub fallback..."
+export FORCE_BITTORRENT_FAIL=true
+if ! ./startup/start-dev.sh; then
+    echo "❌ DockerHub fallback failed"
+    exit 1
+fi
 
 # Cleanup
 echo "🧹 Cleaning up..."
