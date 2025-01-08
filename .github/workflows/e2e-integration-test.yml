@@ -8,51 +8,42 @@ on:
     branches: [main, develop]
 
 jobs:
-  e2e-tests:
+  check-workflows:
     runs-on: ubuntu-latest
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      (
-        (github.event.workflow_run.workflow == 'DockerHub Build and Push' && github.event.workflow_run.workflow != 'BitTorrent Build and Seed') ||
-        (github.event.workflow_run.workflow == 'BitTorrent Build and Seed' && github.event.workflow_run.workflow != 'DockerHub Build and Push')
-      )
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - id: check
+        run: |
+          # Get the completed workflow runs for both workflows
+          DOCKERHUB_STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/dockerhub-build-and-push.yml/runs?branch=${{ github.ref_name }}&status=completed&per_page=1" | \
+            jq -r '.workflow_runs[0].conclusion')
+          
+          BITTORRENT_STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/bittorrent-build-and-seed.yml/runs?branch=${{ github.ref_name }}&status=completed&per_page=1" | \
+            jq -r '.workflow_runs[0].conclusion')
+          
+          if [ "$DOCKERHUB_STATUS" = "success" ] && [ "$BITTORRENT_STATUS" = "success" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+  e2e-tests:
+    needs: check-workflows
+    if: needs.check-workflows.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.workflow_run.head_branch }}
 
       # Install required tools for BitTorrent testing
       - name: Install BitTorrent tools
         run: |
           sudo apt-get update
           sudo apt-get install -y transmission-cli
-
-      # Download artifacts from previous workflows
-      - name: Download BitTorrent Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: bittorrent-artifacts
-          path: distributions/bittorrent/artifacts
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
-
-      # Verify BitTorrent artifacts
-      - name: Verify BitTorrent Artifacts
-        run: |
-          echo "📦 Verifying BitTorrent artifacts..."
-          if [ ! -f "distributions/bittorrent/artifacts/dev-environment.torrent" ]; then
-            echo "❌ Torrent file missing"
-            exit 1
-          fi
-          if [ ! -f "distributions/bittorrent/artifacts/magnet.txt" ]; then
-            echo "❌ Magnet link file missing"
-            exit 1
-          fi
-          if [ ! -f "distributions/bittorrent/artifacts/checksum.txt" ]; then
-            echo "❌ Checksum file missing"
-            exit 1
-          fi
-          echo "✅ BitTorrent artifacts verified"
 
       # Test DockerHub distribution method
       - name: Test DockerHub Distribution
@@ -61,7 +52,7 @@ jobs:
           chmod +x distributions/dockerhub/e2e/scripts/test.sh
           ./distributions/dockerhub/e2e/scripts/test.sh
 
-      # Test BitTorrent distribution method with artifacts
+      # Test BitTorrent distribution method
       - name: Test BitTorrent Distribution
         id: bittorrent
         run: |
@@ -102,14 +93,6 @@ jobs:
             echo "DockerHub Distribution: ${{ steps.dockerhub.outcome }}"
             echo "BitTorrent Distribution: ${{ steps.bittorrent.outcome }}"
             echo "Distribution Switching: ${{ steps.switching.outcome }}"
-            echo ""
-            echo "🔍 Test Details"
-            echo "-------------"
-            if [ -f distributions/bittorrent/artifacts/magnet.txt ]; then
-              echo "BitTorrent Magnet Link: $(cat distributions/bittorrent/artifacts/magnet.txt)"
-            fi
-            echo "Docker Images Present:"
-            docker images | grep "dev-environment" || echo "No dev-environment images found"
           } | tee artifacts/tests/summary.txt
 
       # Upload test results
