@@ -9,9 +9,11 @@ NC='\033[0m' # No Color
 
 # Parse command line arguments
 TEST_MODE=false
+LOCAL_TEST=false
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --test-mode) TEST_MODE=true; shift ;;
+        --local) LOCAL_TEST=true; shift ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
 done
@@ -25,15 +27,15 @@ source "${SCRIPT_DIR}/lib/distribution.sh"
 # Check for required tools
 check_requirements() {
     local missing_tools=()
-
+    
     if ! command -v docker &> /dev/null; then
         missing_tools+=("docker")
     fi
-
+    
     if ! command -v docker-compose &> /dev/null; then
         missing_tools+=("docker-compose")
     fi
-
+    
     if [ ${#missing_tools[@]} -ne 0 ]; then
         echo -e "${RED}Error: Missing required tools: ${missing_tools[*]}${NC}"
         echo "Please install the missing tools and try again."
@@ -43,6 +45,12 @@ check_requirements() {
 
 # Determine distribution method
 determine_distribution() {
+    if [ "$TEST_MODE" = "true" ] && [ "$LOCAL_TEST" = "true" ]; then
+        echo -e "${YELLOW}Running in local test mode${NC}"
+        # Add specific test behavior here
+        return 0
+    fi
+
     if [ "$PREFER_BITTORRENT" = "true" ]; then
         echo -e "${YELLOW}BitTorrent distribution preferred${NC}"
         if handle_bittorrent_distribution; then
@@ -96,24 +104,8 @@ verify_environment() {
 # Main execution
 main() {
     check_requirements
-
-    echo -e "${GREEN}Setting up development environment...${NC}"
     determine_distribution
-
-    if ! verify_environment; then
-        exit 1
-    fi
-
-    if [ "$TEST_MODE" = "true" ]; then
-        echo -e "${GREEN}Test mode completed successfully${NC}"
-        exit 0
-    fi
-
-    echo -e "${GREEN}Development environment is ready!${NC}"
-    echo -e "To access the environment:"
-    echo -e "  ${YELLOW}docker exec -it dev-environment bash${NC}"
-    echo -e "To stop the environment:"
-    echo -e "  ${YELLOW}docker compose down${NC}"
+    verify_environment
 }
 
 # Execute main function

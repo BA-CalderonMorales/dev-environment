@@ -29,7 +29,7 @@ handle_bittorrent_distribution() {
     if [ "$FORCE_BITTORRENT_FAIL" = "true" ]; then
         echo "BitTorrent distribution forced to fail"
         return 1
-    }
+    fi
     
     # Check for transmission-cli
     if ! command -v transmission-cli &> /dev/null; then
@@ -40,6 +40,11 @@ handle_bittorrent_distribution() {
     # Get latest magnet link and checksum
     MAGNET_LINK=$(curl -s https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/distributions/bittorrent/magnet.txt)
     EXPECTED_CHECKSUM=$(curl -s https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/distributions/bittorrent/checksum.txt)
+    
+    if [ -z "$MAGNET_LINK" ] || [ -z "$EXPECTED_CHECKSUM" ]; then
+        echo "Failed to fetch magnet link or checksum"
+        return 1
+    fi
     
     echo "Starting download..."
     transmission-cli "$MAGNET_LINK" --download-dir .

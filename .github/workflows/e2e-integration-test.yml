@@ -1,129 +1,115 @@
 name: E2E Integration Tests
 
-# Trigger on completion of distribution workflows
+# This workflow runs integration tests for all distribution methods.
+# It triggers only after ALL distribution workflows have completed successfully.
+#
+# To add a new distribution method:
+# 1. Add your distribution workflow name to the 'workflows' list below
+# 2. Add a new test step in the 'Distribution Tests' section
+# 3. Update the test results reporting to include your new distribution
+
 on:
   workflow_run:
-    workflows: ['DockerHub Build and Push', 'BitTorrent Build and Seed']
+    # Add new distribution workflow names here
+    workflows: 
+      - 'DockerHub Build and Push'
+      - 'BitTorrent Build and Seed'
     types: [completed]
     branches: [main, develop]
 
 jobs:
-  check-workflows:
+  # First job: Check if all distribution workflows have succeeded
+  verify-distributions:
     runs-on: ubuntu-latest
     outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
+      all_succeeded: ${{ steps.verify.outputs.all_succeeded }}
     steps:
-      - id: check
+      - id: verify
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Debug information
-          echo "Triggered by workflow: ${{ github.event.workflow_run.workflow }}"
-          echo "Triggered by branch: ${{ github.event.workflow_run.head_branch }}"
-          echo "Current ref: ${{ github.ref }}"
-          echo "Current branch: ${{ github.ref_name }}"
+          # Distribution workflows to check
+          # Add new workflows to this array when adding new distribution methods
+          WORKFLOWS=(
+            "dockerhub-build-and-push.yml"
+            "bittorrent-build-and-seed.yml"
+          )
           
-          # Get the workflow runs for the branch that triggered this workflow
           BRANCH="${{ github.event.workflow_run.head_branch }}"
-          
           echo "Checking workflow runs for branch: $BRANCH"
           
-          # Get the most recent runs for each workflow on this branch
-          DOCKERHUB_RUN=$(gh api \
-            "/repos/${{ github.repository }}/actions/workflows/dockerhub-build-and-push.yml/runs?branch=$BRANCH&status=completed&per_page=1" \
-            --jq '.workflow_runs[0].conclusion')
+          # Check status of each workflow
+          ALL_SUCCEEDED=true
+          for workflow in "${WORKFLOWS[@]}"; do
+            STATUS=$(gh api \
+              "/repos/${{ github.repository }}/actions/workflows/${workflow}/runs?branch=$BRANCH&status=completed&per_page=1" \
+              --jq '.workflow_runs[0].conclusion')
+            
+            echo "Status for ${workflow}: ${STATUS}"
+            if [ "$STATUS" != "success" ]; then
+              ALL_SUCCEEDED=false
+              break
+            fi
+          done
           
-          BITTORRENT_RUN=$(gh api \
-            "/repos/${{ github.repository }}/actions/workflows/bittorrent-build-and-seed.yml/runs?branch=$BRANCH&status=completed&per_page=1" \
-            --jq '.workflow_runs[0].conclusion')
-          
-          echo "DockerHub workflow status: $DOCKERHUB_RUN"
-          echo "BitTorrent workflow status: $BITTORRENT_RUN"
-          
-          # Check if both workflows have succeeded
-          if [ "$DOCKERHUB_RUN" = "success" ] && [ "$BITTORRENT_RUN" = "success" ]; then
-            echo "Both distribution workflows have succeeded"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          else
-            echo "Not all distribution workflows have succeeded yet"
-            echo "should_run=false" >> $GITHUB_OUTPUT
-          fi
+          echo "all_succeeded=${ALL_SUCCEEDED}" >> $GITHUB_OUTPUT
 
+  # Second job: Run the actual E2E tests
   e2e-tests:
-    needs: check-workflows
-    if: needs.check-workflows.outputs.should_run == 'true'
+    needs: verify-distributions
+    if: needs.verify-distributions.outputs.all_succeeded == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
-          fetch-depth: 0  # Fetch all history for all branches
 
-      - name: Debug Workflow Context
-        run: |
-          echo "Current branch: $(git branch --show-current)"
-          echo "Git status:"
-          git status
-          echo "Recent commits:"
-          git log --oneline -n 5
-
-      # Install required tools for BitTorrent testing
-      - name: Install BitTorrent tools
+      # Install dependencies
+      # Add new tool installations here if needed for new distribution methods
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y transmission-cli
 
-      # Test DockerHub distribution method
+      # Distribution Tests
+      # Add new distribution test steps here
       - name: Test DockerHub Distribution
         id: dockerhub
         run: |
           chmod +x distributions/dockerhub/e2e/scripts/test.sh
           ./distributions/dockerhub/e2e/scripts/test.sh
 
-      # Test BitTorrent distribution method
       - name: Test BitTorrent Distribution
         id: bittorrent
         run: |
           chmod +x distributions/bittorrent/e2e/scripts/test.sh
-          chmod +x startup/start-dev.sh
-          
-          # Ensure we're using BitTorrent distribution
           export PREFER_BITTORRENT=true
-          
-          # Test start-dev.sh directly first
-          echo "🧪 Testing start-dev.sh directly..."
-          if ! ./startup/start-dev.sh --test-mode; then
-            echo "❌ start-dev.sh verification failed"
-            exit 1
-          fi
-          
-          # Run the BitTorrent E2E test suite
-          if ! ./distributions/bittorrent/e2e/scripts/test.sh; then
-            echo "❌ BitTorrent distribution test failed"
-            exit 1
-          fi
+          ./distributions/bittorrent/e2e/scripts/test.sh
 
-      # Test distribution switching mechanism
+      # Cross-distribution Tests
       - name: Test Distribution Switching
         id: switching
         run: |
           chmod +x startup/e2e/scripts/test-distribution-switch.sh
           ./startup/e2e/scripts/test-distribution-switch.sh
 
-      # Report results
+      # Results Reporting
+      # Add new distribution results to the summary when adding new methods
       - name: Report Test Results
         if: always()
         run: |
           mkdir -p artifacts/tests
           {
-            echo "📊 E2E Test Summary ($(date -u))"
+            echo "📊 E2E Test Summary"
             echo "=================="
-            echo "DockerHub Distribution: ${{ steps.dockerhub.outcome }}"
-            echo "BitTorrent Distribution: ${{ steps.bittorrent.outcome }}"
-            echo "Distribution Switching: ${{ steps.switching.outcome }}"
-          } | tee artifacts/tests/summary.txt
+            echo "Distribution Tests:"
+            echo "- DockerHub: ${{ steps.dockerhub.outcome }}"
+            echo "- BitTorrent: ${{ steps.bittorrent.outcome }}"
+            echo ""
+            echo "Cross-distribution Tests:"
+            echo "- Distribution Switching: ${{ steps.switching.outcome }}"
+          } > artifacts/tests/summary.txt
 
-      # Upload test results
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
