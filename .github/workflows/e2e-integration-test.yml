@@ -11,10 +11,22 @@ on:
 jobs:
   e2e-tests:
     runs-on: ubuntu-latest
-    # Only run if the triggering workflow succeeded
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
+
+      # Install required tools for BitTorrent testing
+      - name: Install BitTorrent tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y transmission-cli
+
+      # Download artifacts from previous workflows
+      - name: Download BitTorrent Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: bittorrent-artifacts
+          path: artifacts/bittorrent
 
       # Test DockerHub distribution method
       - name: Test DockerHub Distribution
@@ -28,6 +40,13 @@ jobs:
         id: bittorrent
         run: |
           chmod +x distributions/bittorrent/e2e/scripts/test.sh
+          chmod +x startup/start-dev.sh
+          
+          # Test direct BitTorrent download
+          export PREFER_BITTORRENT=true
+          ./startup/start-dev.sh
+          
+          # Run the full BitTorrent E2E test suite
           ./distributions/bittorrent/e2e/scripts/test.sh
 
       # Test distribution switching mechanism
@@ -37,9 +56,9 @@ jobs:
           chmod +x startup/e2e/scripts/test-distribution-switch.sh
           ./startup/e2e/scripts/test-distribution-switch.sh
 
-      # Report results of all tests
+      # Report results
       - name: Report Test Results
-        if: always()  # Run even if previous steps failed
+        if: always()
         run: |
           echo "📊 E2E Test Summary"
           echo "=================="
@@ -47,20 +66,11 @@ jobs:
           echo "BitTorrent Distribution: ${{ steps.bittorrent.outcome }}"
           echo "Distribution Switching: ${{ steps.switching.outcome }}"
 
-      # After test results
-      - name: Prepare Test Results
-        run: |
-          mkdir -p artifacts/tests
-          echo "{
-            \"dockerhub\": \"${{ steps.dockerhub.outcome }}\",
-            \"bittorrent\": \"${{ steps.bittorrent.outcome }}\",
-            \"switching\": \"${{ steps.switching.outcome }}\",
-            \"date\": \"$(date -u +"%Y-%m-%d %H:%M UTC")\"
-          }" > artifacts/tests/results.json
-
+      # Upload test results
       - name: Upload Test Results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: e2e-test-results
           path: artifacts/tests/
           retention-days: 1 

@@ -76,9 +76,19 @@ jobs:
           cp dev-environment.torrent artifacts/bittorrent/
           cp magnet.txt artifacts/bittorrent/
 
-      - name: Upload Artifacts
+      # Generate and save checksum
+      - name: Generate checksum
+        run: |
+          cd distributions/bittorrent
+          sha256sum dev-environment.tar > checksum.txt
+          
+      # Upload artifacts including checksum
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: bittorrent-artifacts
-          path: distributions/bittorrent/artifacts/bittorrent/
-          retention-days: 1
+          path: |
+            distributions/bittorrent/dev-environment.tar
+            distributions/bittorrent/dev-environment.torrent
+            distributions/bittorrent/checksum.txt
+            distributions/bittorrent/magnet.txt
