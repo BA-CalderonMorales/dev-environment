@@ -14,19 +14,38 @@ jobs:
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get the completed workflow runs for both workflows
-          DOCKERHUB_STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/dockerhub-build-and-push.yml/runs?branch=${{ github.ref_name }}&status=completed&per_page=1" | \
-            jq -r '.workflow_runs[0].conclusion')
+          # Debug information
+          echo "Triggered by workflow: ${{ github.event.workflow_run.workflow }}"
+          echo "Triggered by branch: ${{ github.event.workflow_run.head_branch }}"
+          echo "Current ref: ${{ github.ref }}"
+          echo "Current branch: ${{ github.ref_name }}"
           
-          BITTORRENT_STATUS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/bittorrent-build-and-seed.yml/runs?branch=${{ github.ref_name }}&status=completed&per_page=1" | \
-            jq -r '.workflow_runs[0].conclusion')
+          # Get the workflow runs for the branch that triggered this workflow
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
           
-          if [ "$DOCKERHUB_STATUS" = "success" ] && [ "$BITTORRENT_STATUS" = "success" ]; then
+          echo "Checking workflow runs for branch: $BRANCH"
+          
+          # Get the most recent runs for each workflow on this branch
+          DOCKERHUB_RUN=$(gh api \
+            "/repos/${{ github.repository }}/actions/workflows/dockerhub-build-and-push.yml/runs?branch=$BRANCH&status=completed&per_page=1" \
+            --jq '.workflow_runs[0].conclusion')
+          
+          BITTORRENT_RUN=$(gh api \
+            "/repos/${{ github.repository }}/actions/workflows/bittorrent-build-and-seed.yml/runs?branch=$BRANCH&status=completed&per_page=1" \
+            --jq '.workflow_runs[0].conclusion')
+          
+          echo "DockerHub workflow status: $DOCKERHUB_RUN"
+          echo "BitTorrent workflow status: $BITTORRENT_RUN"
+          
+          # Check if both workflows have succeeded
+          if [ "$DOCKERHUB_RUN" = "success" ] && [ "$BITTORRENT_RUN" = "success" ]; then
+            echo "Both distribution workflows have succeeded"
             echo "should_run=true" >> $GITHUB_OUTPUT
           else
+            echo "Not all distribution workflows have succeeded yet"
             echo "should_run=false" >> $GITHUB_OUTPUT
           fi
 
@@ -38,6 +57,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0  # Fetch all history for all branches
+
+      - name: Debug Workflow Context
+        run: |
+          echo "Current branch: $(git branch --show-current)"
+          echo "Git status:"
+          git status
+          echo "Recent commits:"
+          git log --oneline -n 5
 
       # Install required tools for BitTorrent testing
       - name: Install BitTorrent tools
