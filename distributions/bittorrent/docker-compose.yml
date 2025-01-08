@@ -18,7 +18,7 @@ services:
       - "8000-8010:8000-8010" # Backend services
 
     volumes:
-      - ../../projects:/usr/src/projects # Mount projects
+      - ${PWD}/../../projects:/usr/src/projects # Use absolute path based on current working directory
       # Optional: Mount SSH keys for Git operations
       # - ~/.ssh:/home/devuser/.ssh:ro
 
@@ -41,8 +41,3 @@ volumes:
   cargo-cache:
 
   go-cache:
-
-build-args: |
-    NODE_VERSION=22.3.0
-    GO_VERSION=1.22.4
-    RUST_VERSION=1.75.0

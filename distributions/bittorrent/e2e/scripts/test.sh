@@ -24,6 +24,12 @@ echo "📥 Pulling and retagging Docker image for testing..."
 docker pull cmoe640/dev-environment:latest
 docker tag cmoe640/dev-environment:latest dev-environment:latest
 
+# Check if the image is loaded
+if [[ "$(docker images -q dev-environment:latest 2> /dev/null)" == "" ]]; then
+    echo "❌ Error: Docker image 'dev-environment:latest' is not loaded. Please ensure the image is downloaded and loaded correctly."
+    exit 1
+fi
+
 # Test Container Startup
 echo "📦 Testing container startup..."
 docker compose up -d
