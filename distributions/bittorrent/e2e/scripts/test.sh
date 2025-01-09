@@ -8,11 +8,14 @@ TEST_DIR=$(mktemp -d)
 cd $TEST_DIR
 
 # Create necessary directories
-mkdir -p artifacts
+mkdir -p artifacts/bittorrent
 
-# Only try to copy artifacts if they exist
-if [ -d "/home/runner/work/dev-environment/dev-environment/distributions/bittorrent/artifacts" ]; then
-    cp -r /home/runner/work/dev-environment/dev-environment/distributions/bittorrent/artifacts/* artifacts/ || true
+# Copy artifacts from the workflow's artifact directory
+if [ -d "$GITHUB_WORKSPACE/artifacts/bittorrent" ]; then
+    cp -r $GITHUB_WORKSPACE/artifacts/bittorrent/* artifacts/bittorrent/
+else
+    echo "❌ BitTorrent artifacts directory not found"
+    exit 1
 fi
 
 # Create projects directory
@@ -20,7 +23,7 @@ mkdir -p projects
 
 # Copy required files
 cp -r $GITHUB_WORKSPACE/startup .
-cp -r $GITHUB_WORKSPACE/distributions/bittorrent/artifacts/* .
+cp -r $GITHUB_WORKSPACE/artifacts/bittorrent/* .
 cp $GITHUB_WORKSPACE/distributions/bittorrent/docker-compose.yml .
 
 # Replace relative path with absolute path

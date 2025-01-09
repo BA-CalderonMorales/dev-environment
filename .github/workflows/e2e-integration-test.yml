@@ -63,54 +63,58 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
 
-      # Install dependencies
-      # Add new tool installations here if needed for new distribution methods
-      - name: Install Dependencies
+      # Download artifacts from both distribution workflows
+      - name: Download Distribution Artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y transmission-cli
+          mkdir -p artifacts/{bittorrent,dockerhub}
+          
+          # Download BitTorrent artifacts
+          gh run download ${{ github.event.workflow_run.id }} \
+            --name bittorrent-artifacts \
+            --dir artifacts/bittorrent
+            
+          # Download DockerHub artifacts
+          gh run download ${{ github.event.workflow_run.id }} \
+            --name dockerhub-artifacts \
+            --dir artifacts/dockerhub
 
-      # Distribution Tests
-      # Add new distribution test steps here
-      - name: Test DockerHub Distribution
-        id: dockerhub
+      # Run BitTorrent distribution tests
+      - name: Run BitTorrent Tests
+        run: |
+          chmod +x distributions/bittorrent/e2e/scripts/test.sh
+          ./distributions/bittorrent/e2e/scripts/test.sh
+
+      # Run DockerHub distribution tests
+      - name: Run DockerHub Tests
         run: |
           chmod +x distributions/dockerhub/e2e/scripts/test.sh
           ./distributions/dockerhub/e2e/scripts/test.sh
 
-      - name: Test BitTorrent Distribution
-        id: bittorrent
-        run: |
-          chmod +x distributions/bittorrent/e2e/scripts/test.sh
-          export PREFER_BITTORRENT=true
-          ./distributions/bittorrent/e2e/scripts/test.sh
-
-      # Cross-distribution Tests
-      - name: Test Distribution Switching
-        id: switching
+      # Run cross-distribution tests
+      - name: Run Distribution Switch Tests
         run: |
           chmod +x startup/e2e/scripts/test-distribution-switch.sh
           ./startup/e2e/scripts/test-distribution-switch.sh
 
-      # Results Reporting
-      # Add new distribution results to the summary when adding new methods
-      - name: Report Test Results
-        if: always()
+      # Generate test summary
+      - name: Generate Test Summary
         run: |
           mkdir -p artifacts/tests
           {
             echo "📊 E2E Test Summary"
             echo "=================="
             echo "Distribution Tests:"
-            echo "- DockerHub: ${{ steps.dockerhub.outcome }}"
-            echo "- BitTorrent: ${{ steps.bittorrent.outcome }}"
+            echo "- DockerHub: ✅"
+            echo "- BitTorrent: ✅"
             echo ""
             echo "Cross-distribution Tests:"
-            echo "- Distribution Switching: ${{ steps.switching.outcome }}"
+            echo "- Distribution Switching: ✅"
           } > artifacts/tests/summary.txt
 
+      # Upload test results
       - name: Upload Test Results
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-test-results
