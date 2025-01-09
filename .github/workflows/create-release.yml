@@ -12,20 +12,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify-e2e:
+  check-e2e-status:
     runs-on: ubuntu-latest
+    outputs:
+      status: ${{ steps.check.outputs.status }}
+      message: ${{ steps.check.outputs.message }}
     steps:
-      - name: Verify E2E Test Status
+      - id: check
+        name: Analyze E2E Test Result
         run: |
-          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-            echo "⛔ E2E tests did not succeed - Release creation blocked"
-            echo "Status: ${{ github.event.workflow_run.conclusion }}"
-            exit 1
-          fi
+          STATUS="${{ github.event.workflow_run.conclusion }}"
+          
+          case "$STATUS" in
+            "success")
+              echo "status=proceed" >> $GITHUB_OUTPUT
+              echo "message=E2E tests passed successfully" >> $GITHUB_OUTPUT
+              ;;
+            "cancelled")
+              echo "status=blocked" >> $GITHUB_OUTPUT
+              echo "message=E2E tests were cancelled - prerequisites not met" >> $GITHUB_OUTPUT
+              ;;
+            "failure")
+              echo "status=blocked" >> $GITHUB_OUTPUT
+              echo "message=E2E tests failed" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "status=blocked" >> $GITHUB_OUTPUT
+              echo "message=Unexpected E2E test status: $STATUS" >> $GITHUB_OUTPUT
+              ;;
+          esac
 
   create-release:
-    needs: verify-e2e
-    if: needs.verify-e2e.outputs.should_create == 'true'
+    needs: check-e2e-status
+    if: needs.check-e2e-status.outputs.status == 'proceed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -135,13 +154,13 @@ jobs:
         if: always()
         run: rm -rf artifacts 
 
-  notify-skip:
-    needs: verify-e2e
-    if: needs.verify-e2e.outputs.should_create == 'false'
+  notify-blocked:
+    needs: check-e2e-status
+    if: needs.check-e2e-status.outputs.status == 'blocked'
     runs-on: ubuntu-latest
     steps:
-      - name: Log Skip Reason
+      - name: Log Blocked Status
         run: |
-          echo "⚠️ Release creation was skipped"
-          echo "Reason: ${{ needs.verify-e2e.outputs.skip_reason }}"
-          echo "Please check the E2E test workflow for details" 
+          echo "⛔ Release Creation Blocked"
+          echo "Reason: ${{ needs.check-e2e-status.outputs.message }}"
+          exit 1 
