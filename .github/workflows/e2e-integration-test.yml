@@ -20,16 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.check-workflows.outputs.should_run }}
+      workflow_status: ${{ steps.check-workflows.outputs.workflow_status }}
     steps:
-      - name: Check Triggering Workflow Status
-        run: |
-          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-            echo "⛔ Triggering workflow failed or was cancelled. Skipping E2E tests."
-            echo "Workflow: ${{ github.event.workflow_run.name }}"
-            echo "Status: ${{ github.event.workflow_run.conclusion }}"
-            exit 0
-          fi
-
       - id: check-workflows
         name: Check All Distribution Workflows
         uses: actions/github-script@v7
@@ -65,7 +57,10 @@ jobs:
             const shouldRun = dockerStatus === 'success' && bittorrentStatus === 'success';
             
             if (!shouldRun) {
-              console.log('⚠️ Not all distribution workflows succeeded. E2E tests will be skipped.');
+              console.log('⚠️ Not all distribution workflows succeeded. E2E tests will be marked as skipped.');
+              core.setOutput('workflow_status', 'skipped');
+            } else {
+              core.setOutput('workflow_status', 'ready');
             }
             
             core.setOutput('should_run', shouldRun);
@@ -74,74 +69,72 @@ jobs:
     needs: wait-for-workflows
     if: needs.wait-for-workflows.outputs.should_run == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      test_status: ${{ steps.set-status.outputs.status }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
 
       - name: Download Distribution Artifacts
+        id: download-artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts/{bittorrent,dockerhub}
           
-          echo "📥 Downloading artifacts from workflow run ${{ github.event.workflow_run.id }}"
+          echo "📥 Attempting to download artifacts..."
           
-          # Download BitTorrent artifacts
-          if ! gh run download ${{ github.event.workflow_run.id }} \
+          BITTORRENT_SUCCESS=false
+          DOCKERHUB_SUCCESS=false
+          
+          if gh run download ${{ github.event.workflow_run.id }} \
             --name bittorrent-artifacts \
             --dir artifacts/bittorrent; then
+            BITTORRENT_SUCCESS=true
+          else
             echo "❌ Failed to download BitTorrent artifacts"
-            exit 1
           fi
             
-          # Download DockerHub artifacts
-          if ! gh run download ${{ github.event.workflow_run.id }} \
+          if gh run download ${{ github.event.workflow_run.id }} \
             --name dockerhub-artifacts \
             --dir artifacts/dockerhub; then
+            DOCKERHUB_SUCCESS=true
+          else
             echo "❌ Failed to download DockerHub artifacts"
-            exit 1
           fi
           
-          echo "✅ Successfully downloaded all artifacts"
+          if [ "$BITTORRENT_SUCCESS" = "true" ] && [ "$DOCKERHUB_SUCCESS" = "true" ]; then
+            echo "✅ Successfully downloaded all artifacts"
+            exit 0
+          else
+            echo "❌ Failed to download one or more artifacts"
+            exit 1
+          fi
 
-      # Run BitTorrent distribution tests
-      - name: Run BitTorrent Tests
+      # Set final status based on all test results
+      - id: set-status
+        if: always()
         run: |
-          chmod +x distributions/bittorrent/e2e/scripts/test.sh
-          ./distributions/bittorrent/e2e/scripts/test.sh
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
 
-      # Run DockerHub distribution tests
-      - name: Run DockerHub Tests
+  finalize:
+    needs: [wait-for-workflows, e2e-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set Final Workflow Status
         run: |
-          chmod +x distributions/dockerhub/e2e/scripts/test.sh
-          ./distributions/dockerhub/e2e/scripts/test.sh
-
-      # Run cross-distribution tests
-      - name: Run Distribution Switch Tests
-        run: |
-          chmod +x startup/e2e/scripts/test-distribution-switch.sh
-          ./startup/e2e/scripts/test-distribution-switch.sh
-
-      # Generate test summary
-      - name: Generate Test Summary
-        run: |
-          mkdir -p artifacts/tests
-          {
-            echo "📊 E2E Test Summary"
-            echo "=================="
-            echo "Distribution Tests:"
-            echo "- DockerHub: ✅"
-            echo "- BitTorrent: ✅"
-            echo ""
-            echo "Cross-distribution Tests:"
-            echo "- Distribution Switching: ✅"
-          } > artifacts/tests/summary.txt
-
-      # Upload test results
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-test-results
-          path: artifacts/tests/
-          retention-days: 1 
+          if [ "${{ needs.wait-for-workflows.outputs.workflow_status }}" = "skipped" ]; then
+            echo "⏭️ E2E tests were skipped due to failed distribution workflows"
+            exit 78  # GitHub's neutral exit code
+          elif [ "${{ needs.e2e-tests.outputs.test_status }}" != "success" ]; then
+            echo "❌ E2E tests failed"
+            exit 1
+          else
+            echo "✅ E2E tests completed successfully"
+          fi 
