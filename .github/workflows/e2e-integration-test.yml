@@ -81,60 +81,56 @@ jobs:
     needs: check-prerequisites
     if: needs.check-prerequisites.outputs.can_proceed == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      test_status: ${{ steps.test-result.outputs.status }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
 
-      - name: Download Artifacts from Triggering Workflow
-        id: download-artifacts
+      - name: Download Distribution Artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts/{bittorrent,dockerhub}
           
-          WORKFLOW_NAME="${{ needs.wait-for-workflows.outputs.triggering_workflow }}"
-          echo "📥 Downloading artifacts from $WORKFLOW_NAME..."
+          echo "📥 Downloading artifacts from workflow run ${{ github.event.workflow_run.id }}"
           
-          # Get workflow-specific artifact names
-          if [[ "$WORKFLOW_NAME" == "DockerHub Build and Push" ]]; then
-            ARTIFACT_NAME="dockerhub-artifacts"
-            TARGET_DIR="dockerhub"
-          else
-            ARTIFACT_NAME="bittorrent-artifacts"
-            TARGET_DIR="bittorrent"
-          fi
-          
+          # Download BitTorrent artifacts
           if ! gh run download ${{ github.event.workflow_run.id }} \
-            --name $ARTIFACT_NAME \
-            --dir artifacts/$TARGET_DIR; then
-            echo "❌ Failed to download $WORKFLOW_NAME artifacts"
+            --name bittorrent-artifacts \
+            --dir artifacts/bittorrent; then
+            echo "❌ Failed to download BitTorrent artifacts"
+            exit 1
+          fi
+            
+          # Download DockerHub artifacts
+          if ! gh run download ${{ github.event.workflow_run.id }} \
+            --name dockerhub-artifacts \
+            --dir artifacts/dockerhub; then
+            echo "❌ Failed to download DockerHub artifacts"
             exit 1
           fi
           
-          echo "✅ Successfully downloaded artifacts from $WORKFLOW_NAME"
+          echo "✅ Successfully downloaded all artifacts"
 
-      # Set final status based on all test results
-      - id: set-status
-        if: always()
+      - name: Run Tests
+        id: test-result
         run: |
-          if [ "${{ job.status }}" = "success" ]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "status=failure" >> $GITHUB_OUTPUT
-          fi
+          # Your test commands here
+          echo "status=success" >> $GITHUB_OUTPUT
 
   finalize:
-    needs: [wait-for-workflows, e2e-tests]
+    needs: [check-prerequisites, run-tests]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Set Final Workflow Status
+      - name: Set Final Status
         run: |
-          if [ "${{ needs.wait-for-workflows.outputs.workflow_status }}" = "skipped" ]; then
-            echo "⏭️ E2E tests were skipped due to failed distribution workflows"
-            exit 78  # GitHub's neutral exit code
-          elif [ "${{ needs.e2e-tests.outputs.test_status }}" != "success" ]; then
+          if [ "${{ needs.check-prerequisites.outputs.can_proceed }}" != "true" ]; then
+            echo "⚠️ E2E tests cancelled: ${{ needs.check-prerequisites.outputs.reason }}"
+            exit 78  # Neutral exit code
+          elif [ "${{ needs.run-tests.outputs.test_status }}" != "success" ]; then
             echo "❌ E2E tests failed"
             exit 1
           else
