@@ -1,19 +1,15 @@
 name: E2E Integration Tests
 
-# This workflow runs integration tests for all distribution methods.
-# It triggers only after ALL distribution workflows have completed successfully.
-#
-# To add a new distribution method:
-# 1. Add your distribution workflow name to the 'workflows' list below
-# 2. Add a new test step in the 'Distribution Tests' section
-# 3. Update the test results reporting to include your new distribution
-
 on:
   workflow_run:
     workflows: ['DockerHub Build and Push', 'BitTorrent Build and Seed']
     types:
       - completed
     branches: [ main, develop ]
+    
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   wait-for-workflows:
@@ -21,6 +17,7 @@ jobs:
     outputs:
       should_run: ${{ steps.check-workflows.outputs.should_run }}
       workflow_status: ${{ steps.check-workflows.outputs.workflow_status }}
+      triggering_workflow: ${{ steps.check-workflows.outputs.triggering_workflow }}
     steps:
       - id: check-workflows
         name: Check All Distribution Workflows
@@ -31,6 +28,16 @@ jobs:
             const branch = context.payload.workflow_run.head_branch;
             
             console.log('Checking workflow statuses...');
+            console.log('Triggered by:', context.payload.workflow_run.name);
+            
+            core.setOutput('triggering_workflow', context.payload.workflow_run.name);
+            
+            if (context.payload.workflow_run.conclusion !== 'success') {
+              console.log('⛔ Triggering workflow failed');
+              core.setOutput('workflow_status', 'failed');
+              core.setOutput('should_run', 'false');
+              return;
+            }
             
             const dockerhubRun = await github.rest.actions.listWorkflowRuns({
               owner,
@@ -56,61 +63,45 @@ jobs:
             
             const shouldRun = dockerStatus === 'success' && bittorrentStatus === 'success';
             
-            if (!shouldRun) {
-              console.log('⚠️ Not all distribution workflows succeeded. E2E tests will be marked as skipped.');
-              core.setOutput('workflow_status', 'skipped');
-            } else {
-              core.setOutput('workflow_status', 'ready');
-            }
-            
+            core.setOutput('workflow_status', shouldRun ? 'ready' : 'waiting');
             core.setOutput('should_run', shouldRun);
 
   e2e-tests:
     needs: wait-for-workflows
     if: needs.wait-for-workflows.outputs.should_run == 'true'
     runs-on: ubuntu-latest
-    outputs:
-      test_status: ${{ steps.set-status.outputs.status }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
 
-      - name: Download Distribution Artifacts
+      - name: Download Artifacts from Triggering Workflow
         id: download-artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts/{bittorrent,dockerhub}
           
-          echo "📥 Attempting to download artifacts..."
+          WORKFLOW_NAME="${{ needs.wait-for-workflows.outputs.triggering_workflow }}"
+          echo "📥 Downloading artifacts from $WORKFLOW_NAME..."
           
-          BITTORRENT_SUCCESS=false
-          DOCKERHUB_SUCCESS=false
-          
-          if gh run download ${{ github.event.workflow_run.id }} \
-            --name bittorrent-artifacts \
-            --dir artifacts/bittorrent; then
-            BITTORRENT_SUCCESS=true
+          # Get workflow-specific artifact names
+          if [[ "$WORKFLOW_NAME" == "DockerHub Build and Push" ]]; then
+            ARTIFACT_NAME="dockerhub-artifacts"
+            TARGET_DIR="dockerhub"
           else
-            echo "❌ Failed to download BitTorrent artifacts"
-          fi
-            
-          if gh run download ${{ github.event.workflow_run.id }} \
-            --name dockerhub-artifacts \
-            --dir artifacts/dockerhub; then
-            DOCKERHUB_SUCCESS=true
-          else
-            echo "❌ Failed to download DockerHub artifacts"
+            ARTIFACT_NAME="bittorrent-artifacts"
+            TARGET_DIR="bittorrent"
           fi
           
-          if [ "$BITTORRENT_SUCCESS" = "true" ] && [ "$DOCKERHUB_SUCCESS" = "true" ]; then
-            echo "✅ Successfully downloaded all artifacts"
-            exit 0
-          else
-            echo "❌ Failed to download one or more artifacts"
+          if ! gh run download ${{ github.event.workflow_run.id }} \
+            --name $ARTIFACT_NAME \
+            --dir artifacts/$TARGET_DIR; then
+            echo "❌ Failed to download $WORKFLOW_NAME artifacts"
             exit 1
           fi
+          
+          echo "✅ Successfully downloaded artifacts from $WORKFLOW_NAME"
 
       # Set final status based on all test results
       - id: set-status

@@ -7,47 +7,20 @@ on:
       - completed
     branches: [main, develop]
 
-permissions:
-  contents: write    # For creating releases
-  packages: write    # For package operations
-  actions: read      # For workflow access
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify-e2e:
     runs-on: ubuntu-latest
-    outputs:
-      should_create: ${{ steps.check.outputs.should_create }}
-      skip_reason: ${{ steps.check.outputs.skip_reason }}
     steps:
-      - id: check
-        name: Verify E2E Test Status
+      - name: Verify E2E Test Status
         run: |
-          # Check conclusion (success, failure, skipped, cancelled)
-          CONCLUSION="${{ github.event.workflow_run.conclusion }}"
-          echo "E2E Test Status: $CONCLUSION"
-          
-          if [ "$CONCLUSION" = "success" ]; then
-            echo "✅ E2E tests passed successfully"
-            echo "should_create=true" >> $GITHUB_OUTPUT
-            echo "skip_reason=" >> $GITHUB_OUTPUT
-          else
-            echo "⛔ Release creation blocked"
-            echo "should_create=false" >> $GITHUB_OUTPUT
-            
-            case "$CONCLUSION" in
-              "skipped")
-                echo "⏭️ E2E tests were skipped due to failed distribution workflows"
-                echo "skip_reason=E2E tests were skipped due to failed distribution workflows" >> $GITHUB_OUTPUT
-                ;;
-              "failure")
-                echo "❌ E2E tests failed"
-                echo "skip_reason=E2E tests failed" >> $GITHUB_OUTPUT
-                ;;
-              *)
-                echo "⚠️ Unexpected E2E test conclusion: $CONCLUSION"
-                echo "skip_reason=Unexpected E2E test conclusion: $CONCLUSION" >> $GITHUB_OUTPUT
-                ;;
-            esac
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "⛔ E2E tests did not succeed - Release creation blocked"
+            echo "Status: ${{ github.event.workflow_run.conclusion }}"
+            exit 1
           fi
 
   create-release:
