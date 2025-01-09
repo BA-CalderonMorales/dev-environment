@@ -159,19 +159,23 @@ jobs:
     if: needs.check-e2e-status.outputs.status != 'proceed'
     runs-on: ubuntu-latest
     steps:
-      - name: Handle Non-Proceed Status
+      - name: Log Status
         run: |
-          STATUS="${{ needs.check-e2e-status.outputs.status }}"
-          MESSAGE="${{ needs.check-e2e-status.outputs.message }}"
-          
-          echo "⚠️ Release Creation Status: $STATUS"
-          echo "Reason: $MESSAGE"
-          
-          case "$STATUS" in
-            "cancelled")
-              exit 78  # Neutral exit code for cancelled state
-              ;;
-            *)
-              exit 1  # Error for failed or unknown states
-              ;;
-          esac 
+          echo "⚠️ Release Creation Status: ${{ needs.check-e2e-status.outputs.status }}"
+          echo "Reason: ${{ needs.check-e2e-status.outputs.message }}"
+
+      - name: Cancel Workflow
+        if: needs.check-e2e-status.outputs.status == 'cancelled'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            
+            await github.rest.actions.cancelWorkflowRun({
+              owner,
+              repo,
+              run_id: context.runId
+            });
+            
+            console.log('Workflow cancellation requested'); 

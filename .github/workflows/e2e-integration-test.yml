@@ -71,11 +71,25 @@ jobs:
     if: needs.check-prerequisites.outputs.can_proceed != 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Cancel Workflow
+      - name: Log Cancellation
         run: |
           echo "⭕ E2E Integration Tests Cancelled"
           echo "Reason: ${{ needs.check-prerequisites.outputs.reason }}"
-          exit 78  # GitHub's neutral exit code for cancelled state
+
+      - name: Cancel Workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            
+            await github.rest.actions.cancelWorkflowRun({
+              owner,
+              repo,
+              run_id: context.runId
+            });
+            
+            console.log('Workflow cancellation requested');
 
   run-tests:
     needs: check-prerequisites
@@ -95,42 +109,57 @@ jobs:
         run: |
           mkdir -p artifacts/{bittorrent,dockerhub}
           
-          echo "📥 Downloading artifacts from workflow run ${{ github.event.workflow_run.id }}"
+          echo "📥 Attempting to download artifacts from workflow run ${{ github.event.workflow_run.id }}"
           
-          ARTIFACTS_FOUND=false
+          BITTORRENT_FOUND=false
+          DOCKERHUB_FOUND=false
           
-          # Try to download BitTorrent artifacts
+          echo "Checking BitTorrent artifacts..."
           if gh run download ${{ github.event.workflow_run.id }} \
             --name bittorrent-artifacts \
             --dir artifacts/bittorrent; then
-            ARTIFACTS_FOUND=true
+            BITTORRENT_FOUND=true
+            echo "✅ BitTorrent artifacts downloaded successfully"
           else
             echo "⚠️ No BitTorrent artifacts found"
           fi
             
-          # Try to download DockerHub artifacts
+          echo "Checking DockerHub artifacts..."
           if gh run download ${{ github.event.workflow_run.id }} \
             --name dockerhub-artifacts \
             --dir artifacts/dockerhub; then
-            ARTIFACTS_FOUND=true
+            DOCKERHUB_FOUND=true
+            echo "✅ DockerHub artifacts downloaded successfully"
           else
             echo "⚠️ No DockerHub artifacts found"
           fi
           
-          if [ "$ARTIFACTS_FOUND" = "false" ]; then
-            echo "❌ No artifacts found from either workflow"
+          # Summary of what we found
+          echo "📊 Artifact Download Summary:"
+          echo "- BitTorrent: $([ "$BITTORRENT_FOUND" = "true" ] && echo "✅ Found" || echo "❌ Not Found")"
+          echo "- DockerHub: $([ "$DOCKERHUB_FOUND" = "true" ] && echo "✅ Found" || echo "❌ Not Found")"
+          
+          if [ "$BITTORRENT_FOUND" = "false" ] && [ "$DOCKERHUB_FOUND" = "false" ]; then
+            echo "❌ Error: No artifacts found from either workflow"
             exit 1
           fi
           
-          echo "✅ Successfully downloaded available artifacts"
+          # Set outputs for use in subsequent steps
+          echo "bittorrent_found=$BITTORRENT_FOUND" >> $GITHUB_OUTPUT
+          echo "dockerhub_found=$DOCKERHUB_FOUND" >> $GITHUB_OUTPUT
 
       - id: test-result
         name: Set Test Result
         if: always()
         run: |
           if [ "${{ steps.download-artifacts.outcome }}" = "success" ]; then
+            echo "✅ Artifact download successful"
+            echo "📊 Found Artifacts:"
+            [ "${{ steps.download-artifacts.outputs.bittorrent_found }}" = "true" ] && echo "- BitTorrent"
+            [ "${{ steps.download-artifacts.outputs.dockerhub_found }}" = "true" ] && echo "- DockerHub"
             echo "status=success" >> $GITHUB_OUTPUT
           else
+            echo "❌ Artifact download failed"
             echo "status=failure" >> $GITHUB_OUTPUT
           fi
 
