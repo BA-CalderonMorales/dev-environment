@@ -29,15 +29,15 @@ jobs:
               echo "message=E2E tests passed successfully" >> $GITHUB_OUTPUT
               ;;
             "cancelled")
-              echo "status=blocked" >> $GITHUB_OUTPUT
+              echo "status=cancelled" >> $GITHUB_OUTPUT
               echo "message=E2E tests were cancelled - prerequisites not met" >> $GITHUB_OUTPUT
               ;;
             "failure")
-              echo "status=blocked" >> $GITHUB_OUTPUT
+              echo "status=failed" >> $GITHUB_OUTPUT
               echo "message=E2E tests failed" >> $GITHUB_OUTPUT
               ;;
             *)
-              echo "status=blocked" >> $GITHUB_OUTPUT
+              echo "status=unknown" >> $GITHUB_OUTPUT
               echo "message=Unexpected E2E test status: $STATUS" >> $GITHUB_OUTPUT
               ;;
           esac
@@ -154,13 +154,24 @@ jobs:
         if: always()
         run: rm -rf artifacts 
 
-  notify-blocked:
+  notify-status:
     needs: check-e2e-status
-    if: needs.check-e2e-status.outputs.status == 'blocked'
+    if: needs.check-e2e-status.outputs.status != 'proceed'
     runs-on: ubuntu-latest
     steps:
-      - name: Log Blocked Status
+      - name: Handle Non-Proceed Status
         run: |
-          echo "⛔ Release Creation Blocked"
-          echo "Reason: ${{ needs.check-e2e-status.outputs.message }}"
-          exit 1 
+          STATUS="${{ needs.check-e2e-status.outputs.status }}"
+          MESSAGE="${{ needs.check-e2e-status.outputs.message }}"
+          
+          echo "⚠️ Release Creation Status: $STATUS"
+          echo "Reason: $MESSAGE"
+          
+          case "$STATUS" in
+            "cancelled")
+              exit 78  # Neutral exit code for cancelled state
+              ;;
+            *)
+              exit 1  # Error for failed or unknown states
+              ;;
+          esac 

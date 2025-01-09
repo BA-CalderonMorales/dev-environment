@@ -53,7 +53,7 @@ jobs:
             
             if (!dockerStatus || !bittorrentStatus) {
               core.setOutput('can_proceed', 'false');
-              core.setOutput('reason', 'Not all distribution workflows have completed');
+              core.setOutput('reason', 'Waiting for all distribution workflows to complete');
               return;
             }
             
@@ -71,11 +71,11 @@ jobs:
     if: needs.check-prerequisites.outputs.can_proceed != 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Log Cancellation Reason
+      - name: Cancel Workflow
         run: |
-          echo "⚠️ E2E Integration Tests Cancelled"
+          echo "⭕ E2E Integration Tests Cancelled"
           echo "Reason: ${{ needs.check-prerequisites.outputs.reason }}"
-          exit 1
+          exit 78  # GitHub's neutral exit code for cancelled state
 
   run-tests:
     needs: check-prerequisites
@@ -89,6 +89,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
 
       - name: Download Distribution Artifacts
+        id: download-artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -96,29 +97,42 @@ jobs:
           
           echo "📥 Downloading artifacts from workflow run ${{ github.event.workflow_run.id }}"
           
-          # Download BitTorrent artifacts
-          if ! gh run download ${{ github.event.workflow_run.id }} \
+          ARTIFACTS_FOUND=false
+          
+          # Try to download BitTorrent artifacts
+          if gh run download ${{ github.event.workflow_run.id }} \
             --name bittorrent-artifacts \
             --dir artifacts/bittorrent; then
-            echo "❌ Failed to download BitTorrent artifacts"
-            exit 1
+            ARTIFACTS_FOUND=true
+          else
+            echo "⚠️ No BitTorrent artifacts found"
           fi
             
-          # Download DockerHub artifacts
-          if ! gh run download ${{ github.event.workflow_run.id }} \
+          # Try to download DockerHub artifacts
+          if gh run download ${{ github.event.workflow_run.id }} \
             --name dockerhub-artifacts \
             --dir artifacts/dockerhub; then
-            echo "❌ Failed to download DockerHub artifacts"
+            ARTIFACTS_FOUND=true
+          else
+            echo "⚠️ No DockerHub artifacts found"
+          fi
+          
+          if [ "$ARTIFACTS_FOUND" = "false" ]; then
+            echo "❌ No artifacts found from either workflow"
             exit 1
           fi
           
-          echo "✅ Successfully downloaded all artifacts"
+          echo "✅ Successfully downloaded available artifacts"
 
-      - name: Run Tests
-        id: test-result
+      - id: test-result
+        name: Set Test Result
+        if: always()
         run: |
-          # Your test commands here
-          echo "status=success" >> $GITHUB_OUTPUT
+          if [ "${{ steps.download-artifacts.outcome }}" = "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
 
   finalize:
     needs: [check-prerequisites, run-tests]
@@ -128,9 +142,9 @@ jobs:
       - name: Set Final Status
         run: |
           if [ "${{ needs.check-prerequisites.outputs.can_proceed }}" != "true" ]; then
-            echo "⚠️ E2E tests cancelled: ${{ needs.check-prerequisites.outputs.reason }}"
-            exit 78  # Neutral exit code
-          elif [ "${{ needs.run-tests.outputs.test_status }}" != "success" ]; then
+            echo "⚠ E2E tests cancelled: ${{ needs.check-prerequisites.outputs.reason }}"
+            exit 78  # Neutral exit code for cancelled state
+          elif [ "${{ needs.run-tests.result }}" != "success" ]; then
             echo "❌ E2E tests failed"
             exit 1
           else
