@@ -7,6 +7,14 @@ echo "🧪 Running BitTorrent Distribution E2E Tests..."
 TEST_DIR=$(mktemp -d)
 cd $TEST_DIR
 
+# Create necessary directories
+mkdir -p artifacts
+
+# Only try to copy artifacts if they exist
+if [ -d "/home/runner/work/dev-environment/dev-environment/distributions/bittorrent/artifacts" ]; then
+    cp -r /home/runner/work/dev-environment/dev-environment/distributions/bittorrent/artifacts/* artifacts/ || true
+fi
+
 # Create projects directory
 mkdir -p projects
 
