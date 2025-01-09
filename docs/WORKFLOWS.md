@@ -7,31 +7,32 @@ This repository uses GitHub Actions workflows for building, testing, and distrib
 ```mermaid
 graph TD
     subgraph "Primary Workflows"
-        A[Push to Repository] --> B{Path Check}
-        B -->|dockerhub/** changes| C[DockerHub Workflow]
-        B -->|bittorrent/** changes| D[BitTorrent Workflow]
+        A[Push to develop/main] --> B[Distribution Workflows]
+        B --> C1[DockerHub Workflow]
+        B --> C2[BitTorrent Workflow]
         
-        C -->|Success| E[E2E Integration Tests]
-        D -->|Success| E
+        C1 -->|Success| D[E2E Integration Tests]
+        C2 -->|Success| D
+        D -->|Success| E[Create Release]
     end
 
     subgraph "DockerHub Workflow"
-        C --> C1[Build Image]
+        C1 --> C1[Build Image]
         C1 --> C2[Push to DockerHub]
         C2 --> C3[Verify Push]
     end
 
     subgraph "BitTorrent Workflow"
-        D --> D1[Build Image]
+        C2 --> D1[Build Image]
         D1 --> D2[Create Torrent]
         D2 --> D3[Create Release]
         D3 --> D4[Setup Seeding]
     end
 
     subgraph "E2E Tests"
-        E --> E1[Test DockerHub]
-        E --> E2[Test BitTorrent]
-        E --> E3[Test Distribution Switch]
+        D --> E1[Test DockerHub]
+        D --> E2[Test BitTorrent]
+        D --> E3[Test Distribution Switch]
     end
 ```
 
@@ -104,19 +105,6 @@ sequenceDiagram
 - Failed steps are clearly marked
 - Environment and secret issues show in logs
 
-## Local Testing
-You can test workflows locally using [act](https://github.com/nektos/act):
-```bash
-# Test DockerHub workflow
-act -j build-and-push
-
-# Test BitTorrent workflow
-act -j build-and-seed
-
-# Test E2E workflow
-act -j e2e-tests
-```
-
 ## Adding New Workflows
 When adding new distribution methods:
 1. Create workflow file in `.github/workflows/`
@@ -135,20 +123,21 @@ When adding new distribution methods:
 
 ### Directory Structure
 - `.github/workflows/`: All GitHub Actions workflow files
-- `startup/templates/workflows/`: Project-specific CI workflow templates
+  - `bittorrent-build-and-seed.yml`: BitTorrent distribution workflow
+  - `dockerhub-build-and-push.yml`: DockerHub distribution workflow
+  - `e2e-integration-test.yml`: Integration test workflow
+  - `create-release.yml`: Release creation workflow
 
-### Required Components
-For any new distribution method:
-1. Distribution workflow file in `.github/workflows/`
-2. E2E test script in the appropriate distribution directory
-3. Entry in `e2e-integration-test.yml`
-4. Documentation updates in:
-   - This guide
-   - docs/ARCHITECTURE.md
+### Development Process
+1. Create feature branch from develop
+2. Make workflow changes
+3. Push to feature branch
+4. Create PR to develop
+5. Verify workflow runs in PR
+6. Merge if successful
 
-### Development Tips
-- Use meaningful commit messages for workflow changes
-- Test locally before pushing
-- Document any new environment variables or secrets
-- Keep workflow files modular and reusable
-- Follow the existing patterns for consistency 
+### Best Practices
+- Keep workflows focused on a single responsibility
+- Test changes through pull requests
+- Document environment variables and secrets
+- Follow existing patterns for consistency 

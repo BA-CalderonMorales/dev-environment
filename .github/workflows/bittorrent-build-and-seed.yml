@@ -3,14 +3,7 @@ name: BitTorrent Build and Seed
 # Trigger conditions
 on:
   push:
-    # Only run when specific paths are modified
-    paths:
-      - 'distributions/bittorrent/**'  # Changes to BitTorrent distribution
-      - 'distributions/dockerhub/Dockerfile'  # Base Dockerfile changes
-      - 'startup/**'                   # Changes to startup scripts
-      - '.github/workflows/**'         # Changes to workflows
-      - 'docs/**'                     # Changes to documentation
-    branches: [ main, develop ]        # Only on main branches
+    branches: [ main, develop ]  # Always run on main/develop pushes
   pull_request:
     paths:
       - 'distributions/bittorrent/**'
@@ -18,7 +11,7 @@ on:
       - 'startup/**'
       - '.github/workflows/bittorrent-build-and-seed.yml'
     branches: [ main, develop ]
-  workflow_dispatch:                   # Manual trigger option
+  workflow_dispatch:
 
 # Required permissions for GitHub Actions
 permissions:

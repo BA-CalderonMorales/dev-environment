@@ -11,8 +11,9 @@ name: E2E Integration Tests
 on:
   workflow_run:
     workflows: ['DockerHub Build and Push', 'BitTorrent Build and Seed']
-    types: [completed]
-    branches: [main, develop]
+    types:
+      - completed
+    branches: [ main, develop ]
 
 jobs:
   wait-for-workflows:

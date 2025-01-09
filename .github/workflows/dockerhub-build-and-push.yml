@@ -3,13 +3,7 @@ name: DockerHub Build and Push
 # Trigger conditions
 on:
   push:
-    # Only run when specific paths are modified
-    paths:
-      - 'distributions/dockerhub/**'  # Changes to DockerHub distribution
-      - 'startup/**'                  # Changes to startup scripts
-      - '.github/workflows/**'        # Changes to workflows
-      - 'docs/**'                    # Changes to documentation
-    branches: [ main, develop ]       # Only on main branches
+    branches: [ main, develop ]  # Always run on main/develop pushes
   pull_request:
     paths:
       - 'distributions/dockerhub/**'

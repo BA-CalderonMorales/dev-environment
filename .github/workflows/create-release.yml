@@ -1,12 +1,11 @@
-name: Create Comprehensive Release
+name: Create Release
 
-# Only trigger after E2E tests complete successfully
 on:
   workflow_run:
     workflows: ['E2E Integration Tests']
     types:
       - completed
-    branches: [main, develop]
+    branches: [ main, develop ]
 
 permissions:
   contents: write    # For creating releases
