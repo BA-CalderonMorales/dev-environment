@@ -117,7 +117,7 @@ jobs:
       - name: Set up Docker Compose
         run: |
           sudo apt-get update
-          sudo apt-get install -y docker-compose-plugin
+          sudo apt-get install -y docker-compose
       
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
@@ -141,13 +141,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Verify Docker Compose installation
+          docker-compose --version
+          
           # Run DockerHub distribution tests
           chmod +x distributions/dockerhub/e2e/scripts/test.sh
           ./distributions/dockerhub/e2e/scripts/test.sh
           
           # Run BitTorrent distribution tests
           chmod +x distributions/bittorrent/e2e/scripts/test.sh
-          ./distributions/bittorrent/e2e/scripts/test.sh 
+          ./distributions/bittorrent/e2e/scripts/test.sh
 
   create-release:
     needs: e2e-tests
