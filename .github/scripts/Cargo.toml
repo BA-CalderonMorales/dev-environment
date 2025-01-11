@@ -3,15 +3,21 @@ name = "github-workflow-scripts"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "check-workflow-states"
 path = "src/bin/check_workflow_states.rs"
 
+[[bin]]
+name = "check-artifacts"
+path = "src/bin/check_artifacts.rs"
+
 [dependencies]
-octocrab = "0.32"
-tokio = { version = "1.35", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 anyhow = "1.0"
+octocrab = "0.32"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
