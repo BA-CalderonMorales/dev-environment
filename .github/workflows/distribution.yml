@@ -114,6 +114,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Set up Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose-plugin
+      
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -143,3 +148,51 @@ jobs:
           # Run BitTorrent distribution tests
           chmod +x distributions/bittorrent/e2e/scripts/test.sh
           ./distributions/bittorrent/e2e/scripts/test.sh 
+
+  create-release:
+    needs: e2e-tests
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      
+      - name: Generate release notes
+        run: |
+          echo "# Development Environment Release" > release-notes.md
+          echo "## Distribution Methods" >> release-notes.md
+          
+          # Add DockerHub info
+          if [ -f "release-artifacts/dockerhub-artifacts/image-info.json" ]; then
+            echo "### DockerHub" >> release-notes.md
+            echo "\`\`\`" >> release-notes.md
+            cat release-artifacts/dockerhub-artifacts/image-info.json >> release-notes.md
+            echo "\`\`\`" >> release-notes.md
+          fi
+          
+          # Add BitTorrent info
+          if [ -f "release-artifacts/bittorrent-artifacts/magnet.txt" ]; then
+            echo "### BitTorrent" >> release-notes.md
+            echo "Magnet Link:" >> release-notes.md
+            echo "\`\`\`" >> release-notes.md
+            cat release-artifacts/bittorrent-artifacts/magnet.txt >> release-notes.md
+            echo "\`\`\`" >> release-notes.md
+          fi
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-artifacts/bittorrent-artifacts/dev-environment.torrent
+            release-artifacts/bittorrent-artifacts/checksum.txt
+            release-artifacts/bittorrent-artifacts/magnet.txt
+          body_path: release-notes.md
+          tag_name: v${{ github.sha }}
+          draft: false
+          prerelease: ${{ github.ref == 'refs/heads/develop' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
