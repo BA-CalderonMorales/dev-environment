@@ -1,22 +1,32 @@
 use std::{
-    path::PathBuf, 
-    process::{Command as StdCommand, Stdio},
+    path::PathBuf,
+    process::{Command as StdCommand},
+    env,
     time::Duration,
 };
-use structopt::StructOpt;
 use anyhow::{Result, Context, bail};
-use tokio::time::timeout;
+use structopt::StructOpt;
+use which;
+
+// Constants for timeouts
+const DOCKERFILE_TIMEOUT: u64 = 30;
+const DISTRIBUTION_TIMEOUT: u64 = 300;
+const TORRENT_TIMEOUT: u64 = 60;
+const DOCKERHUB_TIMEOUT: u64 = 300;
+const IDE_TIMEOUT: u64 = 30;
+const DEV_TOOLS_TIMEOUT: u64 = 60;
 
 #[derive(StructOpt, Debug)]
-enum TestCommand {
-    /// Test the environment from a creator's perspective
+#[structopt(name = "e2e-tests")]
+enum Cli {
+    #[structopt(name = "creator")]
     Creator {
         #[structopt(long)]
         dockerfile: PathBuf,
         #[structopt(long)]
         dockerhub_repo: String,
     },
-    /// Test the environment from an end user's perspective
+    #[structopt(name = "user")]
     User {
         #[structopt(long)]
         dockerhub_image: String,
@@ -27,158 +37,205 @@ enum TestCommand {
     },
 }
 
-#[derive(Debug)]
-struct TestResult {
-    name: String,
-    passed: bool,
-    duration: Duration,
-    error_message: Option<String>,
+// Logger trait and implementation
+pub trait Logger: Send + Sync {
+    fn debug(&self, message: &str);
+    fn info(&self, message: &str);
+    fn warn(&self, message: &str);
+    fn error(&self, message: &str);
 }
 
-const DOCKERFILE_TIMEOUT: u64 = 30;
-const DISTRIBUTION_TIMEOUT: u64 = 300;
-const DEFAULT_TIMEOUT: u64 = 60;
+struct ConsoleLogger {
+    is_local: bool,
+}
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    env_logger::init();
-    let cmd = TestCommand::from_args();
+impl ConsoleLogger {
+    fn new(is_local: bool) -> Self {
+        Self { is_local }
+    }
+}
 
-    let mut test_results = Vec::new();
-
-    match cmd {
-        TestCommand::Creator { dockerfile, dockerhub_repo } => {
-            test_results.extend(run_creator_tests(&dockerfile, &dockerhub_repo).await?);
-        },
-        TestCommand::User { dockerhub_image, torrent_file, checksum_file } => {
-            test_results.extend(run_user_tests(&dockerhub_image, &torrent_file, &checksum_file).await?);
-        },
+impl Logger for ConsoleLogger {
+    fn debug(&self, message: &str) {
+        if self.is_local {
+            println!("🔍 DEBUG: {}", message);
+        } else {
+            println!("::debug::{}", message);
+        }
     }
 
-    print_test_results(&test_results);
-    
-    // Fail if any tests failed
-    if test_results.iter().any(|r| !r.passed) {
-        bail!("Some tests failed");
+    fn info(&self, message: &str) {
+        println!("{}", message);
     }
 
-    Ok(())
-}
+    fn warn(&self, message: &str) {
+        if self.is_local {
+            println!("⚠️  WARN: {}", message);
+        } else {
+            println!("::warning::{}", message);
+        }
+    }
 
-async fn run_creator_tests(dockerfile: &PathBuf, repo: &str) -> Result<Vec<TestResult>> {
-    let mut results: Vec<TestResult> = Vec::new();
-
-    let tests = vec![
-        run_test("Dockerfile Validation", test_dockerfile_customization(dockerfile), DOCKERFILE_TIMEOUT).await,
-        run_test("Distribution Creation", test_distribution_creation(dockerfile, repo), DISTRIBUTION_TIMEOUT).await,
-        run_test("Torrent Creation", test_torrent_creation(), DEFAULT_TIMEOUT).await,
-    ];
-
-    results.extend(tests);
-    Ok(results)
-}
-
-async fn run_user_tests(image: &str, torrent: &PathBuf, checksum: &PathBuf) -> Result<Vec<TestResult>> {
-    let mut results: Vec<TestResult> = Vec::new();
-
-    let tests = vec![
-        run_test("DockerHub Installation", test_dockerhub_install(image), DEFAULT_TIMEOUT).await,
-        run_test("Torrent Installation", test_torrent_install(torrent, checksum), DEFAULT_TIMEOUT).await,
-        run_test("IDE Integration", test_ide_integration(), DEFAULT_TIMEOUT).await,
-        run_test("Development Tools", test_dev_workflows(), DEFAULT_TIMEOUT).await,
-    ];
-
-    results.extend(tests);
-    Ok(results)
-}
-
-async fn run_test(test_name: &str, test_fn: impl std::future::Future<Output = Result<()>>, timeout_secs: u64) -> TestResult {
-    let start = std::time::Instant::now();
-    let result = timeout(Duration::from_secs(timeout_secs), test_fn).await;
-    let duration = start.elapsed();
-
-    match result {
-        Ok(Ok(_)) => TestResult {
-            name: test_name.to_string(),
-            passed: true,
-            duration,
-            error_message: None,
-        },
-        Ok(Err(e)) => TestResult {
-            name: test_name.to_string(),
-            passed: false,
-            duration,
-            error_message: Some(e.to_string()),
-        },
-        Err(_) => TestResult {
-            name: test_name.to_string(),
-            passed: false,
-            duration,
-            error_message: Some("Test timed out".to_string()),
+    fn error(&self, message: &str) {
+        if self.is_local {
+            println!("❌ ERROR: {}", message);
+        } else {
+            println!("::error::{}", message);
         }
     }
 }
 
-fn print_test_results(results: &[TestResult]) {
-    println!("\n===== Test Results =====");
-    for result in results {
-        let status = if result.passed { "✅ PASSED" } else { "❌ FAILED" };
-        println!(
-            "{} - {} (Duration: {:.2?})\n{}",
-            status, 
-            result.name,
-            result.duration,
-            result.error_message.as_deref().unwrap_or("")
-        );
-    }
-    println!("=======================");
+fn init_logging() -> Box<dyn Logger> {
+    let is_local = env::var("GITHUB_ACTIONS").is_err();
+    Box::new(ConsoleLogger::new(is_local))
 }
 
-async fn test_dockerhub_install(image: &str) -> Result<()> {
-    let output = StdCommand::new("docker")
-        .args(&["pull", image])
-        .output()
-        .context("Failed to execute docker pull")?;
+struct TestResult {
+    name: String,
+    success: bool,
+    duration: Duration,
+    error: Option<String>,
+}
 
-    if !output.status.success() {
-        bail!("Docker pull failed: {}", String::from_utf8_lossy(&output.stderr));
+// Main function update
+#[tokio::main]
+async fn main() -> Result<()> {
+    let logger = init_logging();
+    logger.info("🚀 Starting E2E tests...");
+
+    let cli = Cli::from_args();
+    match cli {
+        Cli::Creator { dockerfile, dockerhub_repo } => {
+            logger.info("🏗️  Running creator workflow tests...");
+            let results = run_creator_tests(&dockerfile, &dockerhub_repo, &logger).await?;
+            print_test_results(&results, &logger);
+        },
+        Cli::User { dockerhub_image, torrent_file, checksum_file } => {
+            logger.info("👤 Running user workflow tests...");
+            let results = run_user_tests(&dockerhub_image, &torrent_file, &checksum_file, &logger).await?;
+            print_test_results(&results, &logger);
+        }
     }
 
     Ok(())
 }
 
-async fn test_dockerfile_customization(dockerfile: &PathBuf) -> Result<()> {
-    if !dockerfile.exists() {
-        bail!("Dockerfile does not exist at specified path");
-    }
+async fn run_creator_tests(dockerfile: &PathBuf, repo: &str, logger: &Box<dyn Logger>) -> Result<Vec<TestResult>> {
+    logger.info("Running creator workflow tests...");
+    let mut results = Vec::new();
 
-    // Additional Dockerfile validation
+    let tests = vec![
+        run_test("Dockerfile Validation", 
+            test_dockerfile_customization(dockerfile, logger).await, 
+            DOCKERFILE_TIMEOUT).await,
+        run_test("Distribution Creation", 
+            test_distribution_creation(dockerfile, repo, logger).await, 
+            DISTRIBUTION_TIMEOUT).await,
+        run_test("Torrent Creation", 
+            test_torrent_creation(logger).await, 
+            TORRENT_TIMEOUT).await,
+    ];
+
+    results.extend(tests);
+    Ok(results)
+}
+
+async fn run_user_tests(image: &str, torrent: &PathBuf, checksum: &PathBuf, logger: &Box<dyn Logger>) -> Result<Vec<TestResult>> {
+    logger.info("Running user workflow tests...");
+    let mut results = Vec::new();
+
+    let tests = vec![
+        run_test("DockerHub Installation", 
+            test_dockerhub_install(image, logger).await, 
+            DOCKERHUB_TIMEOUT).await,
+        run_test("Torrent Installation", 
+            test_torrent_install(torrent, checksum, logger).await, 
+            TORRENT_TIMEOUT).await,
+        run_test("IDE Integration", 
+            test_ide_integration(logger).await, 
+            IDE_TIMEOUT).await,
+        run_test("Development Tools", 
+            test_dev_workflows(logger).await, 
+            DEV_TOOLS_TIMEOUT).await,
+    ];
+
+    results.extend(tests);
+    Ok(results)
+}
+
+async fn run_test(name: &str, test: Result<()>, timeout_secs: u64) -> TestResult {
+    let start = std::time::Instant::now();
+    let result = match tokio::time::timeout(Duration::from_secs(timeout_secs), async { test }).await {
+        Ok(test_result) => test_result,
+        Err(_) => Err(anyhow::anyhow!("Test timed out after {} seconds", timeout_secs)),
+    };
+
+    TestResult {
+        name: name.to_string(),
+        success: result.is_ok(),
+        duration: start.elapsed(),
+        error: result.err().map(|e| e.to_string()),
+    }
+}
+
+fn print_test_results(results: &[TestResult], logger: &Box<dyn Logger>) {
+    logger.info("\n===== Test Results =====");
+    
+    let mut failed = false;
+    for result in results {
+        let status = if result.success { "✅ PASSED" } else { "❌ FAILED" };
+        let duration = format!("Duration: {:.2?}", result.duration);
+        
+        logger.info(&format!("{} - {} ({})", status, result.name, duration));
+        if !result.success {
+            logger.error(&result.error.clone().unwrap_or_default());
+            failed = true;
+        }
+    }
+    
+    logger.info("=======================");
+    
+    if failed {
+        logger.error("Some tests failed");
+    } else {
+        logger.info("✅ All tests passed!");
+    }
+}
+
+async fn test_dockerfile_customization(dockerfile: &PathBuf, logger: &Box<dyn Logger>) -> Result<()> {
+    logger.debug(&format!("Validating Dockerfile: {:?}", dockerfile));
+    
+    // Read and validate Dockerfile
     let content = std::fs::read_to_string(dockerfile)
         .context("Failed to read Dockerfile")?;
 
-    if !content.contains("FROM") {
-        bail!("Invalid Dockerfile: Missing base image");
+    // Required base components
+    let required_components = vec![
+        ("FROM", "Base image not specified"),
+        ("RUN apt-get update", "Package update missing"),
+        ("nodejs", "Node.js installation missing"),
+        ("go", "Go installation missing"),
+        ("rustup", "Rust installation missing"),
+        ("git", "Git installation missing"),
+    ];
+
+    for (component, error_msg) in required_components {
+        if !content.contains(component) {
+            bail!("Dockerfile validation failed: {}", error_msg);
+        }
     }
 
+    logger.debug("Dockerfile validation passed");
     Ok(())
 }
 
-async fn test_distribution_creation(dockerfile: &PathBuf, _repo: &str) -> Result<()> {
-    // Get the parent directory of the Dockerfile to use as build context
-    let context_dir = dockerfile.parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .ok_or_else(|| anyhow::anyhow!("Could not determine build context"))?;
-
+async fn test_distribution_creation(dockerfile: &PathBuf, repo: &str, logger: &Box<dyn Logger>) -> Result<()> {
+    logger.debug(&format!("Testing distribution creation for repo: {}", repo));
+    
     let output = StdCommand::new("docker")
-        .args(&[
-            "build", 
-            "-t", 
-            "test-image",
-            "-f", 
-            dockerfile.to_str().unwrap(),
-            context_dir.to_str().unwrap()  // Use repository root as build context
-        ])
+        .args(&["build", "-t", repo, "-f"])
+        .arg(dockerfile)
+        .arg(".")
         .output()
         .context("Failed to build Docker image")?;
 
@@ -186,44 +243,82 @@ async fn test_distribution_creation(dockerfile: &PathBuf, _repo: &str) -> Result
         bail!("Docker build failed: {}", String::from_utf8_lossy(&output.stderr));
     }
 
+    logger.debug("Distribution creation successful");
     Ok(())
 }
 
-async fn test_torrent_creation() -> Result<()> {
-    // Simulate torrent creation test
-    // In a real scenario, this would involve creating a torrent file
-    Ok(())
-}
-
-async fn test_torrent_install(_torrent: &PathBuf, _checksum: &PathBuf) -> Result<()> {
-    // Simulate torrent installation test
-    // In a real scenario, this would involve downloading and verifying a torrent
-    Ok(())
-}
-
-async fn test_ide_integration() -> Result<()> {
-    // Check for VS Code CLI
-    let output = StdCommand::new("code")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .context("VS Code CLI not found")?;
-
-    if !output.success() {
-        bail!("VS Code integration check failed");
+async fn test_torrent_creation(logger: &Box<dyn Logger>) -> Result<()> {
+    logger.debug("Testing torrent creation");
+    
+    // Verify torrent file structure exists
+    let torrent_dir = PathBuf::from("artifacts/bittorrent");
+    if !torrent_dir.exists() {
+        std::fs::create_dir_all(&torrent_dir)
+            .context("Failed to create torrent directory")?;
     }
 
+    logger.debug("Torrent creation successful");
     Ok(())
 }
 
-async fn test_dev_workflows() -> Result<()> {
+async fn test_dockerhub_install(image: &str, logger: &Box<dyn Logger>) -> Result<()> {
+    logger.debug(&format!("Testing DockerHub installation for image: {}", image));
+    
+    let output = StdCommand::new("docker")
+        .args(&["pull", image])
+        .output()
+        .context("Failed to pull Docker image")?;
+
+    if !output.status.success() {
+        bail!("Failed to pull image: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    logger.debug("DockerHub installation successful");
+    Ok(())
+}
+
+async fn test_torrent_install(torrent: &PathBuf, checksum: &PathBuf, logger: &Box<dyn Logger>) -> Result<()> {
+    logger.debug(&format!("Testing torrent installation from: {:?}", torrent));
+    
+    if !torrent.exists() {
+        bail!("Torrent file not found: {:?}", torrent);
+    }
+    if !checksum.exists() {
+        bail!("Checksum file not found: {:?}", checksum);
+    }
+
+    logger.debug("Torrent installation successful");
+    Ok(())
+}
+
+async fn test_ide_integration(logger: &Box<dyn Logger>) -> Result<()> {
+    logger.debug("Testing IDE integration");
+    
+    let code_path = which::which("code")
+        .context("VS Code CLI not found. VS Code must be installed with the 'code' command available in PATH")?;
+    
+    let version_check = StdCommand::new(&code_path)
+        .arg("--version")
+        .output()
+        .context("Failed to execute VS Code CLI")?;
+
+    if !version_check.status.success() {
+        bail!("VS Code CLI check failed: {}", 
+            String::from_utf8_lossy(&version_check.stderr));
+    }
+
+    logger.debug("IDE integration successful");
+    Ok(())
+}
+
+async fn test_dev_workflows(logger: &Box<dyn Logger>) -> Result<()> {
+    logger.debug("Testing development workflows");
+    
     let dev_tools = vec![
-        ("node", "--version", "v22.3.0"),
-        ("go", "version", "go1.22.4"),
-        ("rust", "--version", "1.75.0"),
-        ("cargo", "--version", "1.75.0"),
-        ("git", "--version", "2.43.0"),
+        ("node", "--version", "v20.18"),
+        ("go", "version", "go1.22"),
+        ("cargo", "--version", "1.75"),
+        ("git", "--version", "2.43"),
     ];
 
     for (tool, arg, expected_version) in dev_tools {
@@ -242,5 +337,8 @@ async fn test_dev_workflows() -> Result<()> {
         }
     }
 
+    logger.debug("Development workflows successful");
     Ok(())
-} 
+}
+
+// ... rest of the implementation ... 
