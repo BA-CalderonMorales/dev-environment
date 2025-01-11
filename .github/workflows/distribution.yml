@@ -149,7 +149,9 @@ jobs:
 
   create-release:
     needs: e2e-tests
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: |
+      success() && 
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
