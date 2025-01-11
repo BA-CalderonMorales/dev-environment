@@ -49,9 +49,16 @@ run_test_case "DockerHub Fallback" "export SIMULATE_DOCKERHUB_RATE_LIMIT=true"
 # Test 3: Both Methods Available -> Prefer BitTorrent
 run_test_case "Preferred Distribution" "export PREFER_BITTORRENT=true"
 
-# Cleanup
-echo "🧹 Cleaning up test environment..."
-cd ..
-rm -rf $TEST_DIR
+# Enhance cleanup section
+cleanup() {
+    echo "🧹 Running cleanup..."
+    docker compose down -v 2>/dev/null || true
+    docker rmi dev-environment:latest 2>/dev/null || true
+    docker rmi cmoe640/dev-environment:latest 2>/dev/null || true
+    rm -rf $TEST_DIR 2>/dev/null || true
+}
+
+# Ensure cleanup runs even if script fails
+trap cleanup EXIT
 
 echo "✅ Distribution switching tests completed" 

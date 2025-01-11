@@ -70,9 +70,18 @@ docker exec dev-environment bash -c '
     test -x /usr/src/startup/init-project.sh
 '
 
-# Cleanup
-echo "🧹 Cleaning up..."
-docker compose down
-docker rmi cmoe640/dev-environment:latest
+# Enhance cleanup section
+cleanup() {
+    echo "🧹 Running cleanup..."
+    docker compose down -v 2>/dev/null || true
+    docker rmi dev-environment:latest 2>/dev/null || true
+    docker rmi cmoe640/dev-environment:latest 2>/dev/null || true
+    rm -rf $TEST_DIR 2>/dev/null || true
+}
+
+# Ensure cleanup runs even if script fails
+trap cleanup EXIT
+
+# Remove explicit cleanup at end since trap handles it
 
 echo "✅ DockerHub distribution tests completed successfully" 

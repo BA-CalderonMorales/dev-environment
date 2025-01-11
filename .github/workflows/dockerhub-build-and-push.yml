@@ -56,16 +56,35 @@ jobs:
       # After successful build and push
       - name: Prepare Artifacts
         run: |
+          echo "🔨 Creating artifacts directory..."
           mkdir -p artifacts/dockerhub
-          echo "{
-            \"version\": \"${{ github.sha }}\",
-            \"image\": \"cmoe640/dev-environment:${{ github.sha }}\",
-            \"date\": \"$(date -u +"%Y-%m-%d %H:%M UTC")\"
-          }" > artifacts/dockerhub/image-info.json
+          
+          echo "📝 Generating image-info.json..."
+          IMAGE_INFO=$(cat << EOF
+          {
+            "version": "${{ github.sha }}",
+            "image": "cmoe640/dev-environment:${{ github.sha }}",
+            "date": "$(date -u +"%Y-%m-%d %H:%M UTC")"
+          }
+          EOF
+          )
+          echo "$IMAGE_INFO" > artifacts/dockerhub/image-info.json
+          
+          echo "🔍 Verifying artifact contents..."
+          ls -la artifacts/dockerhub/
+          echo "📄 image-info.json contents:"
+          cat artifacts/dockerhub/image-info.json
 
       - name: Upload Artifacts
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: dockerhub-artifacts
           path: artifacts/dockerhub/
           retention-days: 1
+
+      - name: Verify Upload
+        run: |
+          echo "✅ Artifact upload complete"
+          echo "📦 Artifact name: ${{ steps.upload.outputs.artifact-name }}"
+          echo "📊 Artifact size: ${{ steps.upload.outputs.size }}"

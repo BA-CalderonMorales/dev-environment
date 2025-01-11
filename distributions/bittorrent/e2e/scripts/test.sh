@@ -57,9 +57,19 @@ docker exec dev-environment bash -c '
     echo "Git: $(git --version)"
 '
 
-# Cleanup first test
-docker compose down
-docker rmi dev-environment:latest 2>/dev/null || true
+# Enhance cleanup section
+cleanup() {
+    echo "🧹 Running cleanup..."
+    docker compose down -v 2>/dev/null || true
+    docker rmi dev-environment:latest 2>/dev/null || true
+    docker rmi cmoe640/dev-environment:latest 2>/dev/null || true
+    rm -rf $TEST_DIR 2>/dev/null || true
+    # Clean any torrent-specific files
+    rm -f *.torrent magnet.txt 2>/dev/null || true
+}
+
+# Ensure cleanup runs even if script fails
+trap cleanup EXIT
 
 echo "🔄 Testing DockerHub fallback..."
 export FORCE_BITTORRENT_FAIL=true
