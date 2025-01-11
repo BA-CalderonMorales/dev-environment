@@ -7,22 +7,53 @@ echo "🧪 Running DockerHub Distribution E2E Tests..."
 TEST_DIR=$(mktemp -d)
 cd $TEST_DIR
 
+# Create necessary directories
+mkdir -p artifacts/dockerhub
+
+# Copy artifacts from the workflow's artifact directory
+if [ -d "$GITHUB_WORKSPACE/artifacts/dockerhub" ]; then
+    cp -r $GITHUB_WORKSPACE/artifacts/dockerhub/* artifacts/dockerhub/
+else
+    echo "❌ DockerHub artifacts directory not found"
+    exit 1
+fi
+
+# Verify image-info.json exists and contains required fields
+if [ ! -f "artifacts/dockerhub/image-info.json" ]; then
+    echo "❌ image-info.json not found"
+    exit 1
+fi
+
+# Parse and verify image info
+IMAGE_TAG=$(jq -r '.image' artifacts/dockerhub/image-info.json)
+if [ -z "$IMAGE_TAG" ]; then
+    echo "❌ Invalid image-info.json: missing image tag"
+    exit 1
+fi
+
 # Create projects directory
 mkdir -p projects
 
-# Download docker-compose.yml and modify for test environment
-curl -O https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/distributions/dockerhub/docker-compose.yml
-
-# Remove any potential .gitconfig mount that might be in the downloaded file
-sed -i '/\.gitconfig/d' docker-compose.yml
+# Copy required files
+cp -r $GITHUB_WORKSPACE/startup .
+cp $GITHUB_WORKSPACE/distributions/dockerhub/docker-compose.yml .
 
 # Replace relative path with absolute path
 sed -i "s|../../projects|$TEST_DIR/projects|g" docker-compose.yml
+sed -i '/\.gitconfig/d' docker-compose.yml
 
-# Test Container Startup
+echo "🔍 Testing DockerHub Distribution..."
+
+# Test container startup
 echo "📦 Testing container startup..."
 docker compose up -d
 sleep 10
+
+# Verify container is running
+if ! docker ps | grep -q "dev-environment"; then
+    echo "❌ Container failed to start"
+    exit 1
+fi
 
 # Test Development Tools
 echo "🛠️ Verifying development tools..."
@@ -44,4 +75,4 @@ echo "🧹 Cleaning up..."
 docker compose down
 docker rmi cmoe640/dev-environment:latest
 
-echo "✅ DockerHub E2E tests completed successfully" 
+echo "✅ DockerHub distribution tests completed successfully" 
