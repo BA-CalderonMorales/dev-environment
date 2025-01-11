@@ -7,7 +7,6 @@ on:
       - completed
     branches: [ main, develop ]
     
-# Add permissions block
 permissions:
   actions: write    # Required for cancelling workflows
   contents: read    # Required for checkout
@@ -24,43 +23,28 @@ jobs:
       can_proceed: ${{ steps.check.outputs.can_proceed }}
       reason: ${{ steps.check.outputs.reason }}
     steps:
-      - name: Wait for Artifact Availability
-        run: |
-          echo "⏳ Waiting for artifacts to be available..."
-          sleep 30  # Add 30-second delay
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
 
       - id: check
-        name: Check Distribution Workflow States
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            
-            console.log('🔍 Starting distribution workflow state check...');
-            console.log(`Repository: ${owner}/${repo}`);
-            console.log(`Workflow Run ID: ${context.payload.workflow_run.id}`);
-            console.log(`Head SHA: ${context.payload.workflow_run.head_sha}`);
-            
-            // Check for artifacts
-            console.log('📦 Checking for artifacts...');
-            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
-              owner,
-              repo,
-              run_id: context.payload.workflow_run.id
-            });
-            
-            console.log('Found artifacts:', artifacts.data.artifacts.map(a => a.name));
-            
-            const hasDockerArtifacts = artifacts.data.artifacts.some(a => a.name === 'dockerhub-artifacts');
-            const hasBitTorrentArtifacts = artifacts.data.artifacts.some(a => a.name === 'bittorrent-artifacts');
-            
-            console.log(`📊 Detailed Artifact Status:
-            - DockerHub: ${hasDockerArtifacts ? '✅' : '❌'} (${hasDockerArtifacts ? 'Found' : 'Not Found'})
-            - BitTorrent: ${hasBitTorrentArtifacts ? '✅' : '❌'} (${hasBitTorrentArtifacts ? 'Found' : 'Not Found'})`);
-            
-            if (!hasDockerArtifacts || !hasBitTorrentArtifacts) {
-              console.log('⚠️ Missing artifacts, checking workflow states...');
-              // Rest of the checks...
+        name: Check Distribution Artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.event.workflow_run.id }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          cd .github/scripts
+          cargo build --release
+          ./target/release/check-workflow-states
+          ./target/release/check-artifacts
 
   cancel-workflow:
     needs: check-prerequisites
@@ -77,15 +61,11 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { owner, repo } = context.repo;
-            
             await github.rest.actions.cancelWorkflowRun({
-              owner,
-              repo,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
               run_id: context.runId
             });
-            
-            console.log('Workflow cancellation requested');
 
   run-tests:
     needs: check-prerequisites
@@ -98,56 +78,56 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
 
-      - name: Download Distribution Artifacts
-        id: download-artifacts
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p artifacts/{bittorrent,dockerhub}
-          
-          echo "📥 Attempting to download artifacts from workflow run ${{ github.event.workflow_run.id }}"
-          
-          ARTIFACTS_MISSING=false
-          
-          echo "Checking BitTorrent artifacts..."
-          if gh run download ${{ github.event.workflow_run.id }} \
-            --name bittorrent-artifacts \
-            --dir artifacts/bittorrent; then
-            echo "✅ BitTorrent artifacts downloaded successfully"
-          else
-            echo "❌ BitTorrent artifacts missing"
-            ARTIFACTS_MISSING=true
-          fi
+      - name: Download artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+            });
             
-          echo "Checking DockerHub artifacts..."
-          if gh run download ${{ github.event.workflow_run.id }} \
-            --name dockerhub-artifacts \
-            --dir artifacts/dockerhub; then
-            echo "✅ DockerHub artifacts downloaded successfully"
-          else
-            echo "❌ DockerHub artifacts missing"
-            ARTIFACTS_MISSING=true
-          fi
-          
-          if [ "$ARTIFACTS_MISSING" = "true" ]; then
-            echo "❌ Error: One or more required artifacts are missing"
-            exit 1
-          fi
-          
-          echo "✅ All required artifacts downloaded successfully"
+            const matchArtifact = artifacts.data.artifacts.find((artifact) => {
+              return artifact.name == "dockerhub-artifacts"
+            });
+            
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: matchArtifact.id,
+              archive_format: 'zip',
+            });
+            
+            const fs = require('fs');
+            fs.writeFileSync('${{github.workspace}}/dockerhub-artifacts.zip', Buffer.from(download.data));
+      
+      - name: Unzip artifact
+        run: unzip dockerhub-artifacts.zip
+
+      - name: Run integration tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Running integration tests..."
+          docker load < ipfs-cluster.tar
+          docker load < ipfs.tar
+          docker-compose -f docker-compose.yml up -d
+          sleep 30
+          docker ps
+          curl http://127.0.0.1:9094/id
+          curl http://127.0.0.1:9095/id
+          docker-compose -f docker-compose.yml down
 
       - id: test-result
         name: Set Test Result
         if: always()
         run: |
           if [ "${{ steps.download-artifacts.outcome }}" = "success" ]; then
-            echo "✅ Artifact download successful"
-            echo "📊 Found Artifacts:"
-            [ "${{ steps.download-artifacts.outputs.bittorrent_found }}" = "true" ] && echo "- BitTorrent"
-            [ "${{ steps.download-artifacts.outputs.dockerhub_found }}" = "true" ] && echo "- DockerHub"
+            echo "✅ Artifact check successful"
             echo "status=success" >> $GITHUB_OUTPUT
           else
-            echo "❌ Artifact download failed"
+            echo "❌ Artifact check failed"
             echo "status=failure" >> $GITHUB_OUTPUT
           fi
 
