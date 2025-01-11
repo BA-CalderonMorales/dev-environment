@@ -164,8 +164,21 @@ async fn test_dockerfile_customization(dockerfile: &PathBuf) -> Result<()> {
 }
 
 async fn test_distribution_creation(dockerfile: &PathBuf, _repo: &str) -> Result<()> {
+    // Get the parent directory of the Dockerfile to use as build context
+    let context_dir = dockerfile.parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .ok_or_else(|| anyhow::anyhow!("Could not determine build context"))?;
+
     let output = StdCommand::new("docker")
-        .args(&["build", "-t", "test-image", "-f", dockerfile.to_str().unwrap(), "."])
+        .args(&[
+            "build", 
+            "-t", 
+            "test-image",
+            "-f", 
+            dockerfile.to_str().unwrap(),
+            context_dir.to_str().unwrap()  // Use repository root as build context
+        ])
         .output()
         .context("Failed to build Docker image")?;
 
