@@ -114,10 +114,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
+          
+      - name: Set Rust toolchain outputs
+        id: rust-toolchain
+        run: |
+          echo "rustc=$(rustc -V)" >> $GITHUB_OUTPUT
+          echo "cargo=$(cargo -V)" >> $GITHUB_OUTPUT
+          echo "rustup=$(rustup -V)" >> $GITHUB_OUTPUT
           
       - name: Download artifacts
         uses: actions/download-artifact@v4

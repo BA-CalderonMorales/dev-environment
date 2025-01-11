@@ -27,9 +27,12 @@ RUN useradd -m -s /bin/bash devuser && \
 RUN curl -sL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# Copy startup scripts and set permissions
+# Copy startup scripts (single copy command)
 COPY startup /usr/src/startup
-RUN chmod -R 755 /usr/src/startup
+
+# Set permissions
+RUN chmod -R 755 /usr/src/startup && \
+    chown -R devuser:devuser /usr/src/startup
 
 # Switch to devuser for user-specific setup
 USER devuser

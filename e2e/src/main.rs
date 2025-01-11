@@ -232,8 +232,8 @@ async fn test_dockerfile_customization(dockerfile: &PathBuf, logger: &Box<dyn Lo
 async fn test_distribution_creation(dockerfile: &PathBuf, repo: &str, logger: &Box<dyn Logger>) -> Result<()> {
     logger.debug(&format!("Testing distribution creation for repo: {}", repo));
     
-    // Get the project root directory (two levels up from the dockerfile)
-    let project_root = dockerfile.parent().unwrap().parent().unwrap();
+    // Get the project root directory (one level up from e2e)
+    let project_root = std::env::current_dir()?.parent().unwrap().to_path_buf();
     logger.debug(&format!("Project root: {:?}", project_root));
     
     // Verify startup directory exists
