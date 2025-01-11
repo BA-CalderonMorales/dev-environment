@@ -50,6 +50,10 @@ repository/
 ├── distributions/        # Different distribution methods
 │   ├── dockerhub/       # Standard DockerHub distribution
 │   └── bittorrent/      # BitTorrent-based distribution
+├── e2e/                 # End-to-end tests
+│   ├── src/            # Rust test implementation
+│   ├── tests/          # Additional test modules
+│   └── Cargo.toml      # Rust project manifest
 ├── startup/             # Setup and initialization scripts
 │   ├── lib/            # Shared library functions
 │   ├── templates/      # Project templates

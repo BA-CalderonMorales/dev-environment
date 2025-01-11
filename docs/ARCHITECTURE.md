@@ -9,9 +9,11 @@ dev-environment/
 ├── distributions/          # Distribution Methods
 │   ├── dockerhub/         # Standard Distribution
 │   └── bittorrent/        # P2P Distribution
+├── e2e/                   # End-to-End Tests
+│   ├── src/              # Test Implementation
+│   └── tests/            # Test Modules
 ├── startup/               # Environment Setup
-│   ├── lib/              # Core Libraries
-│   └── e2e/              # Integration Tests
+│   └── lib/              # Core Libraries
 └── docs/                 # Documentation
 ```
 

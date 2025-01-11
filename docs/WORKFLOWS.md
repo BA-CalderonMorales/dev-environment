@@ -66,10 +66,16 @@ graph TD
 - **Triggers after:**
   - Successful completion of either distribution workflow
 - **Main Jobs:**
-  1. Test DockerHub distribution
-  2. Test BitTorrent distribution
-  3. Test distribution switching
-  4. Generate test report
+  1. Run creator workflow tests
+     - Dockerfile validation
+     - Distribution creation
+     - BitTorrent generation
+  2. Run user workflow tests
+     - DockerHub installation
+     - BitTorrent installation
+     - IDE integration
+     - Development workflow verification
+  3. Generate test report
 
 ## Execution Order and Dependencies
 ```mermaid

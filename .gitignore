@@ -68,3 +68,7 @@ coverage/
 **/.rustc_info.json
 **/.cargo-lock
 **/CACHEDIR.TAG
+
+# Add under the existing Rust section:
+**/target/
+**/Cargo.lock

@@ -114,43 +114,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-      
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          profile: minimal
-      
-      - name: Download Docker artifacts
+          
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: dockerhub-artifacts
-          path: artifacts/dockerhub
-      
-      - name: Download BitTorrent artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: bittorrent-artifacts
-          path: artifacts/bittorrent
-      
-      - name: Run E2E Tests
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          pattern: "*-artifacts"
+          path: artifacts
+          
+      - name: Run Creator Tests
         run: |
-          # Verify Docker Compose installation
-          docker-compose --version
-          
-          # Run DockerHub distribution tests
-          chmod +x distributions/dockerhub/e2e/scripts/test.sh
-          ./distributions/dockerhub/e2e/scripts/test.sh
-          
-          # Run BitTorrent distribution tests
-          chmod +x distributions/bittorrent/e2e/scripts/test.sh
-          ./distributions/bittorrent/e2e/scripts/test.sh
+          cd e2e
+          cargo run --release -- creator \
+            --dockerfile "../distributions/dockerhub/Dockerfile" \
+            --dockerhub-repo "cmoe640/dev-environment"
+            
+      - name: Run User Tests
+        run: |
+          cd e2e
+          cargo run --release -- user \
+            --dockerhub-image "cmoe640/dev-environment:${{ github.sha }}" \
+            --torrent-file "../artifacts/bittorrent/dev-environment.torrent" \
+            --checksum-file "../artifacts/bittorrent/checksum.txt"
 
   create-release:
     needs: e2e-tests
