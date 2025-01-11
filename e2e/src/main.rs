@@ -4,7 +4,7 @@ use std::{
     env,
     time::Duration,
 };
-use anyhow::{Result, Context, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use structopt::StructOpt;
 use which;
 
@@ -167,7 +167,7 @@ async fn run_test(name: &str, test: Result<()>, timeout_secs: u64) -> TestResult
     let start = std::time::Instant::now();
     let result = match tokio::time::timeout(Duration::from_secs(timeout_secs), async { test }).await {
         Ok(test_result) => test_result,
-        Err(_) => Err(anyhow::anyhow!("Test timed out after {} seconds", timeout_secs)),
+        Err(_) => Err(anyhow!("Test timed out after {} seconds", timeout_secs)),
     };
 
     TestResult {
@@ -230,37 +230,33 @@ async fn test_dockerfile_customization(dockerfile: &PathBuf, logger: &Box<dyn Lo
 }
 
 async fn test_distribution_creation(dockerfile: &PathBuf, repo: &str, logger: &Box<dyn Logger>) -> Result<()> {
-    logger.debug(&format!("Testing distribution creation for repo: {}", repo));
+    logger.debug(&format!("Testing distribution creation with repo: {}", repo));
     
     // Get the project root directory (one level up from e2e)
-    let project_root = std::env::current_dir()?.parent().unwrap().to_path_buf();
-    logger.debug(&format!("Project root: {:?}", project_root));
+    let project_root = std::env::current_dir()?
+        .parent()
+        .ok_or_else(|| anyhow!("Could not find project root"))?
+        .to_path_buf();
+        
+    // Change to project root for Docker build context
+    std::env::set_current_dir(&project_root)
+        .context("Failed to change to project root directory")?;
     
-    // Verify startup directory exists
-    let startup_dir = project_root.join("startup");
-    if !startup_dir.exists() {
-        bail!("Startup directory not found at {:?}", startup_dir);
-    }
-    logger.debug(&format!("Startup directory found at: {:?}", startup_dir));
-
-    // Run docker build from project root
     let output = StdCommand::new("docker")
-        .current_dir(project_root)
         .args(&[
             "build",
-            "-t", repo,
+            "-t", &format!("{}:latest", repo),
             "-f", dockerfile.to_str().unwrap(),
             "."
         ])
         .output()
-        .context("Failed to execute docker build command")?;
+        .context("Failed to build Docker image")?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("Docker build failed: {}", stderr);
+        bail!("Docker build failed: {}", String::from_utf8_lossy(&output.stderr));
     }
 
-    logger.debug("Docker build completed successfully");
+    logger.debug("Distribution creation successful");
     Ok(())
 }
 
