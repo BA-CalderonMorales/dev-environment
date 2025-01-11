@@ -232,29 +232,35 @@ async fn test_dockerfile_customization(dockerfile: &PathBuf, logger: &Box<dyn Lo
 async fn test_distribution_creation(dockerfile: &PathBuf, repo: &str, logger: &Box<dyn Logger>) -> Result<()> {
     logger.debug(&format!("Testing distribution creation for repo: {}", repo));
     
-    // Check if Dockerfile exists
-    if !dockerfile.exists() {
-        bail!("Dockerfile not found at {:?}", dockerfile);
+    // Get the project root directory (two levels up from the dockerfile)
+    let project_root = dockerfile.parent().unwrap().parent().unwrap();
+    logger.debug(&format!("Project root: {:?}", project_root));
+    
+    // Verify startup directory exists
+    let startup_dir = project_root.join("startup");
+    if !startup_dir.exists() {
+        bail!("Startup directory not found at {:?}", startup_dir);
     }
+    logger.debug(&format!("Startup directory found at: {:?}", startup_dir));
 
-    // Get the directory containing the Dockerfile
-    let context_dir = dockerfile.parent()
-        .context("Failed to get Dockerfile parent directory")?;
-
-    // Run docker build from the correct directory
+    // Run docker build from project root
     let output = StdCommand::new("docker")
-        .current_dir(context_dir)  // Set working directory to Dockerfile location
-        .args(&["build", "-t", repo, "-f"])
-        .arg(dockerfile.file_name().unwrap())  // Use just filename since we're in the right directory
-        .arg(".")
+        .current_dir(project_root)
+        .args(&[
+            "build",
+            "-t", repo,
+            "-f", dockerfile.to_str().unwrap(),
+            "."
+        ])
         .output()
-        .context("Failed to build Docker image")?;
+        .context("Failed to execute docker build command")?;
 
     if !output.status.success() {
-        bail!("Docker build failed: {}", String::from_utf8_lossy(&output.stderr));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("Docker build failed: {}", stderr);
     }
 
-    logger.debug("Distribution creation successful");
+    logger.debug("Docker build completed successfully");
     Ok(())
 }
 
