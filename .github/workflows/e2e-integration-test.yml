@@ -7,6 +7,12 @@ on:
       - completed
     branches: [ main, develop ]
     
+# Add permissions block
+permissions:
+  actions: write    # Required for cancelling workflows
+  contents: read    # Required for checkout
+  packages: read    # Required for artifact access
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -28,6 +34,7 @@ jobs:
             
             console.log('🔍 Checking distribution workflow states...');
             
+            // Check DockerHub workflow
             const dockerhubRun = await github.rest.actions.listWorkflowRuns({
               owner,
               repo,
@@ -36,6 +43,7 @@ jobs:
               per_page: 1
             });
             
+            // Check BitTorrent workflow
             const bittorrentRun = await github.rest.actions.listWorkflowRuns({
               owner,
               repo,
@@ -43,6 +51,26 @@ jobs:
               branch,
               per_page: 1
             });
+            
+            // Check artifact existence
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id: context.payload.workflow_run.id
+            });
+            
+            const hasDockerArtifacts = artifacts.data.artifacts.some(a => a.name === 'dockerhub-artifacts');
+            const hasBitTorrentArtifacts = artifacts.data.artifacts.some(a => a.name === 'bittorrent-artifacts');
+            
+            console.log(`📦 Artifact Status:
+            - DockerHub: ${hasDockerArtifacts ? '✅' : '❌'}
+            - BitTorrent: ${hasBitTorrentArtifacts ? '✅' : '❌'}`);
+            
+            if (!hasDockerArtifacts || !hasBitTorrentArtifacts) {
+              core.setOutput('can_proceed', 'false');
+              core.setOutput('reason', 'Required artifacts are missing');
+              return;
+            }
             
             const dockerStatus = dockerhubRun.data.workflow_runs[0]?.conclusion;
             const bittorrentStatus = bittorrentRun.data.workflow_runs[0]?.conclusion;
@@ -111,42 +139,34 @@ jobs:
           
           echo "📥 Attempting to download artifacts from workflow run ${{ github.event.workflow_run.id }}"
           
-          BITTORRENT_FOUND=false
-          DOCKERHUB_FOUND=false
+          ARTIFACTS_MISSING=false
           
           echo "Checking BitTorrent artifacts..."
           if gh run download ${{ github.event.workflow_run.id }} \
             --name bittorrent-artifacts \
             --dir artifacts/bittorrent; then
-            BITTORRENT_FOUND=true
             echo "✅ BitTorrent artifacts downloaded successfully"
           else
-            echo "⚠️ No BitTorrent artifacts found"
+            echo "❌ BitTorrent artifacts missing"
+            ARTIFACTS_MISSING=true
           fi
             
           echo "Checking DockerHub artifacts..."
           if gh run download ${{ github.event.workflow_run.id }} \
             --name dockerhub-artifacts \
             --dir artifacts/dockerhub; then
-            DOCKERHUB_FOUND=true
             echo "✅ DockerHub artifacts downloaded successfully"
           else
-            echo "⚠️ No DockerHub artifacts found"
+            echo "❌ DockerHub artifacts missing"
+            ARTIFACTS_MISSING=true
           fi
           
-          # Summary of what we found
-          echo "📊 Artifact Download Summary:"
-          echo "- BitTorrent: $([ "$BITTORRENT_FOUND" = "true" ] && echo "✅ Found" || echo "❌ Not Found")"
-          echo "- DockerHub: $([ "$DOCKERHUB_FOUND" = "true" ] && echo "✅ Found" || echo "❌ Not Found")"
-          
-          if [ "$BITTORRENT_FOUND" = "false" ] && [ "$DOCKERHUB_FOUND" = "false" ]; then
-            echo "❌ Error: No artifacts found from either workflow"
+          if [ "$ARTIFACTS_MISSING" = "true" ]; then
+            echo "❌ Error: One or more required artifacts are missing"
             exit 1
           fi
           
-          # Set outputs for use in subsequent steps
-          echo "bittorrent_found=$BITTORRENT_FOUND" >> $GITHUB_OUTPUT
-          echo "dockerhub_found=$DOCKERHUB_FOUND" >> $GITHUB_OUTPUT
+          echo "✅ All required artifacts downloaded successfully"
 
       - id: test-result
         name: Set Test Result

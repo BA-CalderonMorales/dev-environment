@@ -7,6 +7,12 @@ on:
       - completed
     branches: [main, develop]
 
+# Add permissions block
+permissions:
+  actions: write    # Required for cancelling workflows
+  contents: write   # Required for creating releases
+  packages: write   # Required for package operations
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
