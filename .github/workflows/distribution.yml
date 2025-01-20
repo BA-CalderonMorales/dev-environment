@@ -212,7 +212,7 @@ jobs:
 
   security-scan:
     needs: [dockerhub, bittorrent]
-    name: Analyze (${{ matrix.language }})
+    name: Security Analysis
     runs-on: ubuntu-22.04
     permissions:
       security-events: write
@@ -221,31 +221,100 @@ jobs:
       contents: read
       pull-requests: read
 
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ['javascript']  # For shell script analysis
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          queries: security-extended,security-and-quality
-          config-file: ./.github/codeql/codeql-config.yml
-          setup-python-dependencies: false
+      # Shell Script Analysis
+      - name: Run ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          mkdir -p sarif-output
+          find . -type f -name "*.sh" -exec \
+            shellcheck --format=sarif {} \; > sarif-output/shellcheck.sarif
 
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+      # Dockerfile Analysis
+      - name: Run Hadolint
+        run: |
+          wget -q https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+          chmod +x hadolint-Linux-x86_64
+          mkdir -p sarif-output
+          find . -type f -name "Dockerfile" -exec \
+            ./hadolint-Linux-x86_64 --format sarif {} \; > sarif-output/hadolint.sarif
+
+      # Rust Code Analysis
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          category: "/language:${{matrix.language}}"
-          upload: always
-          wait-for-processing: true
+          components: clippy
+
+      - name: Run Clippy
+        run: |
+          cd e2e
+          cargo clippy --message-format=json > ../sarif-output/clippy.json
+          
+      - name: Convert Clippy JSON to SARIF
+        run: |
+          echo '{
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [{
+              "tool": {
+                "driver": {
+                  "name": "clippy",
+                  "informationUri": "https://rust-lang.github.io/rust-clippy/",
+                  "rules": []
+                }
+              },
+              "results": []
+            }]
+          }' > sarif-output/clippy.sarif
+          
+          jq -r '.[] | select(.message.level == "warning" or .message.level == "error")' sarif-output/clippy.json | \
+          jq -s '[.[] | {
+            "ruleId": .message.code.code,
+            "level": .message.level,
+            "message": {
+              "text": .message.message
+            },
+            "locations": [{
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": .target.src_path
+                },
+                "region": {
+                  "startLine": .spans[0].line_start,
+                  "startColumn": .spans[0].column_start,
+                  "endLine": .spans[0].line_end,
+                  "endColumn": .spans[0].column_end
+                }
+              }
+            }]
+          }]' > clippy_results.json
+          
+          jq --slurpfile results clippy_results.json '.runs[0].results = $results[0]' sarif-output/clippy.sarif > sarif-output/clippy_final.sarif
+
+      # Upload all SARIF files
+      - name: Upload Shell Script Analysis
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif-output/shellcheck.sarif
+          category: "/language:shell"
+
+      - name: Upload Dockerfile Analysis
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif-output/hadolint.sarif
+          category: "/language:dockerfile"
+
+      - name: Upload Rust Analysis
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif-output/clippy_final.sarif
+          category: "/language:rust"
 
       - name: Create Security Scan Summary
         run: |
@@ -255,18 +324,20 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "1. [Code Scanning Results](https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+branch:${{ github.ref_name }})" >> $GITHUB_STEP_SUMMARY
           echo "2. [Security Overview](https://github.com/${{ github.repository }}/security)" >> $GITHUB_STEP_SUMMARY
-          echo "3. [Security Advisories](https://github.com/${{ github.repository }}/security/advisories)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📝 Notes" >> $GITHUB_STEP_SUMMARY
-          echo "- Branch being scanned: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Scan ID: \`${{ github.run_id }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- If no results appear immediately, please wait a few minutes for processing" >> $GITHUB_STEP_SUMMARY
-          echo "- No alerts means no security issues were found" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 Analysis Tools" >> $GITHUB_STEP_SUMMARY
+          echo "- Shell Scripts: ShellCheck" >> $GITHUB_STEP_SUMMARY
+          echo "- Dockerfiles: Hadolint" >> $GITHUB_STEP_SUMMARY
+          echo "- Rust Code: Clippy" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Scan Details" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Run ID: \`${{ github.run_id }}\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Post Notification
         if: always()
         run: |
-          echo "::notice title=Security Scan Results::View the latest security scan results at https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+branch:${{ github.ref_name }}"
+          echo "::notice title=Security Scan Results::View the analysis results at https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+branch:${{ github.ref_name }}"
 
   e2e-tests:
     needs: [security-scan]
