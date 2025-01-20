@@ -258,7 +258,8 @@ jobs:
           
       - name: Convert Clippy JSON to SARIF
         run: |
-          echo '{
+          jq --null-input --slurpfile clippy sarif-output/clippy.json \
+          '{
             "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
             "version": "2.1.0",
             "runs": [{
@@ -269,33 +270,35 @@ jobs:
                   "rules": []
                 }
               },
-              "results": []
+              "results": ($clippy | map(select(.message.level == "warning" or .message.level == "error") | {
+                "ruleId": .message.code.code,
+                "level": .message.level,
+                "message": { "text": .message.message },
+                "locations": [{
+                  "physicalLocation": {
+                    "artifactLocation": { "uri": .target.src_path },
+                    "region": {
+                      "startLine": .spans[0].line_start,
+                      "startColumn": .spans[0].column_start,
+                      "endLine": .spans[0].line_end,
+                      "endColumn": .spans[0].column_end
+                    }
+                  }
+                }]
+              }))
             }]
-          }' > sarif-output/clippy.sarif
-          
-          jq -r '.[] | select(.message.level == "warning" or .message.level == "error")' sarif-output/clippy.json | \
-          jq -s '[.[] | {
-            "ruleId": .message.code.code,
-            "level": .message.level,
-            "message": {
-              "text": .message.message
-            },
-            "locations": [{
-              "physicalLocation": {
-                "artifactLocation": {
-                  "uri": .target.src_path
-                },
-                "region": {
-                  "startLine": .spans[0].line_start,
-                  "startColumn": .spans[0].column_start,
-                  "endLine": .spans[0].line_end,
-                  "endColumn": .spans[0].column_end
-                }
-              }
-            }]
-          }]' > clippy_results.json
-          
-          jq --slurpfile results clippy_results.json '.runs[0].results = $results[0]' sarif-output/clippy.sarif > sarif-output/clippy_final.sarif
+          }' > sarif-output/clippy_final.sarif
+
+      # Validate SARIF files
+      - name: Validate SARIF files
+        run: |
+          for file in sarif-output/*.sarif; do
+            echo "Validating $file"
+            if ! jq empty "$file" 2>/dev/null; then
+              echo "Error: Invalid SARIF file: $file"
+              exit 1
+            fi
+          done
 
       # Upload all SARIF files
       - name: Upload Shell Script Analysis
