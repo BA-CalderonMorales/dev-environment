@@ -112,23 +112,36 @@ jobs:
 
   security-scan:
     needs: [dockerhub, bittorrent]
+    name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-22.04
     permissions:
       security-events: write
+      packages: read
       actions: read
       contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: 'javascript-typescript'
+          - language: 'python'
+          - language: 'ruby'
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v3
         with:
-          languages: python,javascript,ruby
+          languages: ${{ matrix.language }}
           config-file: ./.github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
 
   e2e-tests:
     needs: [security-scan]
