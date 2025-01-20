@@ -25,22 +25,49 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       artifact_name: ${{ steps.upload.outputs.artifact_name }}
+      image_changed: ${{ steps.check_changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      - name: Check for Dockerfile changes
+        id: check_changes
+        run: |
+          CHANGED=false
+          if git diff --name-only HEAD^ HEAD | grep -q "distributions/dockerhub/Dockerfile\|startup/"; then
+            CHANGED=true
+          fi
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
       
       - name: Set up Docker Buildx
+        if: steps.check_changes.outputs.changed == 'true'
         uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --debug
+      
+      - name: Set up Docker layer caching
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
       
       - name: Login to DockerHub
+        if: steps.check_changes.outputs.changed == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       
       - name: Copy startup scripts
+        if: steps.check_changes.outputs.changed == 'true'
         run: cp -r startup distributions/dockerhub/
       
       - name: Build and push Docker image
+        if: steps.check_changes.outputs.changed == 'true'
         uses: docker/build-push-action@v5
         with:
           context: ./distributions/dockerhub
@@ -49,14 +76,35 @@ jobs:
           tags: |
             cmoe640/dev-environment:latest
             cmoe640/dev-environment:${{ github.sha }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+      
+      - name: Move cache
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
       
       - name: Prepare Artifacts
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
           mkdir -p artifacts/dockerhub
           echo '{
             "version": "${{ github.sha }}",
             "image": "cmoe640/dev-environment:${{ github.sha }}",
-            "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'"
+            "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'",
+            "changes": true
+          }' > artifacts/dockerhub/image-info.json
+      
+      - name: Prepare No-Change Artifacts
+        if: steps.check_changes.outputs.changed != 'true'
+        run: |
+          mkdir -p artifacts/dockerhub
+          echo '{
+            "version": "${{ github.sha }}",
+            "image": "cmoe640/dev-environment:latest",
+            "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'",
+            "changes": false
           }' > artifacts/dockerhub/image-info.json
       
       - id: upload
@@ -70,23 +118,62 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       artifact_name: ${{ steps.upload.outputs.artifact_name }}
+      torrent_changed: ${{ steps.check_changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       
+      - name: Check for Dockerfile or script changes
+        id: check_changes
+        run: |
+          CHANGED=false
+          if git diff --name-only HEAD^ HEAD | grep -q "distributions/bittorrent/\|startup/"; then
+            CHANGED=true
+          fi
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
       - name: Set up environment
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y transmission-cli
+
+      - name: Set up Docker layer caching
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache-bittorrent
+          key: ${{ runner.os }}-buildx-bittorrent-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-bittorrent-
+
+      - name: Set up Docker Buildx
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@v3
       
       - name: Copy startup scripts
+        if: steps.check_changes.outputs.changed == 'true'
         run: cp -r startup distributions/bittorrent/
       
       - name: Build Docker image
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./distributions/bittorrent
+          load: true
+          tags: dev-environment:latest
+          cache-from: type=local,src=/tmp/.buildx-cache-bittorrent
+          cache-to: type=local,dest=/tmp/.buildx-cache-bittorrent-new,mode=max
+      
+      - name: Move cache
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
-          cd distributions/bittorrent
-          docker build -t dev-environment:latest .
+          rm -rf /tmp/.buildx-cache-bittorrent
+          mv /tmp/.buildx-cache-bittorrent-new /tmp/.buildx-cache-bittorrent
       
       - name: Create and seed torrent
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
           cd distributions/bittorrent
           docker save dev-environment:latest > dev-environment.tar
@@ -96,19 +183,32 @@ jobs:
           ./scripts/torrent/generate-magnet.sh
       
       - name: Generate checksum
+        if: steps.check_changes.outputs.changed == 'true'
         run: |
           cd distributions/bittorrent
           sha256sum dev-environment.tar > checksum.txt
+
+      - name: Prepare No-Change Artifacts
+        if: steps.check_changes.outputs.changed != 'true'
+        run: |
+          mkdir -p artifacts/bittorrent
+          echo '{
+            "version": "${{ github.sha }}",
+            "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'",
+            "changes": false,
+            "message": "No changes detected, using existing torrent"
+          }' > artifacts/bittorrent/info.json
       
       - id: upload
         uses: actions/upload-artifact@v4
         with:
           name: bittorrent-artifacts
           path: |
-            distributions/bittorrent/dev-environment.tar
-            distributions/bittorrent/dev-environment.torrent
-            distributions/bittorrent/checksum.txt
-            distributions/bittorrent/magnet.txt
+            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/bittorrent/dev-environment.tar' || '' }}
+            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/bittorrent/dev-environment.torrent' || '' }}
+            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/bittorrent/checksum.txt' || '' }}
+            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/bittorrent/magnet.txt' || '' }}
+            ${{ steps.check_changes.outputs.changed != 'true' && 'artifacts/bittorrent/info.json' || '' }}
 
   security-scan:
     needs: [dockerhub, bittorrent]
@@ -139,6 +239,26 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{matrix.language}}"
+
+      - name: Create Security Scan Summary
+        run: |
+          echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The security scan has completed. View the results at:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. [Security Overview](https://github.com/${{ github.repository }}/security)" >> $GITHUB_STEP_SUMMARY
+          echo "2. [Code Scanning Alerts](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+          echo "3. [Security Advisories](https://github.com/${{ github.repository }}/security/advisories)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 Notes" >> $GITHUB_STEP_SUMMARY
+          echo "- Security alerts may take a few minutes to appear" >> $GITHUB_STEP_SUMMARY
+          echo "- No alerts listed means no issues were found" >> $GITHUB_STEP_SUMMARY
+          echo "- Results are also available in the Security tab of your repository" >> $GITHUB_STEP_SUMMARY
+
+      - name: Post Notification
+        if: always()
+        run: |
+          echo "::notice title=Security Scan Results::View the latest security scan results at https://github.com/${{ github.repository }}/security/code-scanning"
 
   e2e-tests:
     needs: [security-scan]
