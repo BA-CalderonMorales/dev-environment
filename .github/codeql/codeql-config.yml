@@ -1,0 +1,8 @@
+paths:
+  - 'distributions/**'
+  - 'startup/**'
+  - 'e2e/**'
+paths-ignore:
+  - '**/*.md'
+  - '**/*.txt'
+  - 'docs/**' 
