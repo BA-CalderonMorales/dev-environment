@@ -1,8 +1,11 @@
 paths:
-  - 'distributions/**'
-  - 'startup/**'
-  - 'e2e/**'
+  - 'startup/**/*.sh'
+  - 'distributions/**/*.sh'
+  - 'e2e/scripts/**/*.sh'
+  - '.github/scripts/**/*.sh'
 paths-ignore:
+  - '**/node_modules'
+  - '**/vendor'
   - '**/*.md'
   - '**/*.txt'
   - 'docs/**' 

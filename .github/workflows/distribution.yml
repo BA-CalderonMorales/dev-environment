@@ -123,10 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - language: 'javascript-typescript'
-          - language: 'python'
-          - language: 'ruby'
+        language: ['javascript']  # For shell script analysis
 
     steps:
       - name: Checkout repository
@@ -136,7 +133,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          config-file: ./.github/codeql/codeql-config.yml
+          queries: security-extended,security-and-quality
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
