@@ -1,9 +1,7 @@
-use std::{
-    path::{Path, PathBuf},
-    process::{Command as StdCommand},
-    env,
-    time::Duration,
-};
+use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
+use std::env;
+use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use structopt::StructOpt;
 use which;
@@ -107,13 +105,13 @@ async fn main() -> Result<()> {
     match cli {
         Cli::Creator { dockerfile, dockerhub_repo } => {
             logger.info("🏗️  Running creator workflow tests...");
-            let results = run_creator_tests(&dockerfile, &dockerhub_repo, &logger).await?;
-            print_test_results(&results, &logger);
+            let results = run_creator_tests(&dockerfile, &dockerhub_repo, &*logger).await?;
+            print_test_results(&results, &*logger);
         },
         Cli::User { dockerhub_image, torrent_file, checksum_file } => {
             logger.info("👤 Running user workflow tests...");
-            let results = run_user_tests(&dockerhub_image, &torrent_file, &checksum_file, &logger).await?;
-            print_test_results(&results, &logger);
+            let results = run_user_tests(&dockerhub_image, &torrent_file, &checksum_file, &*logger).await?;
+            print_test_results(&results, &*logger);
         }
     }
 
