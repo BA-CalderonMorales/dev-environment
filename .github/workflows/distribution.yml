@@ -212,7 +212,7 @@ jobs:
 
   security-scan:
     needs: [dockerhub, bittorrent]
-    name: Rust Code Analysis
+    name: Security Scans
     runs-on: ubuntu-22.04
     permissions:
       security-events: write
