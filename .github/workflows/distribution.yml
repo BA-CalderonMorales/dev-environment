@@ -169,7 +169,7 @@ jobs:
             --checksum-file "../artifacts/bittorrent/checksum.txt"
 
   create_release:
-    needs: [dockerhub, bittorrent]
+    needs: [e2e-tests]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
