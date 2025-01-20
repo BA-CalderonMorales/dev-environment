@@ -216,171 +216,51 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       security-events: write
-      packages: read
       actions: read
       contents: read
       pull-requests: read
 
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript', 'python', 'ruby', 'rust']
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
         with:
-          fetch-depth: 2
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
 
-      # Shell Script Analysis
-      - name: Run ShellCheck
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck
-          mkdir -p sarif-output
-          echo '{
-            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-            "version": "2.1.0",
-            "runs": [
-              {
-                "tool": {
-                  "driver": {
-                    "name": "ShellCheck",
-                    "informationUri": "https://www.shellcheck.net/",
-                    "rules": []
-                  }
-                },
-                "results": []
-              }
-            ]
-          }' > sarif-output/shellcheck.sarif
-          
-          # Run ShellCheck and append results
-          find . -type f -name "*.sh" -exec sh -c '
-            shellcheck --format=json "$1" | jq -r ".[] | {
-              \"ruleId\": .code,
-              \"level\": \"warning\",
-              \"message\": {\"text\": .message},
-              \"locations\": [{
-                \"physicalLocation\": {
-                  \"artifactLocation\": {\"uri\": \"$1\"},
-                  \"region\": {
-                    \"startLine\": .line,
-                    \"startColumn\": .column,
-                    \"endLine\": .line,
-                    \"endColumn\": .endColumn
-                  }
-                }
-              }]
-            }"
-          ' sh {} \; | jq -s '{"runs":[{"tool":{"driver":{"name":"ShellCheck","informationUri":"https://www.shellcheck.net/","rules":[]}},"results":.}]}' > sarif-output/shellcheck-results.sarif
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
 
-      # Dockerfile Analysis
-      - name: Run Hadolint
-        run: |
-          wget -q https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
-          chmod +x hadolint-Linux-x86_64
-          mkdir -p sarif-output
-          find . -type f -name "Dockerfile" -exec ./hadolint-Linux-x86_64 --format sarif {} \; > sarif-output/hadolint.sarif
-
-      # Rust Code Analysis
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
         with:
-          components: clippy
-
-      - name: Run Clippy
-        run: |
-          cd e2e
-          cargo clippy --message-format=json > ../sarif-output/clippy.json
-          
-      - name: Convert Clippy JSON to SARIF
-        run: |
-          echo '{
-            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-            "version": "2.1.0",
-            "runs": [
-              {
-                "tool": {
-                  "driver": {
-                    "name": "clippy",
-                    "informationUri": "https://rust-lang.github.io/rust-clippy/",
-                    "rules": []
-                  }
-                },
-                "results": []
-              }
-            ]
-          }' > sarif-output/clippy.sarif
-          
-          # Process Clippy output and append results
-          jq -r '.[] | select(.message.level == "warning" or .message.level == "error")' sarif-output/clippy.json | \
-          jq -s '[.[] | {
-            "ruleId": .message.code.code,
-            "level": .message.level,
-            "message": { "text": .message.message },
-            "locations": [{
-              "physicalLocation": {
-                "artifactLocation": { "uri": .target.src_path },
-                "region": {
-                  "startLine": .spans[0].line_start,
-                  "startColumn": .spans[0].column_start,
-                  "endLine": .spans[0].line_end,
-                  "endColumn": .spans[0].column_end
-                }
-              }
-            }]
-          }]' | \
-          jq -s '{"runs":[{"tool":{"driver":{"name":"clippy","informationUri":"https://rust-lang.github.io/rust-clippy/","rules":[]}},"results":.}]}' > sarif-output/clippy-results.sarif
-
-      # Validate SARIF files
-      - name: Validate SARIF files
-        run: |
-          for file in sarif-output/*.sarif; do
-            echo "Validating $file"
-            if ! jq empty "$file" 2>/dev/null; then
-              echo "Error: Invalid SARIF file: $file"
-              cat "$file"
-              exit 1
-            fi
-          done
-
-      # Upload all SARIF files
-      - name: Upload Shell Script Analysis
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: sarif-output/shellcheck-results.sarif
-          category: "/language:shell"
-
-      - name: Upload Dockerfile Analysis
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: sarif-output/hadolint.sarif
-          category: "/language:dockerfile"
-
-      - name: Upload Rust Analysis
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: sarif-output/clippy-results.sarif
-          category: "/language:rust"
+          category: "/language:${{ matrix.language }}"
 
       - name: Create Security Scan Summary
         run: |
           echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The security scan has completed. View the results at:" >> $GITHUB_STEP_SUMMARY
+          echo "CodeQL analysis has completed. View the results at:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "1. [Code Scanning Results](https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+branch:${{ github.ref_name }})" >> $GITHUB_STEP_SUMMARY
-          echo "2. [Security Overview](https://github.com/${{ github.repository }}/security)" >> $GITHUB_STEP_SUMMARY
+          echo "1. [Security Overview](https://github.com/${{ github.repository }}/security)" >> $GITHUB_STEP_SUMMARY
+          echo "2. [Code Scanning Alerts](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📝 Analysis Tools" >> $GITHUB_STEP_SUMMARY
-          echo "- Shell Scripts: ShellCheck" >> $GITHUB_STEP_SUMMARY
-          echo "- Dockerfiles: Hadolint" >> $GITHUB_STEP_SUMMARY
-          echo "- Rust Code: Clippy" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🔍 Scan Details" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 Analysis Details" >> $GITHUB_STEP_SUMMARY
+          echo "- Languages: JavaScript, Python, Ruby, Rust" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Run ID: \`${{ github.run_id }}\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Post Notification
         if: always()
         run: |
-          echo "::notice title=Security Scan Results::View the analysis results at https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+branch:${{ github.ref_name }}"
+          echo "::notice title=Security Scan Results::View the analysis results at https://github.com/${{ github.repository }}/security/code-scanning"
 
   e2e-tests:
     needs: [security-scan]
