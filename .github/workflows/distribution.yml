@@ -110,8 +110,27 @@ jobs:
             distributions/bittorrent/checksum.txt
             distributions/bittorrent/magnet.txt
 
-  e2e-tests:
+  security-scan:
     needs: [dockerhub, bittorrent]
+    runs-on: ubuntu-22.04
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: shell,dockerfile,bash,rust
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+
+  e2e-tests:
+    needs: [security-scan]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
