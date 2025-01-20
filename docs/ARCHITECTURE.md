@@ -38,6 +38,25 @@ New distribution methods must implement:
 4. Fallback behavior
 5. Version tracking
 
+## CI/CD Infrastructure
+Our pipeline runs on GitHub Actions and requires ongoing maintenance:
+
+### Runner Specifications
+- We explicitly use `ubuntu-22.04` runners instead of `ubuntu-latest`
+- This choice requires periodic review and updates
+- Major Ubuntu version migrations (e.g., 22.04 → 24.04) should be:
+  1. Tested in develop branch (beta releases)
+  2. Verified with all distribution methods
+  3. Rolled out to main branch (stable releases)
+
+### Version Migration Process
+1. Monitor GitHub Actions announcements for runner updates
+2. Test new runner versions in develop branch
+3. Update workflow files with new runner specifications
+4. Verify all jobs execute successfully
+5. Document any compatibility issues or required changes
+6. Merge to main branch after successful testing
+
 ## Testing Strategy
 Each distribution method includes:
 - Unit tests for distribution scripts
@@ -46,4 +65,4 @@ Each distribution method includes:
 - Performance benchmarks
 
 ## Adding New Distributions
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on implementing new distribution methods. 
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on implementing new distribution methods. 
