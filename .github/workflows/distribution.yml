@@ -124,7 +124,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v2
         with:
-          languages: shell,dockerfile,bash,rust
+          languages: javascript,python,go,ruby
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v2
@@ -227,4 +227,18 @@ jobs:
             distributions/bittorrent/checksum.txt
           draft: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup-on-failure:
+    if: failure()
+    needs: [dockerhub, bittorrent, security-scan, e2e-tests, create_release]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Revert commit
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git revert ${{ github.sha }} --no-edit
+          git push 
