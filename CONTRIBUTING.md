@@ -1,4 +1,6 @@
-# Contributing to Development Environment
+# Contributing
+
+For detailed contributor and maintainer documentation, please see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 ## Adding New Distributions
 
