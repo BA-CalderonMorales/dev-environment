@@ -233,8 +233,42 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck
           mkdir -p sarif-output
-          find . -type f -name "*.sh" -exec \
-            shellcheck --format=sarif {} \; > sarif-output/shellcheck.sarif
+          echo '{
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [
+              {
+                "tool": {
+                  "driver": {
+                    "name": "ShellCheck",
+                    "informationUri": "https://www.shellcheck.net/",
+                    "rules": []
+                  }
+                },
+                "results": []
+              }
+            ]
+          }' > sarif-output/shellcheck.sarif
+          
+          # Run ShellCheck and append results
+          find . -type f -name "*.sh" -exec sh -c '
+            shellcheck --format=json "$1" | jq -r ".[] | {
+              \"ruleId\": .code,
+              \"level\": \"warning\",
+              \"message\": {\"text\": .message},
+              \"locations\": [{
+                \"physicalLocation\": {
+                  \"artifactLocation\": {\"uri\": \"$1\"},
+                  \"region\": {
+                    \"startLine\": .line,
+                    \"startColumn\": .column,
+                    \"endLine\": .line,
+                    \"endColumn\": .endColumn
+                  }
+                }
+              }]
+            }"
+          ' sh {} \; | jq -s '{"runs":[{"tool":{"driver":{"name":"ShellCheck","informationUri":"https://www.shellcheck.net/","rules":[]}},"results":.}]}' > sarif-output/shellcheck-results.sarif
 
       # Dockerfile Analysis
       - name: Run Hadolint
@@ -242,8 +276,7 @@ jobs:
           wget -q https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
           chmod +x hadolint-Linux-x86_64
           mkdir -p sarif-output
-          find . -type f -name "Dockerfile" -exec \
-            ./hadolint-Linux-x86_64 --format sarif {} \; > sarif-output/hadolint.sarif
+          find . -type f -name "Dockerfile" -exec ./hadolint-Linux-x86_64 --format sarif {} \; > sarif-output/hadolint.sarif
 
       # Rust Code Analysis
       - name: Install Rust
@@ -258,36 +291,42 @@ jobs:
           
       - name: Convert Clippy JSON to SARIF
         run: |
-          jq --null-input --slurpfile clippy sarif-output/clippy.json \
-          '{
+          echo '{
             "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
             "version": "2.1.0",
-            "runs": [{
-              "tool": {
-                "driver": {
-                  "name": "clippy",
-                  "informationUri": "https://rust-lang.github.io/rust-clippy/",
-                  "rules": []
-                }
-              },
-              "results": ($clippy | map(select(.message.level == "warning" or .message.level == "error") | {
-                "ruleId": .message.code.code,
-                "level": .message.level,
-                "message": { "text": .message.message },
-                "locations": [{
-                  "physicalLocation": {
-                    "artifactLocation": { "uri": .target.src_path },
-                    "region": {
-                      "startLine": .spans[0].line_start,
-                      "startColumn": .spans[0].column_start,
-                      "endLine": .spans[0].line_end,
-                      "endColumn": .spans[0].column_end
-                    }
+            "runs": [
+              {
+                "tool": {
+                  "driver": {
+                    "name": "clippy",
+                    "informationUri": "https://rust-lang.github.io/rust-clippy/",
+                    "rules": []
                   }
-                }]
-              }))
+                },
+                "results": []
+              }
+            ]
+          }' > sarif-output/clippy.sarif
+          
+          # Process Clippy output and append results
+          jq -r '.[] | select(.message.level == "warning" or .message.level == "error")' sarif-output/clippy.json | \
+          jq -s '[.[] | {
+            "ruleId": .message.code.code,
+            "level": .message.level,
+            "message": { "text": .message.message },
+            "locations": [{
+              "physicalLocation": {
+                "artifactLocation": { "uri": .target.src_path },
+                "region": {
+                  "startLine": .spans[0].line_start,
+                  "startColumn": .spans[0].column_start,
+                  "endLine": .spans[0].line_end,
+                  "endColumn": .spans[0].column_end
+                }
+              }
             }]
-          }' > sarif-output/clippy_final.sarif
+          }]' | \
+          jq -s '{"runs":[{"tool":{"driver":{"name":"clippy","informationUri":"https://rust-lang.github.io/rust-clippy/","rules":[]}},"results":.}]}' > sarif-output/clippy-results.sarif
 
       # Validate SARIF files
       - name: Validate SARIF files
@@ -296,6 +335,7 @@ jobs:
             echo "Validating $file"
             if ! jq empty "$file" 2>/dev/null; then
               echo "Error: Invalid SARIF file: $file"
+              cat "$file"
               exit 1
             fi
           done
@@ -304,7 +344,7 @@ jobs:
       - name: Upload Shell Script Analysis
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: sarif-output/shellcheck.sarif
+          sarif_file: sarif-output/shellcheck-results.sarif
           category: "/language:shell"
 
       - name: Upload Dockerfile Analysis
@@ -316,7 +356,7 @@ jobs:
       - name: Upload Rust Analysis
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: sarif-output/clippy_final.sarif
+          sarif_file: sarif-output/clippy-results.sarif
           category: "/language:rust"
 
       - name: Create Security Scan Summary
