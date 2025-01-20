@@ -1,5 +1,5 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command as StdCommand},
     env,
     time::Duration,
@@ -120,7 +120,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run_creator_tests(dockerfile: &PathBuf, repo: &str, logger: &Box<dyn Logger>) -> Result<Vec<TestResult>> {
+async fn run_creator_tests(dockerfile: &Path, repo: &str, logger: &dyn Logger) -> Result<Vec<TestResult>> {
     logger.info("Running creator workflow tests...");
     let mut results = Vec::new();
 
@@ -140,7 +140,7 @@ async fn run_creator_tests(dockerfile: &PathBuf, repo: &str, logger: &Box<dyn Lo
     Ok(results)
 }
 
-async fn run_user_tests(image: &str, torrent: &PathBuf, checksum: &PathBuf, logger: &Box<dyn Logger>) -> Result<Vec<TestResult>> {
+async fn run_user_tests(image: &str, torrent: &Path, checksum: &Path, logger: &dyn Logger) -> Result<Vec<TestResult>> {
     logger.info("Running user workflow tests...");
     let mut results = Vec::new();
 
@@ -178,7 +178,7 @@ async fn run_test(name: &str, test: Result<()>, timeout_secs: u64) -> TestResult
     }
 }
 
-fn print_test_results(results: &[TestResult], logger: &Box<dyn Logger>) {
+fn print_test_results(results: &[TestResult], logger: &dyn Logger) {
     logger.info("\n===== Test Results =====");
     
     let mut failed = false;
@@ -202,7 +202,7 @@ fn print_test_results(results: &[TestResult], logger: &Box<dyn Logger>) {
     }
 }
 
-async fn test_dockerfile_customization(dockerfile: &PathBuf, logger: &Box<dyn Logger>) -> Result<()> {
+async fn test_dockerfile_customization(dockerfile: &Path, logger: &dyn Logger) -> Result<()> {
     logger.debug(&format!("Validating Dockerfile: {:?}", dockerfile));
     
     // Read and validate Dockerfile
@@ -229,7 +229,7 @@ async fn test_dockerfile_customization(dockerfile: &PathBuf, logger: &Box<dyn Lo
     Ok(())
 }
 
-async fn test_distribution_creation(dockerfile: &PathBuf, repo: &str, logger: &Box<dyn Logger>) -> Result<()> {
+async fn test_distribution_creation(dockerfile: &Path, repo: &str, logger: &dyn Logger) -> Result<()> {
     logger.debug(&format!("Testing distribution creation with repo: {}", repo));
     
     // Get the project root directory (one level up from e2e)
@@ -260,7 +260,7 @@ async fn test_distribution_creation(dockerfile: &PathBuf, repo: &str, logger: &B
     Ok(())
 }
 
-async fn test_torrent_creation(logger: &Box<dyn Logger>) -> Result<()> {
+async fn test_torrent_creation(logger: &dyn Logger) -> Result<()> {
     logger.debug("Testing torrent creation");
     
     // Verify torrent file structure exists
@@ -274,7 +274,7 @@ async fn test_torrent_creation(logger: &Box<dyn Logger>) -> Result<()> {
     Ok(())
 }
 
-async fn test_dockerhub_install(image: &str, logger: &Box<dyn Logger>) -> Result<()> {
+async fn test_dockerhub_install(image: &str, logger: &dyn Logger) -> Result<()> {
     logger.debug(&format!("Testing DockerHub installation for image: {}", image));
     
     let output = StdCommand::new("docker")
@@ -290,7 +290,7 @@ async fn test_dockerhub_install(image: &str, logger: &Box<dyn Logger>) -> Result
     Ok(())
 }
 
-async fn test_torrent_install(torrent: &PathBuf, checksum: &PathBuf, logger: &Box<dyn Logger>) -> Result<()> {
+async fn test_torrent_install(torrent: &Path, checksum: &Path, logger: &dyn Logger) -> Result<()> {
     logger.debug(&format!("Testing torrent installation from: {:?}", torrent));
     
     // Create directory if it doesn't exist
@@ -313,7 +313,7 @@ async fn test_torrent_install(torrent: &PathBuf, checksum: &PathBuf, logger: &Bo
     Ok(())
 }
 
-async fn test_ide_integration(logger: &Box<dyn Logger>) -> Result<()> {
+async fn test_ide_integration(logger: &dyn Logger) -> Result<()> {
     logger.debug("Testing IDE integration");
     
     // Skip VS Code check in CI environment
@@ -339,7 +339,7 @@ async fn test_ide_integration(logger: &Box<dyn Logger>) -> Result<()> {
     Ok(())
 }
 
-async fn test_dev_workflows(logger: &Box<dyn Logger>) -> Result<()> {
+async fn test_dev_workflows(logger: &dyn Logger) -> Result<()> {
     logger.debug("Testing development workflows");
     
     let dev_tools = vec![
