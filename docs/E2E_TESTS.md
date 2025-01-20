@@ -2,7 +2,7 @@
 
 ## Overview
 
-End-to-End (E2E) tests ensure that our development environment works correctly across different distribution methods and user scenarios. Tests are run asynchronously with timeouts and detailed reporting.
+End-to-End (E2E) tests ensure our development environment works correctly across different distribution methods. Our tests validate both creator and user workflows with detailed reporting and timeouts.
 
 ## Test Categories
 
@@ -10,6 +10,7 @@ End-to-End (E2E) tests ensure that our development environment works correctly a
 Tests that verify the environment creation and distribution process.
 
 #### Dockerfile Validation
+- **Status**: ✅ Implemented
 - **Purpose**: Verifies Dockerfile structure and configuration
 - **Key Checks**:
   - File existence
@@ -19,42 +20,38 @@ Tests that verify the environment creation and distribution process.
 - **Timeout**: 30 seconds
 
 #### Distribution Creation
-- **Purpose**: Tests Docker image building
+- **Status**: ✅ Implemented
+- **Purpose**: Tests Docker image building and publishing
 - **Key Checks**:
   - Build process
   - Image tagging
   - Build context validation
+  - DockerHub push
 - **Implementation**: Docker CLI integration
 - **Timeout**: 300 seconds
 
 #### Torrent Creation
-- **Purpose**: Placeholder for BitTorrent distribution
-- **Status**: Not yet implemented
-- **Planned Features**:
+- **Status**: ✅ Implemented
+- **Purpose**: Creates BitTorrent distribution
+- **Features**:
   - Torrent file generation
   - Checksum creation
   - Metadata validation
+- **Implementation**: BitTorrent protocol integration
+- **Timeout**: 300 seconds
 
 ### User Workflow Tests
 Tests that verify the environment from a user's perspective.
 
-#### IDE Integration
-- **Purpose**: Validates development environment setup
-- **Key Checks**:
-  - VS Code CLI availability
-  - Development container configuration
-- **Implementation**: CLI validation
-- **Timeout**: 60 seconds
+#### Installation Tests
+- DockerHub pull and setup
+- BitTorrent download and verification
+- Environment initialization
 
-#### Development Tools
-- **Purpose**: Verifies core development tools
-- **Key Checks**:
-  - Node.js availability
-  - Go installation
-  - Rust/Cargo setup
-  - Git configuration
-- **Implementation**: Version checks
-- **Timeout**: 60 seconds
+#### Integration Tests
+- IDE setup and configuration
+- Development tool availability
+- Environment variable configuration
 
 ## Test Implementation
 

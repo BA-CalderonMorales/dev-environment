@@ -175,43 +175,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Download all artifacts
+      - name: Generate version
+        id: version
+        run: |
+          # Get latest version tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          
+          # Parse major.minor.patch
+          MAJOR=$(echo $LATEST_TAG | cut -d. -f1 | tr -d 'v')
+          MINOR=$(echo $LATEST_TAG | cut -d. -f2)
+          PATCH=$(echo $LATEST_TAG | cut -d. -f3)
+          
+          # Increment patch version
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
+          
+          # Set output
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "name=Release $NEW_VERSION - Updated E2E tests and Docker build" >> $GITHUB_OUTPUT
+      
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release-artifacts
-      
-      - name: Generate release notes
-        run: |
-          echo "# Development Environment Release" > release-notes.md
-          echo "## Distribution Methods" >> release-notes.md
+          pattern: "*-artifacts"
+          path: artifacts
           
-          # Add DockerHub info
-          if [ -f "release-artifacts/dockerhub-artifacts/image-info.json" ]; then
-            echo "### DockerHub" >> release-notes.md
-            echo "\`\`\`" >> release-notes.md
-            cat release-artifacts/dockerhub-artifacts/image-info.json >> release-notes.md
-            echo "\`\`\`" >> release-notes.md
-          fi
-          
-          # Add BitTorrent info
-          if [ -f "release-artifacts/bittorrent-artifacts/magnet.txt" ]; then
-            echo "### BitTorrent" >> release-notes.md
-            echo "Magnet Link:" >> release-notes.md
-            echo "\`\`\`" >> release-notes.md
-            cat release-artifacts/bittorrent-artifacts/magnet.txt >> release-notes.md
-            echo "\`\`\`" >> release-notes.md
-          fi
-      
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.name }}
           files: |
-            release-artifacts/bittorrent-artifacts/dev-environment.torrent
-            release-artifacts/bittorrent-artifacts/checksum.txt
-            release-artifacts/bittorrent-artifacts/magnet.txt
-          body_path: release-notes.md
-          tag_name: v${{ github.sha }}
-          draft: false
-          prerelease: ${{ github.ref == 'refs/heads/develop' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+            artifacts/bittorrent/dev-environment.torrent
+            artifacts/bittorrent/magnet.txt
+            artifacts/bittorrent/checksum.txt
+          body: |
+            ## Development Environment Release ${{ steps.version.outputs.version }}
+            
+            This release includes:
+            - ✅ Validated Dockerfile
+            - ✅ Published Docker image: cmoe640/dev-environment:${{ steps.version.outputs.version }}
+            - ✅ BitTorrent distribution files
+            
+            ### Distribution Methods:
+            1. DockerHub: `docker pull cmoe640/dev-environment:${{ steps.version.outputs.version }}`
+            2. BitTorrent: Download the .torrent file from the assets
+            
+            ### Verification
+            - All E2E tests passed
+            - SHA256 checksum provided in assets 

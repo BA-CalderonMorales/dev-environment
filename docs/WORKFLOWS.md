@@ -1,87 +1,23 @@
-# Workflow Architecture
+# Workflow Documentation
 
 ## Overview
-This repository uses GitHub Actions workflows for building, testing, and distributing the development environment. Each distribution method has its own workflow, with an additional E2E integration test workflow that runs after successful builds.
+Our GitHub Actions workflows automate testing, building, and releasing the development environment.
 
-## Workflow Diagram
-```mermaid
-graph TD
-    subgraph "Primary Workflows"
-        A[Push to develop/main] --> B[Distribution Workflows]
-        B --> C1[DockerHub Workflow]
-        B --> C2[BitTorrent Workflow]
-        
-        C1 -->|Success| D[E2E Integration Tests]
-        C2 -->|Success| D
-        D -->|Success| E[Create Release]
-    end
+## Workflow Components
 
-    subgraph "DockerHub Workflow"
-        C1 --> C1[Build Image]
-        C1 --> C2[Push to DockerHub]
-        C2 --> C3[Verify Push]
-    end
+### Toolchain Setup
+- Uses stable Rust toolchain
+- Captures version information for debugging:
+  ```bash
+  rustc --version   # Rust compiler version
+  cargo --version   # Cargo package manager version
+  rustup --version  # Toolchain manager version
+  ```
 
-    subgraph "BitTorrent Workflow"
-        C2 --> D1[Build Image]
-        D1 --> D2[Create Torrent]
-        D2 --> D3[Create Release]
-        D3 --> D4[Setup Seeding]
-    end
-
-    subgraph "E2E Tests"
-        D --> E1[Test DockerHub]
-        D --> E2[Test BitTorrent]
-        D --> E3[Test Distribution Switch]
-    end
-```
-
-## Workflow Triggers
-
-### DockerHub Build and Push
-- **Triggers on changes to:**
-  - `distributions/dockerhub/**`
-  - `startup/**`
-  - `.github/workflows/**`
-  - `docs/**`
-- **Main Jobs:**
-  1. Build Docker image
-  2. Push to DockerHub
-  3. Verify accessibility
-
-### BitTorrent Build and Seed
-- **Triggers on changes to:**
-  - `distributions/bittorrent/**`
-  - `distributions/dockerhub/Dockerfile`
-  - `startup/**`
-  - `.github/workflows/**`
-- **Main Jobs:**
-  1. Build Docker image
-  2. Create torrent file
-  3. Generate magnet link
-  4. Create GitHub release
-  5. Setup seeding
-
-### E2E Integration Tests
-- **Triggers after:**
-  - Successful completion of either distribution workflow
-- **Main Jobs:**
-  1. Run creator workflow tests
-     - Dockerfile validation
-     - Distribution creation
-     - BitTorrent generation
-  2. Run user workflow tests
-     - DockerHub installation
-     - BitTorrent installation
-     - IDE integration
-     - Development workflow verification
-  3. Generate test report
-
-## Execution Order and Dependencies
+### Distribution Workflows
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant G as GitHub
+    participant G as GitHub Actions
     participant D as DockerHub Flow
     participant B as BitTorrent Flow
     participant E as E2E Tests
@@ -100,14 +36,20 @@ sequenceDiagram
 ## Common Workflow States
 | State | Description | Next Action |
 |-------|-------------|-------------|
-| ✅ Success | All jobs completed | None needed |
+| ✅ Success | All jobs completed | Release creation |
 | ❌ Failure | One or more jobs failed | Check specific job logs |
 | ⏳ Waiting | Waiting for other workflow | Monitor dependencies |
 | ⏭️ Skipped | Path conditions not met | None needed |
 
+## Version Control
+- Semantic versioning (MAJOR.MINOR.PATCH)
+- Automatic patch version increment on successful tests
+- Version format: `vX.Y.Z` (e.g., v0.1.0)
+- Release names include version and changes
+
 ## Debugging Workflows
 - Check the Actions tab for specific workflow runs
-- Each job has detailed logs
+- Each job has detailed logs with toolchain versions
 - Failed steps are clearly marked
 - Environment and secret issues show in logs
 
