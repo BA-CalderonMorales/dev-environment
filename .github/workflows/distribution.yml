@@ -136,7 +136,7 @@ jobs:
         run: |
           cd e2e
           cargo run --release -- creator \
-            --dockerfile "../distributions/dockerhub/Dockerfile" \
+            --dockerfile "$(pwd)/../distributions/dockerhub/Dockerfile" \
             --dockerhub-repo "cmoe640/dev-environment"
             
       - name: Run User Tests
