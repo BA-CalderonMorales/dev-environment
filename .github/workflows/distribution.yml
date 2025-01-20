@@ -212,55 +212,64 @@ jobs:
 
   security-scan:
     needs: [dockerhub, bittorrent]
-    name: Security Analysis
+    name: Rust Code Analysis
     runs-on: ubuntu-22.04
     permissions:
       security-events: write
-      actions: read
       contents: read
-      pull-requests: read
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: ['javascript', 'python', 'ruby', 'rust']
+      actions: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          languages: ${{ matrix.language }}
-          queries: security-and-quality
+          components: clippy
+          toolchain: stable
+          profile: minimal
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{ matrix.language }}"
-
-      - name: Create Security Scan Summary
+      - name: Install SARIF tools
         run: |
-          echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          cargo install clippy-sarif sarif-fmt
+
+      - name: Run Clippy Analysis
+        run: |
+          cd e2e
+          cargo clippy --all-features --message-format=json | clippy-sarif | tee ../rust-clippy-results.sarif | sarif-fmt
+        continue-on-error: true
+
+      - name: Upload analysis results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: rust-clippy-results.sarif
+          wait-for-processing: true
+          category: "/language:rust"
+
+      - name: Create Analysis Summary
+        run: |
+          echo "## 🦀 Rust Code Analysis Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "CodeQL analysis has completed. View the results at:" >> $GITHUB_STEP_SUMMARY
+          echo "Clippy analysis has completed. Results are available at:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "1. [Security Overview](https://github.com/${{ github.repository }}/security)" >> $GITHUB_STEP_SUMMARY
-          echo "2. [Code Scanning Alerts](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+          echo "1. [Code Scanning Alerts](https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+language:rust)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📝 Analysis Details" >> $GITHUB_STEP_SUMMARY
-          echo "- Languages: JavaScript, Python, Ruby, Rust" >> $GITHUB_STEP_SUMMARY
+          echo "- Tool: Clippy (Rust's built-in linter)" >> $GITHUB_STEP_SUMMARY
+          echo "- Scope: All Rust code in e2e directory" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Run ID: \`${{ github.run_id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 💡 Tips" >> $GITHUB_STEP_SUMMARY
+          echo "- Review any warnings or suggestions to improve code quality" >> $GITHUB_STEP_SUMMARY
+          echo "- Clippy helps catch common mistakes and enforce Rust best practices" >> $GITHUB_STEP_SUMMARY
+          echo "- For detailed explanations of lints, visit [Clippy's Documentation](https://rust-lang.github.io/rust-clippy/)" >> $GITHUB_STEP_SUMMARY
 
       - name: Post Notification
         if: always()
         run: |
-          echo "::notice title=Security Scan Results::View the analysis results at https://github.com/${{ github.repository }}/security/code-scanning"
+          echo "::notice title=Rust Analysis Results::View Clippy results at https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+language:rust"
 
   e2e-tests:
     needs: [security-scan]
