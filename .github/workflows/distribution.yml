@@ -166,61 +166,44 @@ jobs:
             --torrent-file "../artifacts/bittorrent/dev-environment.torrent" \
             --checksum-file "../artifacts/bittorrent/checksum.txt"
 
-  create-release:
-    needs: e2e-tests
-    if: |
-      success() && 
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+  create_release:
+    needs: [dockerhub, bittorrent]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
-      - name: Generate version
-        id: version
+      - name: Set release info
+        id: release_info
         run: |
-          # Get latest version tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          
-          # Parse major.minor.patch
-          MAJOR=$(echo $LATEST_TAG | cut -d. -f1 | tr -d 'v')
-          MINOR=$(echo $LATEST_TAG | cut -d. -f2)
-          PATCH=$(echo $LATEST_TAG | cut -d. -f3)
-          
-          # Increment patch version
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
-          
-          # Set output
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "name=Release $NEW_VERSION - Updated E2E tests and Docker build" >> $GITHUB_OUTPUT
-      
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "*-artifacts"
-          path: artifacts
-          
+          if [[ ${{ github.ref }} == refs/heads/develop ]]; then
+            echo "version=$(date +'%Y.%m.%d')-beta" >> $GITHUB_OUTPUT
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "release_type=Beta Release" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "release_type=Stable Release" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: ${{ steps.version.outputs.name }}
-          files: |
-            artifacts/bittorrent/dev-environment.torrent
-            artifacts/bittorrent/magnet.txt
-            artifacts/bittorrent/checksum.txt
+          tag_name: ${{ steps.release_info.outputs.version }}
+          name: "${{ steps.release_info.outputs.release_type }} ${{ steps.release_info.outputs.version }}"
           body: |
-            ## Development Environment Release ${{ steps.version.outputs.version }}
+            ## ${{ steps.release_info.outputs.release_type }}
             
-            This release includes:
-            - ✅ Validated Dockerfile
-            - ✅ Published Docker image: cmoe640/dev-environment:${{ steps.version.outputs.version }}
-            - ✅ BitTorrent distribution files
+            ### Changes
+            ${{ github.event.head_commit.message }}
             
-            ### Distribution Methods:
-            1. DockerHub: `docker pull cmoe640/dev-environment:${{ steps.version.outputs.version }}`
-            2. BitTorrent: Download the .torrent file from the assets
-            
-            ### Verification
-            - All E2E tests passed
-            - SHA256 checksum provided in assets 
+            ### Distribution Methods
+            - DockerHub: `cmoe640/dev-environment:${{ steps.release_info.outputs.version }}`
+            - BitTorrent: See attached files
+          prerelease: ${{ steps.release_info.outputs.is_prerelease }}
+          files: |
+            distributions/bittorrent/dev-environment.torrent
+            distributions/bittorrent/magnet.txt
+            distributions/bittorrent/checksum.txt
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
