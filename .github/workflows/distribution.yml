@@ -219,6 +219,7 @@ jobs:
       packages: read
       actions: read
       contents: read
+      pull-requests: read
 
     strategy:
       fail-fast: false
@@ -228,17 +229,23 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           queries: security-extended,security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
+          setup-python-dependencies: false
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{matrix.language}}"
+          upload: always
+          wait-for-processing: true
 
       - name: Create Security Scan Summary
         run: |
@@ -246,25 +253,39 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "The security scan has completed. View the results at:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "1. [Security Overview](https://github.com/${{ github.repository }}/security)" >> $GITHUB_STEP_SUMMARY
-          echo "2. [Code Scanning Alerts](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+          echo "1. [Code Scanning Results](https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+branch:${{ github.ref_name }})" >> $GITHUB_STEP_SUMMARY
+          echo "2. [Security Overview](https://github.com/${{ github.repository }}/security)" >> $GITHUB_STEP_SUMMARY
           echo "3. [Security Advisories](https://github.com/${{ github.repository }}/security/advisories)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📝 Notes" >> $GITHUB_STEP_SUMMARY
-          echo "- Security alerts may take a few minutes to appear" >> $GITHUB_STEP_SUMMARY
-          echo "- No alerts listed means no issues were found" >> $GITHUB_STEP_SUMMARY
-          echo "- Results are also available in the Security tab of your repository" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch being scanned: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Scan ID: \`${{ github.run_id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- If no results appear immediately, please wait a few minutes for processing" >> $GITHUB_STEP_SUMMARY
+          echo "- No alerts means no security issues were found" >> $GITHUB_STEP_SUMMARY
 
       - name: Post Notification
         if: always()
         run: |
-          echo "::notice title=Security Scan Results::View the latest security scan results at https://github.com/${{ github.repository }}/security/code-scanning"
+          echo "::notice title=Security Scan Results::View the latest security scan results at https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+branch:${{ github.ref_name }}"
 
   e2e-tests:
     needs: [security-scan]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      
+      # Download artifacts from previous jobs
+      - name: Download DockerHub artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dockerhub-artifacts
+          path: artifacts/dockerhub
+
+      - name: Download BitTorrent artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: bittorrent-artifacts
+          path: artifacts/bittorrent
       
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -278,25 +299,12 @@ jobs:
           echo "rustc=$(rustc -V)" >> $GITHUB_OUTPUT
           echo "cargo=$(cargo -V)" >> $GITHUB_OUTPUT
           echo "rustup=$(rustup -V)" >> $GITHUB_OUTPUT
-          
-      - name: Generate version
-        id: version
+
+      - name: Get image info
+        id: image_info
         run: |
-          # Get latest version tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          
-          # Parse major.minor.patch
-          MAJOR=$(echo $LATEST_TAG | cut -d. -f1 | tr -d 'v')
-          MINOR=$(echo $LATEST_TAG | cut -d. -f2)
-          PATCH=$(echo $LATEST_TAG | cut -d. -f3)
-          
-          # Increment patch version
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
-          
-          # Set output
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "name=Release $NEW_VERSION - Updated E2E tests and Docker build" >> $GITHUB_OUTPUT
+          IMAGE_TAG=$(jq -r '.image' artifacts/dockerhub/image-info.json)
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           
       - name: Build e2e tests
         run: |
@@ -314,7 +322,7 @@ jobs:
         run: |
           cd e2e
           cargo run --release -- user \
-            --dockerhub-image "cmoe640/dev-environment:${{ github.sha }}" \
+            --dockerhub-image "${{ steps.image_info.outputs.image_tag }}" \
             --torrent-file "../artifacts/bittorrent/dev-environment.torrent" \
             --checksum-file "../artifacts/bittorrent/checksum.txt"
 
