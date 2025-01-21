@@ -4,7 +4,6 @@ use std::env;
 use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use structopt::StructOpt;
-use which;
 
 // Constants for timeouts
 const DOCKERFILE_TIMEOUT: u64 = 30;
@@ -237,11 +236,11 @@ async fn test_distribution_creation(dockerfile: &Path, repo: &str, logger: &dyn 
         .to_path_buf();
         
     // Change to project root for Docker build context
-    std::env::set_current_dir(&project_root)
+    std::env::set_current_dir(project_root)
         .context("Failed to change to project root directory")?;
     
     let output = StdCommand::new("docker")
-        .args(&[
+        .args([
             "build",
             "-t", &format!("{}:latest", repo),
             "-f", dockerfile.to_str().unwrap(),
@@ -323,7 +322,7 @@ async fn test_ide_integration(logger: &dyn Logger) -> Result<()> {
     let code_path = which::which("code")
         .context("VS Code CLI not found. VS Code must be installed with the 'code' command available in PATH")?;
     
-    let version_check = StdCommand::new(&code_path)
+    let version_check = StdCommand::new(code_path)
         .arg("--version")
         .output()
         .context("Failed to execute VS Code CLI")?;
