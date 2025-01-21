@@ -275,7 +275,7 @@ async fn test_dockerhub_install(image: &str, logger: &dyn Logger) -> Result<()> 
     logger.debug(&format!("Testing DockerHub installation for image: {}", image));
     
     let output = StdCommand::new("docker")
-        .args(&["pull", image])
+        .args(["pull", image])
         .output()
         .context("Failed to pull Docker image")?;
 
