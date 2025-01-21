@@ -228,7 +228,6 @@ jobs:
         with:
           components: clippy
           toolchain: stable
-          profile: minimal
 
       - name: Install SARIF tools
         run: |
