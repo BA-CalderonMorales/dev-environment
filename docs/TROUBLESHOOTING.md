@@ -112,6 +112,7 @@ Error: Insufficient memory/CPU
 3. Restart Docker Desktop
 
 ### 5. Distribution Issues
+
 #### DockerHub Rate Limit
 ```bash
 Error: You have reached your pull rate limit
@@ -120,6 +121,28 @@ Error: You have reached your pull rate limit
 1. Wait for rate limit reset, or
 2. Use BitTorrent distribution instead:
    - Download from [latest release](https://github.com/yourusername/dev-environment/releases/latest)
+
+#### BitTorrent Download Issues
+```bash
+Error: No such file or directory
+```
+**Solution:**
+1. Verify the artifacts directory structure:
+```bash
+ls -l ~/downloads/dev-env/
+```
+
+2. Check file downloads:
+```bash
+# Re-download if missing
+curl -O https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/artifacts/bittorrent/magnet.txt
+curl -O https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/artifacts/bittorrent/checksum.txt
+```
+
+3. Verify magnet link content:
+```bash
+cat magnet.txt
+```
 
 #### BitTorrent Issues
 ```bash

@@ -288,7 +288,7 @@ jobs:
         with:
           name: bittorrent-artifacts
           path: artifacts/bittorrent
-      
+          
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -331,6 +331,9 @@ jobs:
   create_release:
     needs: [e2e-tests]
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       
@@ -370,16 +373,60 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
+          git_config_global: true
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          git_tag_gpgsign: true
+
+      - name: Update Documentation Links
+        env:
+          GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+        run: |
+          # Get latest release tag
+          RELEASE_TAG=$(gh release list -L 1 | cut -f1)
+          
+          # Update Quick Start guide with latest release tag
+          sed -i "s|releases/[^/]*/download/magnet.txt|releases/latest/download/magnet.txt|g" docs/QUICK_START.md
+          
+          git config user.name "Dev Environment Bot"
+          git config user.email "bot@dev-environment.github.com"
+          git add docs/QUICK_START.md
+          git commit -S -m "docs: update distribution links to ${RELEASE_TAG}" || true
+          git push
+
   cleanup-on-failure:
     if: failure()
     needs: [dockerhub, bittorrent, security-scan, e2e-tests, create_release]
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.BOT_GITHUB_TOKEN }}
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
+          git_config_global: true
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          git_tag_gpgsign: true
       
       - name: Revert commit
+        env:
+          GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
         run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          git revert ${{ github.sha }} --no-edit
-          git push 
+          git config user.name "Dev Environment Bot"
+          git config user.email "bot@dev-environment.github.com"
+          git revert --signoff -S ${{ github.sha }} --no-edit
+          git push
