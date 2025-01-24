@@ -4,9 +4,10 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use structopt::StructOpt;
 
-mod common;
-use common::Logger;
+// Import Logger and test_utils from our crate
+use e2e_tests::{Logger, test_utils};
 
+// Remove common module since we're using the lib version
 mod distribution;
 use distribution::DistributionTest;
 
@@ -103,17 +104,29 @@ async fn main() -> Result<()> {
     let logger = init_logging();
     logger.info("🚀 Starting E2E tests...");
 
+    // Remove &** dereferencing, just use &* for Box<dyn Logger>
+        let warnings = test_utils::validate_test_environment(logger.as_ref());
+        if !warnings.is_empty() {
+            println!("\n⚠️  Environment Warnings:");
+            for warning in warnings {
+            println!("  - {}", warning);
+        }
+        println!();
+    }
+
     let cli = Cli::from_args();
     match cli {
         Cli::Creator { dockerfile, dockerhub_repo } => {
             logger.info("🏗️  Running creator workflow tests...");
-            let results = run_creator_tests(&dockerfile, &dockerhub_repo, &*logger).await?;
-            print_test_results(&results, &*logger);
+            // Use &* for Box<dyn Logger>
+            let results = run_creator_tests(&dockerfile, &dockerhub_repo, logger.as_ref()).await?;
+            print_test_results(&results, logger.as_ref());
         },
         Cli::User { dockerhub_image, torrent_file, checksum_file } => {
             logger.info("👤 Running user workflow tests...");
-            let results = run_user_tests(&dockerhub_image, &torrent_file, &checksum_file, &*logger).await?;
-            print_test_results(&results, &*logger);
+            // Use &* for Box<dyn Logger>
+            let results = run_user_tests(&dockerhub_image, &torrent_file, &checksum_file, logger.as_ref()).await?;
+            print_test_results(&results, logger.as_ref());
         }
     }
 

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use anyhow::{anyhow, bail, Context, Result};
-use crate::common::Logger;
+use crate::Logger;
 
 pub struct DistributionTest<'a> {
     logger: &'a dyn Logger,

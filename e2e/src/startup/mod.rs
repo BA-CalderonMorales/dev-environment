@@ -1,6 +1,6 @@
 use std::process::Command;
 use anyhow::{bail, Context, Result};
-use crate::common::Logger;
+use crate::Logger;
 
 pub struct StartupTest<'a> {
     logger: &'a dyn Logger,
