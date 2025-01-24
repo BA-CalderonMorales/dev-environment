@@ -12,7 +12,9 @@ on:
       - 'startup/**'
       - '.github/workflows/**'
       - 'docs/**'
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
   workflow_dispatch:
 
 permissions:
