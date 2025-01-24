@@ -392,6 +392,9 @@ jobs:
       - name: Update Documentation Links
         env:
           GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+          BOT_NAME: ${{ secrets.BOT_NAME }}
+          BOT_DOMAIN: ${{ secrets.BOT_DOMAIN }}
         run: |
           # Get latest release tag
           RELEASE_TAG=$(gh release list -L 1 | cut -f1)
@@ -399,8 +402,8 @@ jobs:
           # Update Quick Start guide with latest release tag
           sed -i "s|releases/[^/]*/download/magnet.txt|releases/latest/download/magnet.txt|g" docs/QUICK_START.md
           
-          git config user.name "Dev Environment Bot"
-          git config user.email "bot@dev-environment.github.com"
+          git config user.name "${BOT_NAME}"
+          git config user.email "${BOT_EMAIL}@${BOT_DOMAIN}"
           git add docs/QUICK_START.md
           git commit -S -m "docs: update distribution links to ${RELEASE_TAG}" || true
           git push
@@ -431,8 +434,11 @@ jobs:
       - name: Revert commit
         env:
           GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+          BOT_NAME: ${{ secrets.BOT_NAME }}
+          BOT_DOMAIN: ${{ secrets.BOT_DOMAIN }}
         run: |
-          git config user.name "Dev Environment Bot"
-          git config user.email "bot@dev-environment.github.com"
+          git config user.name "${BOT_NAME}"
+          git config user.email "${BOT_EMAIL}@${BOT_DOMAIN}"
           git revert --signoff -S ${{ github.sha }} --no-edit
           git push
