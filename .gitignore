@@ -70,8 +70,3 @@ coverage/
 **/CACHEDIR.TAG
 **/target/
 **/Cargo.lock
-!.github/workflows/
-
-
-# Generated after .github/workflows/scripts is generated.
-workflows/*
