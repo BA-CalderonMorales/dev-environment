@@ -14,9 +14,11 @@ on:
       - '.github/workflows/**'
       - 'docs/**'
     branches:
-      - main
-      - beta
       - develop
+      - hotfix/*
+      - bugfix/*
+      - feature/*
+      - documentation/*
   workflow_dispatch:
 
 permissions:
