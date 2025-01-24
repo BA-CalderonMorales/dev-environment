@@ -72,9 +72,5 @@ This distribution method uses DockerHub to provide a consistent development envi
    alias devsh='docker exec -it dev-environment bash'
    ```
 
-## E2E Testing
-Run the test suite to verify your changes:
-```bash
-# From the repository root
-./distributions/dockerhub/e2e/scripts/test.sh
-```
+## Testing
+For end-to-end testing instructions, see [E2E Testing Documentation](../../docs/E2E_TESTS.md).
