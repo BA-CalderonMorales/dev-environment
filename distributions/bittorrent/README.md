@@ -81,13 +81,6 @@ This distribution method uses BitTorrent to distribute the development environme
    alias devsh='docker exec -it dev-environment bash'
    ```
 
-## E2E Testing
-Run the test suite to verify your changes:
-```bash
-# From the repository root
-./distributions/bittorrent/e2e/scripts/test.sh
-```
-
 ## Directory Structure
 ```
 bittorrent/
@@ -98,3 +91,6 @@ bittorrent/
 ├── e2e/               # End-to-end tests
 └── docker-compose.yml # Container configuration
 ```
+
+## Testing
+For end-to-end testing instructions, see [E2E Testing Documentation](../../docs/E2E_TESTS.md).
