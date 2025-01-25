@@ -3,7 +3,9 @@
 A consistent, pre-configured development environment that just works.
 
 ## Getting Started
-- [Quick Start Guide](docs/QUICK_START.md) - Get up and running in minutes
+- [Quick Start Guide](docs/QUICK_START/README.md) - Get up and running in minutes
+  - [DockerHub Setup](docs/QUICK_START/DOCKERHUB.md) - Fastest setup with good internet
+  - [BitTorrent Setup](docs/QUICK_START/BITTORRENT.md) - Better for slow connections
 - [Requirements](docs/REQUIREMENTS.md) - System requirements and prerequisites
 - [Features](docs/FEATURES.md) - Full list of included tools and capabilities
 

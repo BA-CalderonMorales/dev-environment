@@ -3,7 +3,9 @@
 Welcome to our documentation! This guide will help you find the information you need.
 
 ## Getting Started
-- [Quick Start Guide](QUICK_START.md) - Get up and running in minutes
+- [Quick Start Guide](QUICK_START/README.md) - Get up and running in minutes
+  - [DockerHub Setup](QUICK_START/DOCKERHUB.md) - Fastest setup with good internet
+  - [BitTorrent Setup](QUICK_START/BITTORRENT.md) - Better for slow connections
 - [Requirements](REQUIREMENTS.md) - System requirements and prerequisites
 - [Features](FEATURES.md) - Full list of included tools and capabilities
 
@@ -20,20 +22,23 @@ Welcome to our documentation! This guide will help you find the information you 
 ## Documentation Structure
 ```
 docs/
-├── CONTRIBUTING.md     # Contribution guidelines
-├── E2E_TESTS.md       # Test documentation
-├── FAQ.md             # Frequently asked questions
-├── FEATURES.md        # Feature documentation
-├── QUICK_START.md     # Getting started guide
-├── README.md          # This file
-├── REQUIREMENTS.md    # System requirements
-├── TROUBLESHOOTING.md # Common issues and solutions
-├── USAGE_GUIDE.md     # Detailed instructions
-└── WORKFLOWS.md       # CI/CD documentation
+├── CONTRIBUTING.md       # Contribution guidelines
+├── E2E_TESTS.md         # Test documentation
+├── FAQ.md               # Frequently asked questions
+├── FEATURES.md          # Feature documentation
+├── QUICK_START/         # Getting started guides
+│   ├── README.md       # Common setup steps
+│   ├── DOCKERHUB.md    # DockerHub distribution
+│   └── BITTORRENT.md   # BitTorrent distribution
+├── README.md            # This file
+├── REQUIREMENTS.md      # System requirements
+├── TROUBLESHOOTING.md   # Common issues and solutions
+├── USAGE_GUIDE.md       # Detailed instructions
+└── WORKFLOWS.md         # CI/CD documentation
 ```
 
 ## Contributing to Documentation
 We welcome contributions to our documentation! If you find something missing, unclear, or incorrect:
 1. Check our [Contributing Guide](CONTRIBUTING.md)
 2. Submit a pull request with your changes
-3. Help others by contributing to the [FAQ](FAQ.md) 
+3. Help others by contributing to the [FAQ](FAQ.md)
