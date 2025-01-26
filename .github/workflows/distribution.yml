@@ -6,6 +6,7 @@ on:
       - main
       - beta
       - develop
+      - 'pipeline/*'
   pull_request:
     paths:
       - 'distributions/dockerhub/**'
@@ -19,6 +20,7 @@ on:
       - bugfix/*
       - feature/*
       - documentation/*
+      - pipeline/*
   workflow_dispatch:
 
 permissions:
