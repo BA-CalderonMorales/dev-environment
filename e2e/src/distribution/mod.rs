@@ -59,40 +59,25 @@ impl<'a> DistributionTest<'a> {
         Ok(())
     }
 
-    pub async fn test_torrent_creation(&self) -> Result<()> {
-        self.logger.debug("Testing torrent creation");
+    pub async fn test_direct_download(&self, version: &str) -> Result<()> {
+        self.logger.debug(&format!("Testing direct download for version: {}", version));
         
-        // Verify torrent file structure exists
-        let torrent_dir = PathBuf::from("artifacts/bittorrent");
-        if !torrent_dir.exists() {
-            std::fs::create_dir_all(&torrent_dir)
-                .context("Failed to create torrent directory")?;
+        let download_url = match version {
+            "latest" => "https://github.com/BA-CalderonMorales/dev-environment/releases/latest/download/dev-environment-latest.tar",
+            "beta" => "https://github.com/BA-CalderonMorales/dev-environment/releases/download/beta/dev-environment-beta.tar",
+            _ => bail!("Invalid version specified")
+        };
+
+        let output = Command::new("curl")
+            .args(["-L", "-o", &format!("dev-environment-{}.tar", version), download_url])
+            .output()
+            .context("Failed to download image")?;
+
+        if !output.status.success() {
+            bail!("Download failed: {}", String::from_utf8_lossy(&output.stderr));
         }
 
-        self.logger.debug("Torrent creation successful");
-        Ok(())
-    }
-
-    pub async fn test_torrent_install(&self, torrent: &Path, checksum: &Path) -> Result<()> {
-        self.logger.debug(&format!("Testing torrent installation from: {:?}", torrent));
-        
-        // Create directory if it doesn't exist
-        if let Some(parent) = torrent.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create torrent directory")?;
-        }
-
-        // Create empty files for testing if they don't exist
-        if !torrent.exists() {
-            std::fs::write(torrent, "test")
-                .context("Failed to create test torrent file")?;
-        }
-        if !checksum.exists() {
-            std::fs::write(checksum, "test")
-                .context("Failed to create test checksum file")?;
-        }
-
-        self.logger.debug("Torrent installation successful");
+        self.logger.debug("Direct download successful");
         Ok(())
     }
 }

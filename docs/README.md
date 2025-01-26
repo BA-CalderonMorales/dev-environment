@@ -5,7 +5,7 @@ Welcome to our documentation! This guide will help you find the information you 
 ## Getting Started
 - [Quick Start Guide](QUICK_START/README.md) - Get up and running in minutes
   - [DockerHub Setup](QUICK_START/DOCKERHUB.md) - Fastest setup with good internet
-  - [BitTorrent Setup](QUICK_START/BITTORRENT.md) - Better for slow connections
+  - [Direct Download Setup](QUICK_START/DIRECT_DOWNLOAD.md) - Alternative installation method
 - [Requirements](REQUIREMENTS.md) - System requirements and prerequisites
 - [Features](FEATURES.md) - Full list of included tools and capabilities
 

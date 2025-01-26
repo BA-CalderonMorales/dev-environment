@@ -6,7 +6,7 @@ use github_workflow_scripts::{Logger, init_logging, get_logger};
 
 struct ArtifactCheck<'a> {
     docker: bool,
-    bittorrent: bool,
+    direct_download: bool,  // Renamed from bittorrent
     logger: &'a Box<dyn Logger>,
 }
 
@@ -14,7 +14,7 @@ impl<'a> ArtifactCheck<'a> {
     fn new(logger: &'a Box<dyn Logger>) -> Self {
         Self {
             docker: false,
-            bittorrent: false,
+            direct_download: false,  // Renamed from bittorrent
             logger,
         }
     }
@@ -32,7 +32,7 @@ impl<'a> ArtifactCheck<'a> {
         if env::var("GITHUB_ACTIONS").is_err() {
             self.logger.info("🏠 Local development mode - mocking successful artifact check");
             self.docker = true;
-            self.bittorrent = true;
+            self.direct_download = true;
             return Ok(());
         }
 
@@ -63,11 +63,11 @@ impl<'a> ArtifactCheck<'a> {
         }
 
         self.docker = items.iter().any(|a| a.name == "dockerhub-artifacts");
-        self.bittorrent = items.iter().any(|a| a.name == "bittorrent-artifacts");
+        self.direct_download = items.iter().any(|a| a.name == "direct-download-artifacts"); // Updated artifact name
 
         self.logger.debug(&format!(
-            "Artifact presence check:\n  DockerHub: {}\n  BitTorrent: {}",
-            self.docker, self.bittorrent
+            "Artifact presence check:\n  DockerHub: {}\n  Direct Download: {}",
+            self.docker, self.direct_download
         ));
 
         Ok(())
@@ -81,9 +81,9 @@ impl<'a> ArtifactCheck<'a> {
             if self.docker { "Found" } else { "Not Found" }
         ));
         self.logger.info(&format!(
-            "  - BitTorrent: {} ({})",
-            if self.bittorrent { "✅" } else { "❌" },
-            if self.bittorrent { "Found" } else { "Not Found" }
+            "  - Direct Download: {} ({})",
+            if self.direct_download { "✅" } else { "❌" },
+            if self.direct_download { "Found" } else { "Not Found" }
         ));
     }
 }
@@ -144,11 +144,11 @@ async fn main() -> Result<()> {
 
     checker.print_status();
 
-    if !checker.docker || !checker.bittorrent {
+    if !checker.docker || !checker.direct_download {
         checker.logger.warn("❌ Required artifacts are missing");
         anyhow::bail!("Required artifacts are missing");
     }
 
     checker.logger.info("✅ All required artifacts found");
     Ok(())
-} 
+}

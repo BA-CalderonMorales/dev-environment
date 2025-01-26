@@ -21,33 +21,27 @@ handle_dockerhub_distribution() {
     fi
 }
 
-# Function to handle BitTorrent distribution
-handle_bittorrent_distribution() {
-    echo "Downloading via BitTorrent..."
+# Function to handle Direct Download distribution
+handle_direct_download_distribution() {
+    echo "Downloading via Direct Download..."
     
     # Skip if force fail is set
-    if [ "$FORCE_BITTORRENT_FAIL" = "true" ]; then
-        echo "BitTorrent distribution forced to fail"
+    if [ "$FORCE_DIRECT_DOWNLOAD_FAIL" = "true" ]; then
+        echo "Direct Download distribution forced to fail"
         return 1
     fi
     
-    # Check for transmission-cli
-    if ! command -v transmission-cli &> /dev/null; then
-        echo "Installing transmission-cli..."
-        sudo apt-get update && sudo apt-get install -y transmission-cli
-    fi
-
-    # Get latest magnet link and checksum
-    MAGNET_LINK=$(curl -s https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/distributions/bittorrent/magnet.txt)
-    EXPECTED_CHECKSUM=$(curl -s https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/distributions/bittorrent/checksum.txt)
+    # Get latest download URL and checksum
+    DOWNLOAD_URL=$(curl -s https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/distributions/direct/url.txt)
+    EXPECTED_CHECKSUM=$(curl -s https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/distributions/direct/checksum.txt)
     
-    if [ -z "$MAGNET_LINK" ] || [ -z "$EXPECTED_CHECKSUM" ]; then
-        echo "Failed to fetch magnet link or checksum"
+    if [ -z "$DOWNLOAD_URL" ] || [ -z "$EXPECTED_CHECKSUM" ]; then
+        echo "Failed to fetch download URL or checksum"
         return 1
     fi
     
     echo "Starting download..."
-    transmission-cli "$MAGNET_LINK" --download-dir .
+    curl -L -o dev-environment.tar "$DOWNLOAD_URL"
     
     if [ -f "dev-environment.tar" ]; then
         # Verify checksum

@@ -2,7 +2,7 @@
 
 ## Distribution Methods
 - **DockerHub**: Fast, direct downloads
-- **BitTorrent**: Resilient, peer-to-peer distribution
+- **Direct Download**: Alternative installation method
 - **Setup Script**: Automated installation process
 
 ## Development Environment
@@ -58,4 +58,4 @@
 - Comprehensive documentation
 - Troubleshooting guides
 - Community support
-- Regular updates 
+- Regular updates

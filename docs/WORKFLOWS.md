@@ -19,17 +19,17 @@ Our GitHub Actions workflows automate testing, building, and releasing the devel
 sequenceDiagram
     participant G as GitHub Actions
     participant D as DockerHub Flow
-    participant B as BitTorrent Flow
+    participant DD as Direct Download Flow
     participant E as E2E Tests
 
     U->>G: Push Changes
     G->>G: Check Path Changes
     par Distribution Workflows
         G->>D: Start DockerHub Flow
-        G->>B: Start BitTorrent Flow
+        G->>DD: Start Direct Download Flow
     end
     D-->>E: Notify Completion
-    B-->>E: Notify Completion
+    DD-->>E: Notify Completion
     E->>E: Run Integration Tests
 ```
 
@@ -71,7 +71,7 @@ When adding new distribution methods:
 
 ### Directory Structure
 - `.github/workflows/`: All GitHub Actions workflow files
-  - `bittorrent-build-and-seed.yml`: BitTorrent distribution workflow
+  - `direct-download-build.yml`: Direct Download distribution workflow
   - `dockerhub-build-and-push.yml`: DockerHub distribution workflow
   - `e2e-integration-test.yml`: Integration test workflow
   - `create-release.yml`: Release creation workflow
@@ -88,4 +88,4 @@ When adding new distribution methods:
 - Keep workflows focused on a single responsibility
 - Test changes through pull requests
 - Document environment variables and secrets
-- Follow existing patterns for consistency 
+- Follow existing patterns for consistency

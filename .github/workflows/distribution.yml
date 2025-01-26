@@ -9,7 +9,7 @@ on:
   pull_request:
     paths:
       - 'distributions/dockerhub/**'
-      - 'distributions/bittorrent/**'
+      - 'distributions/direct_download/**'
       - 'startup/**'
       - '.github/workflows/**'
       - 'docs/**'
@@ -120,21 +120,21 @@ jobs:
           path: artifacts/dockerhub/
           retention-days: 1
 
-  bittorrent:
+  direct_download:
     runs-on: ubuntu-22.04
     outputs:
       artifact_name: ${{ steps.upload.outputs.artifact_name }}
-      torrent_changed: ${{ steps.check_changes.outputs.changed }}
+      build_changed: ${{ steps.check_changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
       
-      - name: Check for Dockerfile or script changes
+      - name: Check for build changes
         id: check_changes
         run: |
           CHANGED=false
-          if git diff --name-only HEAD^ HEAD | grep -q "distributions/bittorrent/\|startup/"; then
+          if git diff --name-only HEAD^ HEAD | grep -q "distributions/direct_download/\|startup/"; then
             CHANGED=true
           fi
           echo "changed=$CHANGED" >> $GITHUB_OUTPUT
@@ -143,16 +143,16 @@ jobs:
         if: steps.check_changes.outputs.changed == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y transmission-cli
+          sudo apt-get install -y build-essential
 
       - name: Set up Docker layer caching
         if: steps.check_changes.outputs.changed == 'true'
         uses: actions/cache@v3
         with:
-          path: /tmp/.buildx-cache-bittorrent
-          key: ${{ runner.os }}-buildx-bittorrent-${{ github.sha }}
+          path: /tmp/.buildx-cache-direct
+          key: ${{ runner.os }}-buildx-direct-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-buildx-bittorrent-
+            ${{ runner.os }}-buildx-direct-
 
       - name: Set up Docker Buildx
         if: steps.check_changes.outputs.changed == 'true'
@@ -160,64 +160,42 @@ jobs:
       
       - name: Copy startup scripts
         if: steps.check_changes.outputs.changed == 'true'
-        run: cp -r startup distributions/bittorrent/
+        run: cp -r startup distributions/direct_download/
       
-      - name: Build Docker image
-        if: steps.check_changes.outputs.changed == 'true'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./distributions/bittorrent
-          load: true
-          tags: dev-environment:latest
-          cache-from: type=local,src=/tmp/.buildx-cache-bittorrent
-          cache-to: type=local,dest=/tmp/.buildx-cache-bittorrent-new,mode=max
-      
-      - name: Move cache
+      - name: Build package
         if: steps.check_changes.outputs.changed == 'true'
         run: |
-          rm -rf /tmp/.buildx-cache-bittorrent
-          mv /tmp/.buildx-cache-bittorrent-new /tmp/.buildx-cache-bittorrent
-      
-      - name: Create and seed torrent
-        if: steps.check_changes.outputs.changed == 'true'
-        run: |
-          cd distributions/bittorrent
-          docker save dev-environment:latest > dev-environment.tar
-          chmod +x scripts/torrent/create-torrent.sh
-          chmod +x scripts/torrent/generate-magnet.sh
-          ./scripts/torrent/create-torrent.sh
-          ./scripts/torrent/generate-magnet.sh
+          cd distributions/direct_download
+          ./scripts/build.sh
       
       - name: Generate checksum
         if: steps.check_changes.outputs.changed == 'true'
         run: |
-          cd distributions/bittorrent
+          cd distributions/direct_download
           sha256sum dev-environment.tar > checksum.txt
 
       - name: Prepare No-Change Artifacts
         if: steps.check_changes.outputs.changed != 'true'
         run: |
-          mkdir -p artifacts/bittorrent
+          mkdir -p artifacts/direct_download
           echo '{
             "version": "${{ github.sha }}",
             "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'",
             "changes": false,
-            "message": "No changes detected, using existing torrent"
-          }' > artifacts/bittorrent/info.json
+            "message": "No changes detected, using existing package"
+          }' > artifacts/direct_download/info.json
       
       - id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: bittorrent-artifacts
+          name: direct-download-artifacts
           path: |
-            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/bittorrent/dev-environment.tar' || '' }}
-            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/bittorrent/dev-environment.torrent' || '' }}
-            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/bittorrent/checksum.txt' || '' }}
-            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/bittorrent/magnet.txt' || '' }}
-            ${{ steps.check_changes.outputs.changed != 'true' && 'artifacts/bittorrent/info.json' || '' }}
+            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/direct_download/dev-environment.tar' || '' }}
+            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/direct_download/checksum.txt' || '' }}
+            ${{ steps.check_changes.outputs.changed != 'true' && 'artifacts/direct_download/info.json' || '' }}
 
   security-scan:
-    needs: [dockerhub, bittorrent]
+    needs: [dockerhub, direct_download]
     name: Security Scans
     runs-on: ubuntu-22.04
     permissions:
@@ -289,11 +267,11 @@ jobs:
           name: dockerhub-artifacts
           path: artifacts/dockerhub
 
-      - name: Download BitTorrent artifacts
+      - name: Download Direct Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: bittorrent-artifacts
-          path: artifacts/bittorrent
+          name: direct-download-artifacts
+          path: artifacts/direct_download
           
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -331,12 +309,12 @@ jobs:
           cd e2e
           cargo run --release -- user \
             --dockerhub-image "${{ steps.image_info.outputs.image_tag }}" \
-            --torrent-file "../artifacts/bittorrent/dev-environment.torrent" \
-            --checksum-file "../artifacts/bittorrent/checksum.txt"
+            --direct-download-file "../artifacts/direct_download/dev-environment.tar" \
+            --checksum-file "../artifacts/direct_download/checksum.txt"
 
   cleanup-on-failure:
     if: failure()
-    needs: [dockerhub, bittorrent, security-scan, e2e-tests]
+    needs: [dockerhub, direct_download, security-scan, e2e-tests]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
