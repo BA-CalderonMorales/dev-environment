@@ -113,47 +113,27 @@ Error: Insufficient memory/CPU
 
 ### 5. Distribution Issues
 
-#### DockerHub Rate Limit
+#### Download Issues
 ```bash
-Error: You have reached your pull rate limit
+Error: Could not resolve host
 ```
 **Solution:**
-1. Wait for rate limit reset, or
-2. Use BitTorrent distribution instead:
-   - Download from [latest release](https://github.com/yourusername/dev-environment/releases/latest)
-
-#### BitTorrent Download Issues
+1. Check your internet connection
+2. Try alternate download command:
 ```bash
-Error: No such file or directory
-```
-**Solution:**
-1. Verify the artifacts directory structure:
-```bash
-ls -l ~/downloads/dev-env/
+wget https://github.com/BA-CalderonMorales/dev-environment/releases/latest/download/dev-environment-latest.tar
 ```
 
-2. Check file downloads:
+#### Docker Load Issues
 ```bash
-# Re-download if missing
-curl -O https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/artifacts/bittorrent/magnet.txt
-curl -O https://raw.githubusercontent.com/BA-CalderonMorales/dev-environment/main/artifacts/bittorrent/checksum.txt
-```
-
-3. Verify magnet link content:
-```bash
-cat magnet.txt
-```
-
-#### BitTorrent Issues
-```bash
-Error: Checksum verification failed
+Error: invalid tar header
 ```
 **Solution:**
 1. Delete partial download
-2. Re-download torrent file
-3. Verify using:
+2. Re-download the file
+3. Verify the download completed:
 ```bash
-sha256sum -c checksum.txt
+ls -lh dev-environment-latest.tar
 ```
 
 ## Terminal-Specific Issues

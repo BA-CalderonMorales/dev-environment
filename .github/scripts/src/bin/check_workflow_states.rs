@@ -79,7 +79,7 @@ impl WorkflowStateChecker {
     }
 
     fn check_required_artifacts(&self, artifacts: &[WorkflowArtifact]) -> bool {
-        let required = ["dockerhub-artifacts", "bittorrent-artifacts"];
+        let required = ["dockerhub-artifacts", "direct-download-artifacts"];  // Updated artifact names
         let found: Vec<_> = artifacts.iter()
             .map(|a| a.name.as_str())
             .filter(|name| required.contains(name))

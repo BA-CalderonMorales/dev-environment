@@ -55,10 +55,10 @@ Focus on core development environment stability and essential tools.
   - [ ] GitHub Actions
 
 ## 5. Distribution & Documentation
-- [ ] BitTorrent Distribution
+- [ ] Direct Download Distribution
   - [ ] Package verification
-  - [ ] Seeding strategy
-  - [ ] Download instructions
+  - [ ] Download infrastructure
+  - [ ] Installation instructions
 - [ ] Documentation
   - [ ] Quick start guide
   - [ ] Advanced usage

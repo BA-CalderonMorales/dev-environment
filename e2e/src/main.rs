@@ -20,30 +20,35 @@ use startup::StartupTest;
 // Constants for timeouts
 const DOCKERFILE_TIMEOUT: u64 = 30;
 const DISTRIBUTION_TIMEOUT: u64 = 300;
-const TORRENT_TIMEOUT: u64 = 60;
 const DOCKERHUB_TIMEOUT: u64 = 300;
+const DIRECT_DOWNLOAD_TIMEOUT: u64 = 180;
 const IDE_TIMEOUT: u64 = 30;
 const DEV_TOOLS_TIMEOUT: u64 = 60;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "e2e-tests")]
 enum Cli {
+
     #[structopt(name = "creator")]
     Creator {
+
         #[structopt(long)]
         dockerfile: PathBuf,
         #[structopt(long)]
         dockerhub_repo: String,
+        #[structopt(long)]
+        download_url: String,
     },
+
     #[structopt(name = "user")]
     User {
+
         #[structopt(long)]
         dockerhub_image: String,
         #[structopt(long)]
-        torrent_file: PathBuf,
-        #[structopt(long)]
-        checksum_file: PathBuf,
+        download_url: String,
     },
+
 }
 
 struct ConsoleLogger {
@@ -116,24 +121,36 @@ async fn main() -> Result<()> {
 
     let cli = Cli::from_args();
     match cli {
-        Cli::Creator { dockerfile, dockerhub_repo } => {
+
+        Cli::Creator { dockerfile, dockerhub_repo, download_url } => {
             logger.info("🏗️  Running creator workflow tests...");
             // Use &* for Box<dyn Logger>
-            let results = run_creator_tests(&dockerfile, &dockerhub_repo, logger.as_ref()).await?;
+            let results = run_creator_tests(
+                &dockerfile,
+                &dockerhub_repo,
+                &download_url,
+                logger.as_ref()
+            ).await?;
             print_test_results(&results, logger.as_ref());
         },
-        Cli::User { dockerhub_image, torrent_file, checksum_file } => {
+
+        Cli::User { dockerhub_image, download_url } => {
             logger.info("👤 Running user workflow tests...");
             // Use &* for Box<dyn Logger>
-            let results = run_user_tests(&dockerhub_image, &torrent_file, &checksum_file, logger.as_ref()).await?;
+            let results = run_user_tests(
+                &dockerhub_image, 
+                &download_url,
+                logger.as_ref()
+            ).await?;
             print_test_results(&results, logger.as_ref());
         }
+
     }
 
     Ok(())
 }
 
-async fn run_creator_tests(dockerfile: &Path, repo: &str, logger: &dyn Logger) -> Result<Vec<TestResult>> {
+async fn run_creator_tests(dockerfile: &Path, repo: &str, download_url: &str, logger: &dyn Logger) -> Result<Vec<TestResult>> {
     logger.info("Running creator workflow tests...");
     let mut results = Vec::new();
     
@@ -146,16 +163,16 @@ async fn run_creator_tests(dockerfile: &Path, repo: &str, logger: &dyn Logger) -
         run_test("Distribution Creation", 
             distribution_test.test_distribution_creation(dockerfile, repo).await, 
             DISTRIBUTION_TIMEOUT).await,
-        run_test("Torrent Creation", 
-            distribution_test.test_torrent_creation().await, 
-            TORRENT_TIMEOUT).await,
+        run_test("Direct Download Package", 
+            distribution_test.test_direct_download(download_url).await, 
+            DIRECT_DOWNLOAD_TIMEOUT).await,
     ];
 
     results.extend(tests);
     Ok(results)
 }
 
-async fn run_user_tests(image: &str, torrent: &Path, checksum: &Path, logger: &dyn Logger) -> Result<Vec<TestResult>> {
+async fn run_user_tests(image: &str, download_url: &str, logger: &dyn Logger) -> Result<Vec<TestResult>> {
     logger.info("Running user workflow tests...");
     let mut results = Vec::new();
 
@@ -165,9 +182,9 @@ async fn run_user_tests(image: &str, torrent: &Path, checksum: &Path, logger: &d
         run_test("DockerHub Installation", 
             distribution_test.test_dockerhub_install(image).await, 
             DOCKERHUB_TIMEOUT).await,
-        run_test("Torrent Installation", 
-            distribution_test.test_torrent_install(torrent, checksum).await, 
-            TORRENT_TIMEOUT).await,
+        run_test("Direct Download Installation", 
+            distribution_test.test_direct_download(download_url).await, 
+            DIRECT_DOWNLOAD_TIMEOUT).await,
         run_test("IDE Integration", 
             test_ide_integration(logger).await, 
             IDE_TIMEOUT).await,

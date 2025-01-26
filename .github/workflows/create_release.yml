@@ -41,12 +41,11 @@ jobs:
             
             ### Distribution Methods
             - DockerHub: `cmoe640/dev-environment:${{ steps.release_info.outputs.version }}`
-            - BitTorrent: See attached files
+            - Direct Download: See release assets below
           prerelease: ${{ steps.release_info.outputs.is_prerelease }}
           files: |
-            distributions/bittorrent/dev-environment.torrent
-            distributions/bittorrent/magnet.txt
-            distributions/bittorrent/checksum.txt
+            artifacts/direct_download/dev-environment.tar
+            artifacts/direct_download/checksum.txt
           draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -71,8 +70,8 @@ jobs:
           # Get latest release tag
           RELEASE_TAG=$(gh release list -L 1 | cut -f1)
           
-          # Update Quick Start guide with latest release tag
-          sed -i "s|releases/[^/]*/download/magnet.txt|releases/latest/download/magnet.txt|g" docs/QUICK_START.md
+          # Update Quick Start guide with latest direct download link
+          sed -i "s|releases/[^/]*/download/|releases/latest/download/|g" docs/QUICK_START.md
           
           git config user.name "${BOT_NAME}"
           git config user.email "${BOT_EMAIL}@${BOT_DOMAIN}"

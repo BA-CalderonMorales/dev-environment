@@ -8,7 +8,7 @@ End-to-End (E2E) tests ensure our development environment works correctly across
 
 All E2E tests are now located in the `e2e/` directory at the root of the repository. The tests are implemented in Rust and organized into the following modules:
 
-- `distribution/`: Tests for different distribution methods (DockerHub, BitTorrent, etc.)
+- `distribution/`: Tests for different distribution methods (DockerHub, Direct Download)
 - `startup/`: Tests for the environment startup process
 - `ide/`: Tests for IDE integrations
 
@@ -69,4 +69,4 @@ The intent of this E2E testing framework is to:
 - Ensure consistency across different distribution methods
 - Catch regressions and integration issues
 - Provide a safety net for refactoring and changes
-- Serve as living documentation of key workflows 
+- Serve as living documentation of key workflows

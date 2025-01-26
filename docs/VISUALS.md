@@ -4,8 +4,8 @@
 ```mermaid
 graph TD
     A[User] --> B{Distribution Choice}
-    B -->|Standard| C[DockerHub]
-    B -->|P2P| D[BitTorrent]
+    B -->|Primary| C[DockerHub]
+    B -->|Alternative| D[Direct Download]
     C --> E[Development Environment]
     D --> E
     E --> F[Your Projects]
@@ -20,4 +20,4 @@ graph LR
     D --> E[Node.js]
     D --> F[Go]
     D --> G[Rust]
-``` 
+```

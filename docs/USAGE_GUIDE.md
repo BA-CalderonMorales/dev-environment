@@ -1,32 +1,37 @@
 # Usage Guide
 
 ## Overview
-This development environment provides a consistent, tested workspace using either DockerHub or BitTorrent distribution methods.
+This development environment provides a consistent, tested workspace using either DockerHub or direct download distribution methods.
 
 ## Getting Started
 
 ### Prerequisites
 - Docker Engine v20.10.0 or higher
 - Git
-- (Optional) BitTorrent client for alternative distribution
 
 ### Installation Methods
 
-#### 1. DockerHub (Recommended)
-```bash
-# Pull the latest release
-docker pull cmoe640/dev-environment:latest
+#### Method 1: DockerHub (Recommended)
+The fastest way to get started is using our DockerHub distribution:
 
-# Or pull a specific version
-docker pull cmoe640/dev-environment:v0.1.0
+```bash
+docker pull cmoe640/dev-environment:latest
+docker run -it cmoe640/dev-environment
 ```
 
-#### 2. BitTorrent Distribution
-1. Download the .torrent file from the latest release
-2. Use your preferred torrent client
-3. Verify the checksum:
+#### Method 2: Direct Download
+For situations where DockerHub access is limited:
+
+1. Download the package from our release page
+2. Verify the checksum
+3. Run the installation script
+
 ```bash
-sha256sum -c checksum.txt
+# Verify package
+sha256sum dev-environment.tar.gz
+
+# Install
+./install.sh
 ```
 
 ## Using the Environment
@@ -35,9 +40,6 @@ sha256sum -c checksum.txt
 ```bash
 # Start with default settings
 ./startup/start-dev.sh
-
-# Start with BitTorrent distribution
-PREFER_BITTORRENT=true ./startup/start-dev.sh
 ```
 
 ### Development Workflow
@@ -54,4 +56,4 @@ PREFER_BITTORRENT=true ./startup/start-dev.sh
 ## Next Steps
 - Read the [Contributing Guide](CONTRIBUTING.md) to help improve the project
 - Check [Troubleshooting](TROUBLESHOOTING.md) for common issues
-- Explore [E2E Tests](E2E_TESTS.md) for testing details 
+- Explore [E2E Tests](E2E_TESTS.md) for testing details
