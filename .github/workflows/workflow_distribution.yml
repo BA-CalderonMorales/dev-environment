@@ -1,0 +1,142 @@
+name: Distribution
+
+on:
+  push:
+    branches: 
+      - main
+      - beta
+      - develop
+      - 'pipeline/*'
+  pull_request:
+    paths:
+      - 'distributions/dockerhub/**'
+      - 'distributions/direct_download/**'
+      - 'startup/**'
+      - '.github/workflows/**'
+      - 'docs/**'
+    branches:
+      - develop
+      - hotfix/*
+      - bugfix/*
+      - feature/*
+      - documentation/*
+      - pipeline/*
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force Docker image rebuild'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  actions: write
+  security-events: write
+  pull-requests: write
+  checks: write
+  deployments: write
+  issues: write
+  repository-projects: write
+  statuses: write
+
+jobs:
+  validate_branch:
+    uses: ./.github/workflows/job_validate_branch.yml
+
+  detect_changes:
+    needs: validate_branch
+    uses: ./.github/workflows/job_detect_changes.yml
+
+  setup_docker:
+    needs: [validate_branch, detect_changes]
+    uses: ./.github/workflows/job_setup_docker.yml
+    with:
+      environment: ${{ needs.validate_branch.outputs.environment }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  dockerhub:
+    needs: [validate_branch, detect_changes, setup_docker]
+    if: |
+      needs.detect_changes.outputs.docker_changed == 'true' || 
+      needs.setup_docker.outputs.base_image_ready != 'true' ||
+      inputs.force_rebuild == true
+    uses: ./.github/workflows/job_dockerhub_build.yml
+    with:
+      environment: ${{ needs.validate_branch.outputs.environment }}
+      base_image: ${{ needs.setup_docker.outputs.image_tag }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  direct_download:
+    needs: [detect_changes, setup_docker, dockerhub]
+    uses: ./.github/workflows/job_direct_download_build.yml
+    with:
+      image_changed: ${{ needs.dockerhub.outputs.image_changed }}
+
+  e2e_tests:
+    needs: [validate_branch, detect_changes, setup_docker, dockerhub, direct_download]
+    if: always() # Run even if dockerhub job is skipped
+    uses: ./.github/workflows/job_e2e_tests.yml
+    secrets: inherit
+    with:
+      docker_changed: ${{ needs.detect_changes.outputs.docker_changed }}
+      test_image: ${{ format('cmoe640/dev-environment:{0}', 
+        contains(github.ref, 'refs/heads/pipeline/') && 'pipeline' || needs.validate_branch.outputs.environment) }}
+      environment: ${{ contains(github.ref, 'refs/heads/pipeline/') && 'pipeline' || needs.validate_branch.outputs.environment }}
+
+  security_scan:
+    needs: e2e_tests
+    if: always() # Run security scans regardless
+    uses: ./.github/workflows/job_security_scan.yml
+
+  release_artifacts:
+    if: |
+      success() && 
+      needs.detect_changes.outputs.docker_changed == 'true' &&
+      (github.ref == 'refs/heads/main' || 
+       github.ref == 'refs/heads/beta' || 
+       github.ref == 'refs/heads/develop')
+    needs: [detect_changes, dockerhub, e2e_tests, security_scan]
+    uses: ./.github/workflows/job_release_artifacts.yml
+    secrets:
+      RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup_on_failure:
+    if: |
+      failure() && (
+        github.ref == 'refs/heads/develop' ||
+        github.ref == 'refs/heads/beta' ||
+        github.ref == 'refs/heads/main'
+      )
+    needs: [dockerhub, e2e_tests, security_scan, release_artifacts]
+    uses: ./.github/workflows/job_cleanup_on_failure.yml
+    secrets:
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+      BOT_GPG_PRIVATE_KEY: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+      BOT_GPG_PASSPHRASE: ${{ secrets.BOT_GPG_PASSPHRASE }}
+      BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+      BOT_NAME: ${{ secrets.BOT_NAME }}
+      BOT_DOMAIN: ${{ secrets.BOT_DOMAIN }}
+
+  notify_success:
+    needs: [validate_branch, dockerhub, e2e_tests, security_scan]
+    if: success()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Create Summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Environment: ${{ needs.validate_branch.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "### Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Tags:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`cmoe640/dev-environment:${{ needs.validate_branch.outputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`cmoe640/dev-environment:$(date +%Y.%m.%d)\`" >> $GITHUB_STEP_SUMMARY
+          
+          echo "::notice::Deployment to ${{ needs.validate_branch.outputs.environment }} completed successfully!"

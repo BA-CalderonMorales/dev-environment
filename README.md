@@ -28,5 +28,7 @@ See our [download guide](docs/QUICK_START/DOWNLOAD.md) for detailed instructions
 - [FAQ](docs/FAQ.md) - Frequently asked questions
 
 ## Contributing
+
 - [Contributing Guide](docs/CONTRIBUTING.md) - How to contribute to this project
+
 - [Code of Conduct](CODE_OF_CONDUCT.md) - Community guidelines

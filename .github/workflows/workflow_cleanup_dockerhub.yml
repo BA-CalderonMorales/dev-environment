@@ -1,0 +1,44 @@
+name: Cleanup DockerHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual deletions)'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: List and Clean Images
+        run: |
+          # List all tags
+          echo "Current tags in repository:"
+          curl -s "https://hub.docker.com/v2/repositories/cmoe640/dev-environment/tags/?page_size=100" | jq -r '.results[].name'
+          
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            echo "DRY RUN - No deletions will be performed"
+            exit 0
+          fi
+
+          # Delete all tags except protected ones
+          PROTECTED_TAGS="latest|stable|beta|dev"
+          for tag in $(curl -s "https://hub.docker.com/v2/repositories/cmoe640/dev-environment/tags/?page_size=100" | jq -r '.results[].name'); do
+            if ! echo "$tag" | grep -E "^($PROTECTED_TAGS)$" > /dev/null; then
+              echo "Deleting tag: $tag"
+              curl -s -X DELETE \
+                -H "Authorization: Bearer ${{ secrets.DOCKERHUB_TOKEN }}" \
+                "https://hub.docker.com/v2/repositories/cmoe640/dev-environment/tags/$tag/"
+            else
+              echo "Keeping protected tag: $tag"
+            fi
+          done

@@ -1,0 +1,58 @@
+name: Security Scan
+
+on:
+  workflow_call:
+
+permissions:
+  security-events: write
+  contents: read
+  actions: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          toolchain: stable
+
+      - name: Install SARIF tools
+        run: |
+          cargo install clippy-sarif sarif-fmt
+
+      - name: Run Clippy Analysis
+        run: |
+          cd e2e
+          cargo clippy --all-features --message-format=json | clippy-sarif | tee ../rust-clippy-results.sarif | sarif-fmt
+        continue-on-error: true
+
+      - name: Upload analysis results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: rust-clippy-results.sarif
+          wait-for-processing: true
+          category: "/language:rust"
+
+      - name: Create Analysis Summary
+        run: |
+          echo "## 🦀 Rust Code Analysis Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Clippy analysis has completed. Results are available at:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. [Code Scanning Alerts](https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+language:rust)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 Analysis Details" >> $GITHUB_STEP_SUMMARY
+          echo "- Tool: Clippy (Rust's built-in linter)" >> $GITHUB_STEP_SUMMARY
+          echo "- Scope: All Rust code in e2e directory" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Run ID: \`${{ github.run_id }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Post Notification
+        if: always()
+        run: |
+          echo "::notice title=Rust Analysis Results::View Clippy results at https://github.com/${{ github.repository }}/security/code-scanning?query=is:open+language:rust"

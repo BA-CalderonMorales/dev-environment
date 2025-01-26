@@ -1,0 +1,48 @@
+name: Release Artifacts
+
+on:
+  workflow_call:
+    secrets:
+      RELEASE_TOKEN:
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download DockerHub artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dockerhub-artifacts
+          path: artifacts/dockerhub
+
+      - name: Download Direct Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: direct-download-artifacts
+          path: artifacts/direct_download
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          VERSION=$(date +%Y.%m.%d)
+          gh release create $VERSION \
+            --title "Release $VERSION" \
+            --notes "Automated release for version $VERSION" \
+            artifacts/direct_download/dev-environment.tar \
+            artifacts/direct_download/checksum.txt
+
+      - name: Create Release Summary
+        run: |
+          echo "## 📦 Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Release Details" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: $(date +%Y.%m.%d)" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker Image: \`$(jq -r '.image' artifacts/dockerhub/image-info.json)\`" >> $GITHUB_STEP_SUMMARY

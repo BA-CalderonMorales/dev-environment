@@ -1,0 +1,107 @@
+name: Direct Download Build
+
+on:
+  workflow_call:
+    inputs:
+      image_changed:
+        required: true
+        type: string
+    outputs:
+      artifact_name:
+        description: "Name of the uploaded artifact"
+        value: ${{ jobs.build.outputs.artifact_name }}
+      build_changed:
+        description: "Whether the build was changed"
+        value: ${{ jobs.build.outputs.build_changed }}
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    outputs:
+      artifact_name: ${{ steps.upload.outputs.artifact_name }}
+      build_changed: ${{ steps.check_changes.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for build changes
+        id: check_changes
+        run: |
+          CHANGED=false
+          if [[ "${{ inputs.image_changed }}" == "true" ]]; then
+            CHANGED=true
+          fi
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
+      - name: Download Docker image artifacts
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: dockerhub-artifacts
+          path: artifacts/dockerhub
+
+      - name: Set up Docker
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          # Remove any existing Docker installations
+          sudo apt-get remove docker docker-engine docker.io containerd runc || true
+          
+          # Install prerequisites
+          sudo apt-get update
+          sudo apt-get install -y \
+            ca-certificates \
+            curl \
+            gnupg \
+            lsb-release \
+            jq
+
+          # Add Docker's official GPG key
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          
+          # Set up the repository
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+            $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+          
+          # Install Docker Engine
+          sudo apt-get update
+          sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+      - name: Extract Docker image
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          IMAGE_TAG=$(jq -r '.image' artifacts/dockerhub/image-info.json)
+          docker pull $IMAGE_TAG
+          CONTAINER_ID=$(docker create $IMAGE_TAG)
+          mkdir -p distributions/direct_download
+          docker export $CONTAINER_ID > distributions/direct_download/dev-environment.tar
+          docker rm $CONTAINER_ID
+
+      - name: Generate checksum
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          cd distributions/direct_download
+          sha256sum dev-environment.tar > checksum.txt
+
+      - name: Prepare No-Change Artifacts
+        if: steps.check_changes.outputs.changed != 'true'
+        run: |
+          mkdir -p artifacts/direct_download
+          echo '{
+            "version": "${{ github.sha }}",
+            "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'",
+            "changes": false,
+            "message": "No changes detected, using existing package"
+          }' > artifacts/direct_download/info.json
+      
+      - id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-download-artifacts
+          path: |
+            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/direct_download/dev-environment.tar' || '' }}
+            ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/direct_download/checksum.txt' || '' }}
+            ${{ steps.check_changes.outputs.changed != 'true' && 'artifacts/direct_download/info.json' || '' }}
+          retention-days: 5

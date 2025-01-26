@@ -7,12 +7,28 @@ edition = "2021"
 path = "src/lib.rs"
 
 [[bin]]
-name = "check-workflow-states"
-path = "src/bin/check_workflow_states.rs"
+name = "step-check-workflow-states"
+path = "src/bin/step_check_workflow_states.rs"
 
 [[bin]]
-name = "check-artifacts"
-path = "src/bin/check_artifacts.rs"
+name = "step-check-artifacts"
+path = "src/bin/step_check_artifacts.rs"
+
+[[bin]]
+name = "step-check-base-image"
+path = "src/bin/step_check_base_image.rs"
+
+[[bin]]
+name = "step-setup-docker-env"
+path = "src/bin/step_setup_docker_env.rs"
+
+[[bin]]
+name = "step-build-image"
+path = "src/bin/step_build_image.rs"
+
+[[bin]]
+name = "step-verify-docker-image"
+path = "src/bin/step_verify_docker_image.rs"
 
 [dependencies]
 anyhow = "1.0"

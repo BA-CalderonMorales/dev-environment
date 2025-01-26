@@ -1,0 +1,148 @@
+name: DockerHub Build
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      base_image:
+        required: false
+        type: string
+        description: "Base image to use for build"
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+    outputs:
+      artifact_name:
+        description: "Name of the uploaded artifact"
+        value: ${{ jobs.build.outputs.artifact_name }}
+      image_changed:
+        description: "Whether the image was changed"
+        value: ${{ jobs.build.outputs.image_changed }}
+      image_tag:
+        description: "The tag of the built image"
+        value: ${{ jobs.build.outputs.image_tag }}
+
+jobs:
+  build:
+    name: dockerhub_build
+    runs-on: ubuntu-22.04
+    outputs:
+      artifact_name: ${{ steps.upload.outputs.artifact_name }}
+      image_changed: ${{ steps.check_changes.outputs.changed }}
+      image_tag: ${{ steps.build_info.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for Dockerfile changes
+        id: check_changes
+        run: |
+          CHANGED=false
+          if git diff --name-only HEAD^ HEAD | grep -q "distributions/dockerhub/Dockerfile\|startup/"; then
+            CHANGED=true
+          fi
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+      
+      - name: Set up Docker Buildx
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-flags: --debug
+
+      - name: Set up Docker layer caching
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+      
+      - name: Login to DockerHub
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Copy startup scripts
+        if: steps.check_changes.outputs.changed == 'true'
+        run: cp -r startup distributions/dockerhub/
+
+      - name: Set build info
+        id: build_info
+        run: |
+          VERSION=$(date +%Y.%m.%d)
+          SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-7)
+          ENV_TAG="${{ inputs.environment }}"
+          
+          # Build tag list based on environment
+          TAGS="cmoe640/dev-environment:${ENV_TAG}"
+          TAGS="${TAGS},cmoe640/dev-environment:${VERSION}-${ENV_TAG}"
+          TAGS="${TAGS},cmoe640/dev-environment:${SHA_SHORT}"
+          
+          # Add special tags for production
+          if [[ "${{ inputs.environment }}" == "production" ]]; then
+            TAGS="${TAGS},cmoe640/dev-environment:latest,cmoe640/dev-environment:stable"
+          fi
+          
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "image_tag=cmoe640/dev-environment:${ENV_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./distributions/dockerhub
+          file: ./distributions/dockerhub/Dockerfile
+          push: true
+          tags: ${{ steps.build_info.outputs.tags }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.build_info.outputs.date }}
+
+      - name: Move cache
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+      
+      - name: Prepare Artifacts
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          mkdir -p artifacts/dockerhub
+          echo '{
+            "version": "${{ github.sha }}",
+            "image": "cmoe640/dev-environment:${{ github.sha }}",
+            "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'",
+            "changes": true
+          }' > artifacts/dockerhub/image-info.json
+      
+      - name: Prepare No-Change Artifacts
+        if: steps.check_changes.outputs.changed != 'true'
+        run: |
+          mkdir -p artifacts/dockerhub
+          echo '{
+            "version": "${{ github.sha }}",
+            "image": "cmoe640/dev-environment:latest",
+            "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'",
+            "changes": false
+          }' > artifacts/dockerhub/image-info.json
+      
+      - id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: dockerhub-artifacts
+          path: artifacts/dockerhub/
+          retention-days: 1

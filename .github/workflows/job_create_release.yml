@@ -1,45 +1,54 @@
-name: Create Release
+name: Create Release Job
 
 on:
-  push:
-    tags:
-      - 'v*'
-    branches:
-      - main
-      - beta
-      - develop
-      - 'pipeline/*'  # Add support for pipeline branches
-  pull_request:
-    branches:
-      - main
-      - beta
-      - develop
-      - 'pipeline/*'  # Add support for pipeline testing branches
-    paths:
-      - '.github/workflows/create_release.yml'
-      - 'version.txt'
-      - 'CHANGELOG.md'
-  workflow_dispatch:
+  workflow_call:
     inputs:
       version:
-        description: 'Version to release (e.g. v1.2.3)'
-        required: true
+        required: false
         type: string
+        description: 'Version to release'
       prerelease:
-        description: 'Is this a prerelease?'
-        required: true
+        required: false
         type: boolean
+        description: 'Is this a prerelease'
         default: false
-
-permissions:
-  contents: write
-  pull-requests: write
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+      BOT_GITHUB_TOKEN:
+        required: true
+      BOT_GPG_PRIVATE_KEY:
+        required: true
+      BOT_GPG_PASSPHRASE:
+        required: true
+      BOT_EMAIL:
+        required: true
+      BOT_NAME:
+        required: true
+      BOT_DOMAIN:
+        required: true
 
 jobs:
-  create_release:
+  create:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download distribution artifacts
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: distribution.yml
+          workflow_conclusion: success
+          name: direct-download-artifacts
+          path: artifacts/direct_download
+
+      - name: Verify artifacts
+        run: |
+          if [ ! -f "artifacts/direct_download/dev-environment.tar" ] || [ ! -f "artifacts/direct_download/checksum.txt" ]; then
+            echo "Error: Required artifacts not found. Ensure distribution workflow completed successfully."
+            exit 1
+          fi
 
       - name: Set release info
         id: release_info
@@ -52,6 +61,7 @@ jobs:
             echo "version=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
             echo "release_type=Stable Release" >> $GITHUB_OUTPUT
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v1

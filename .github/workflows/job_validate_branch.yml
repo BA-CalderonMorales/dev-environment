@@ -1,0 +1,38 @@
+name: Validate Branch
+
+on:
+  workflow_call:
+    outputs:
+      environment:
+        description: "Validated environment name"
+        value: ${{ jobs.validate.outputs.environment }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    outputs:
+      environment: ${{ steps.set_env.outputs.environment }}
+    steps:
+      - id: set_env
+        run: |
+          # Map branch to environment
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=main" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/beta" ]]; then
+            echo "environment=beta" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/pipeline/ ]]; then
+            echo "environment=pipeline" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" =~ ^refs/pull/ ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT  # Changed from 'pr' to 'dev'
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT  # Default to dev for all other branches
+          fi
+
+      - name: Report Environment
+        run: |
+          echo "## 🌍 Environment Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: \`${{ steps.set_env.outputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
