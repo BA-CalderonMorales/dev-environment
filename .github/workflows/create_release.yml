@@ -2,9 +2,34 @@ name: Create Release
 
 on:
   push:
+    tags:
+      - 'v*'
     branches:
       - main
       - beta
+      - develop
+      - 'pipeline/*'  # Add support for pipeline branches
+  pull_request:
+    branches:
+      - main
+      - beta
+      - develop
+      - 'pipeline/*'  # Add support for pipeline testing branches
+    paths:
+      - '.github/workflows/create_release.yml'
+      - 'version.txt'
+      - 'CHANGELOG.md'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. v1.2.3)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Is this a prerelease?'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write

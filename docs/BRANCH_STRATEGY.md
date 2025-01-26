@@ -52,6 +52,15 @@ These branches are temporary and should be deleted after merging:
 - Naming: `release/vX.Y.Z`
 - Example: `release/v1.2.0`
 
+#### Pipeline Branches
+- Pattern: `pipeline/*`
+- Purpose: CI/CD pipeline development and testing
+- Branch from: `develop`
+- Merge to: `develop`
+- Naming: `pipeline/descriptive-change`
+- Example: `pipeline/fix-docker-build`
+- Note: These branches are specifically for testing and modifying GitHub Actions workflows and related CI/CD infrastructure
+
 ## Workflow
 
 ### Development Flow
@@ -83,3 +92,23 @@ These branches are temporary and should be deleted after merging:
 - Requires status checks to pass
 - No direct pushes
 - Force pushes allowed for maintainers only
+
+### Pipeline Branch Rules
+- No protection rules to allow for rapid pipeline testing
+- Should only be used by DevOps team members
+- Must be reviewed before merging to `develop`
+- Should include detailed testing results in PR description
+
+## Testing Workflows
+
+### Local Testing
+1. Create a branch following the `pipeline/*` pattern
+2. Test workflows locally using [act](https://github.com/nektos/act)
+3. Push changes to test in GitHub environment
+4. Document findings in PR
+
+### Remote Testing
+1. Create a `pipeline/*` branch for isolated testing
+2. Push changes to trigger workflow
+3. Monitor execution in GitHub Actions
+4. Iterate as needed before merging to `develop`
