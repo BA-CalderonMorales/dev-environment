@@ -35,15 +35,13 @@ permissions:
 
 jobs:
   create_release:
-    uses: ./.github/workflows/job_create_release.yml
-    with:
-      version: ${{ inputs.version }}
-      prerelease: ${{ inputs.prerelease }}
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
-      BOT_GPG_PRIVATE_KEY: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
-      BOT_GPG_PASSPHRASE: ${{ secrets.BOT_GPG_PASSPHRASE }}
-      BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
-      BOT_NAME: ${{ secrets.BOT_NAME }}
-      BOT_DOMAIN: ${{ secrets.BOT_DOMAIN }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4 
+      
+      - name: Create Release
+        uses: ./.github/actions/create-release
+        with:
+          version: ${{ inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          secrets: inherit

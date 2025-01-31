@@ -1,0 +1,60 @@
+name: 'E2E Tests'
+description: 'Runs end-to-end tests against Docker image'
+
+inputs:
+  docker_changed:
+    description: 'Whether Docker image was changed'
+    required: true
+  test_image:
+    description: 'Docker image to test'
+    required: true
+  environment:
+    description: 'Environment (main, beta, develop, pipeline)'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build Test Scripts
+      shell: bash
+      run: |
+        cd .github/scripts
+        cargo build --release
+
+    - name: Start Test Container
+      id: container
+      shell: bash
+      run: |
+        docker pull ${{ inputs.test_image }}
+        CONTAINER_ID=$(docker run -d ${{ inputs.test_image }})
+        echo "id=$CONTAINER_ID" >> $GITHUB_OUTPUT
+
+    - name: Run Tests
+      shell: bash
+      env:
+        TEST_CONTAINER: ${{ steps.container.outputs.id }}
+        TEST_ENV: ${{ inputs.environment }}
+      run: |
+        cd e2e
+        cargo test --release -- --nocapture
+
+    - name: Cleanup
+      if: always()
+      shell: bash
+      run: |
+        if [ ! -z "${{ steps.container.outputs.id }}" ]; then
+          docker stop ${{ steps.container.outputs.id }}
+          docker rm ${{ steps.container.outputs.id }}
+        fi
+
+    - name: Report Test Results
+      shell: bash
+      run: |
+        echo "## 🧪 E2E Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Test Environment" >> $GITHUB_STEP_SUMMARY
+        echo "- Image: \`${{ inputs.test_image }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY

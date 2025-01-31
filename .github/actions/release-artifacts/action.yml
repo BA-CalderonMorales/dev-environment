@@ -1,0 +1,65 @@
+name: 'Release Artifacts'
+description: 'Uploads release artifacts and creates GitHub release'
+
+inputs:
+  environment:
+    description: 'Target environment (main, beta, develop)'
+    required: true
+    type: string
+
+outputs:
+  release_url:
+    description: "URL of the created release"
+    value: ${{ steps.create_release.outputs.release_url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download DockerHub artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dockerhub-artifacts
+        path: artifacts/dockerhub
+
+    - name: Download Direct Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: direct-download-artifacts
+        path: artifacts/direct_download
+
+    - name: Set release info
+      id: release_info
+      shell: bash
+      run: |
+        VERSION=$(date +%Y.%m.%d)
+        if [[ "${{ inputs.environment }}" == "beta" ]]; then
+          VERSION="${VERSION}-beta"
+          IS_PRERELEASE="true"
+        else
+          IS_PRERELEASE="false"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "is_prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      id: create_release
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ env.RELEASE_TOKEN }}
+      run: |
+        gh release create ${{ steps.release_info.outputs.version }} \
+          --title "Release ${{ steps.release_info.outputs.version }}" \
+          --notes "Automated release for version ${{ steps.release_info.outputs.version }}" \
+          --prerelease ${{ steps.release_info.outputs.is_prerelease }} \
+          artifacts/direct_download/dev-environment.tar \
+          artifacts/direct_download/checksum.txt
+
+    - name: Create Release Summary
+      shell: bash
+      run: |
+        echo "## 📦 Release Created" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Release Details" >> $GITHUB_STEP_SUMMARY
+        echo "- Version: ${{ steps.release_info.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Docker Image: \`$(jq -r '.image' artifacts/dockerhub/image-info.json)\`" >> $GITHUB_STEP_SUMMARY

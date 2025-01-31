@@ -1,0 +1,35 @@
+name: 'Validate Branch'
+description: 'Validates current branch and sets environment'
+
+outputs:
+  environment:
+    description: "Validated environment name"
+    value: ${{ steps.set_env.outputs.environment }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: set_env
+      shell: bash
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "environment=main" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" == "refs/heads/beta" ]]; then
+          echo "environment=beta" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          echo "environment=dev" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" =~ ^refs/heads/pipeline/ ]]; then
+          echo "environment=pipeline" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" =~ ^refs/pull/ ]]; then
+          echo "environment=dev" >> $GITHUB_OUTPUT
+        else
+          echo "environment=dev" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Report Environment
+      shell: bash
+      run: |
+        echo "## 🌍 Environment Validation" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: \`${{ steps.set_env.outputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
