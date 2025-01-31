@@ -1,13 +1,22 @@
 name: Distribution
 
 on:
+  # Only trigger on push if there's no active PR for the branch
   push:
     branches: 
       - main
       - beta
       - develop
       - 'pipeline/*'
+    paths:
+      - 'distributions/dockerhub/**'
+      - 'distributions/direct_download/**'
+      - 'startup/**'
+      - '.github/workflows/**'
+      - 'docs/**'
+
   pull_request:
+    types: [opened, synchronize, reopened]
     paths:
       - 'distributions/dockerhub/**'
       - 'distributions/direct_download/**'
@@ -21,6 +30,7 @@ on:
       - feature/*
       - documentation/*
       - pipeline/*
+
   workflow_dispatch:
     inputs:
       force_rebuild:
@@ -42,10 +52,55 @@ permissions:
   statuses: write
 
 jobs:
+  check_pr_status:
+    runs-on: ubuntu-22.04
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - id: check
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # For push events, check if there's an active PR
+          PR_COUNT=$(gh pr list --json number --head ${{ github.ref_name }} --state open | jq length)
+          if [ $PR_COUNT -eq 0 ]; then
+            # No active PR, allow the push workflow to run
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            # Active PR exists, skip push workflow
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "Skipping workflow as PR exists for branch ${{ github.ref_name }}"
+          fi
+
+  validate_tags:
+    needs: check_pr_status
+    if: |
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.check_pr_status.outputs.should_run == 'true'
+    runs-on: ubuntu-22.04
+    outputs:
+      is_valid: ${{ steps.validate_tag.outputs.is_valid }}
+      message: ${{ steps.validate_tag.outputs.message }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/validate-tag
+        id: validate_tag
+        with:
+          tag: ${{ github.event.pull_request && 'pipeline' || github.ref_name }}
+
   validate_branch:
+    needs: [check_pr_status, validate_tags]
+    if: |
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.check_pr_status.outputs.should_run == 'true'
     runs-on: ubuntu-22.04
     outputs:
       environment: ${{ steps.validate.outputs.environment }}
+      base_tag: ${{ steps.validate.outputs.base_tag }}
+      docker_tag: ${{ steps.validate.outputs.docker_tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/validate-branch
@@ -67,17 +122,27 @@ jobs:
     outputs:
       image_tag: ${{ steps.setup.outputs.image_tag }}
       base_image_ready: ${{ steps.setup.outputs.base_image_ready }}
+      test_tag: ${{ steps.setup.outputs.test_tag }}
     steps:
       - uses: actions/checkout@v4
+      - name: Debug Inputs
+        shell: bash
+        run: |
+          echo "Environment: ${{ needs.validate_branch.outputs.environment }}"
+          echo "Base Tag: ${{ needs.validate_branch.outputs.base_tag }}"
+          echo "Docker Tag: ${{ needs.validate_branch.outputs.docker_tag }}"
       - uses: ./.github/actions/setup-docker
         id: setup
         with:
           environment: ${{ needs.validate_branch.outputs.environment }}
+          base_tag: ${{ needs.validate_branch.outputs.base_tag }}
+          docker_tag: ${{ needs.validate_branch.outputs.docker_tag }}
+          dockerfile_changed: ${{ needs.detect_changes.outputs.dockerfile_changed }}
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  dockerhub:
+  dockerhub_build:
     runs-on: ubuntu-22.04
     needs: [validate_branch, detect_changes, setup_docker]
     if: |
@@ -99,7 +164,7 @@ jobs:
 
   direct_download:
     runs-on: ubuntu-22.04
-    needs: [detect_changes, setup_docker, dockerhub]
+    needs: [detect_changes, setup_docker, dockerhub_build]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/direct-download-build
@@ -109,7 +174,7 @@ jobs:
 
   e2e_tests:
     runs-on: ubuntu-22.04
-    needs: [validate_branch, detect_changes, setup_docker, dockerhub, direct_download]
+    needs: [validate_branch, detect_changes, setup_docker, dockerhub_build, direct_download]
     if: always() # Run even if dockerhub job is skipped
     steps:
       - uses: actions/checkout@v4
@@ -117,9 +182,8 @@ jobs:
         id: e2e_tests
         with:
           docker_changed: ${{ needs.detect_changes.outputs.docker_changed }}
-          test_image: ${{ format('cmoe640/dev-environment:{0}', 
-            contains(github.ref, 'refs/heads/pipeline/') && 'pipeline' || needs.validate_branch.outputs.environment) }}
-          environment: ${{ contains(github.ref, 'refs/heads/pipeline/') && 'pipeline' || needs.validate_branch.outputs.environment }}
+          test_image: ${{ format('cmoe640/dev-environment:{0}', needs.setup_docker.outputs.test_tag) }}
+          environment: ${{ needs.setup_docker.outputs.test_tag }}
 
   security_scan:
     runs-on: ubuntu-22.04
@@ -138,7 +202,7 @@ jobs:
       (github.ref == 'refs/heads/main' || 
        github.ref == 'refs/heads/beta' || 
        github.ref == 'refs/heads/develop')
-    needs: [detect_changes, dockerhub, e2e_tests, security_scan]
+    needs: [detect_changes, dockerhub_build, e2e_tests, security_scan]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/release-artifacts
@@ -154,7 +218,7 @@ jobs:
         github.ref == 'refs/heads/beta' ||
         github.ref == 'refs/heads/main'
       )
-    needs: [dockerhub, e2e_tests, security_scan, release_artifacts]
+    needs: [dockerhub_build, e2e_tests, security_scan, release_artifacts]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/cleanup-on-failure
@@ -167,9 +231,29 @@ jobs:
           BOT_NAME: ${{ secrets.BOT_NAME }}
           BOT_DOMAIN: ${{ secrets.BOT_DOMAIN }}
 
+  cleanup_images:
+    runs-on: ubuntu-22.04
+    if: |
+      always() && 
+      github.event_name == 'pull_request' && 
+      github.event.action == 'closed'
+    needs: [validate_branch, dockerhub_build]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete PR-specific image
+        if: needs.validate_branch.outputs.docker_tag != needs.validate_branch.outputs.base_tag
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_TAG: ${{ needs.validate_branch.outputs.docker_tag }}
+        run: |
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          docker image rm "cmoe640/dev-environment:$IMAGE_TAG" || true
+          docker push "cmoe640/dev-environment:$IMAGE_TAG" || true
+
   notify_success:
     runs-on: ubuntu-22.04
-    needs: [validate_branch, dockerhub, e2e_tests, security_scan]
+    needs: [validate_branch, dockerhub_build, e2e_tests, security_scan]
     if: success()
     steps:
       - uses: actions/checkout@v4

@@ -21,7 +21,6 @@ runs:
         echo "### Branch: ${{ inputs.ref_name }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Docker Tags:" >> $GITHUB_STEP_SUMMARY
-        echo "- \`cmoe640/dev-environment:${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- \`cmoe640/dev-environment:$(date +%Y.%m.%d)\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`cmoe640/dev-environment:dev\`" >> $GITHUB_STEP_SUMMARY
         
         echo "::notice::Deployment to ${{ inputs.environment }} completed successfully!"

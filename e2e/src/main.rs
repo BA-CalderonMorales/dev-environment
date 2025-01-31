@@ -36,3 +36,27 @@ async fn main() -> Result<()> {
 
     std::process::exit(if success { 0 } else { 1 });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn setup() -> Result<()> {
+        // Setup test environment
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_creator_workflow() -> Result<()> {
+        setup().await?;
+        // Your existing test implementation
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_user_workflow() -> Result<()> {
+        setup().await?;
+        // Your existing test implementation
+        Ok(())
+    }
+}

@@ -1,19 +1,31 @@
 name: 'Detect Changes'
-description: 'Detects changes in Docker-related files'
+description: 'Detects changes in relevant paths'
 
 outputs:
   docker_changed:
-    description: "Whether Docker-related files were changed"
-    value: ${{ steps.check.outputs.docker_changed }}
+    description: 'Whether Docker files changed'
+    value: ${{ steps.changes.outputs.docker_changed }}
+  dockerfile_changed:
+    description: 'Whether Dockerfile itself changed'
+    value: ${{ steps.changes.outputs.dockerfile_changed }}
 
 runs:
   using: "composite"
   steps:
-    - id: check
+    - name: Get Changed Files
+      id: changes
       shell: bash
       run: |
-        CHANGED=false
-        if git diff --name-only HEAD^ HEAD | grep -q "distributions/dockerhub/Dockerfile\|startup/\|.github/workflows/"; then
-          CHANGED=true
+        # Check for any Docker-related changes
+        if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "distributions/dockerhub/"; then
+          echo "docker_changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "docker_changed=false" >> $GITHUB_OUTPUT
         fi
-        echo "docker_changed=$CHANGED" >> $GITHUB_OUTPUT
+        
+        # Specifically check Dockerfile changes
+        if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "distributions/dockerhub/Dockerfile"; then
+          echo "dockerfile_changed=true" >> $GITHUB_OUTPUT
+        else
+          echo "dockerfile_changed=false" >> $GITHUB_OUTPUT
+        fi

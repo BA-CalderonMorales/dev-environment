@@ -1,18 +1,31 @@
 name: 'Setup Docker'
-description: 'Sets up Docker environment and checks base image'
+description: 'Sets up Docker and manages image tags'
 
 inputs:
   environment:
-    description: 'Environment name (main, beta, develop, pipeline)'
+    description: 'Target environment'
     required: true
+  base_tag:
+    description: 'Base image tag'
+    required: true
+  docker_tag:
+    description: 'Docker image tag'
+    required: true
+  dockerfile_changed:
+    description: 'Whether Dockerfile was modified'
+    required: false
+    default: 'false'
 
 outputs:
   image_tag:
-    description: "Docker image tag to use"
-    value: ${{ steps.check_image.outputs.image_tag }}
+    description: 'Final image tag to use'
+    value: ${{ steps.setup.outputs.image_tag }}
   base_image_ready:
-    description: "Whether base image exists"
-    value: ${{ steps.check_image.outputs.exists }}
+    description: 'Whether base image exists'
+    value: ${{ steps.check_base.outputs.exists }}
+  test_tag:
+    description: 'Tag to use for testing'
+    value: ${{ steps.setup.outputs.test_tag }}
 
 runs:
   using: "composite"
@@ -27,22 +40,127 @@ runs:
         cargo build --release
 
     - name: Docker Login
-      uses: docker/login-action@v3
-      with:
-        username: ${{ env.DOCKERHUB_USERNAME }}
-        password: ${{ env.DOCKERHUB_TOKEN }}
-    
-    - name: Check Base Image
-      id: check_image
       shell: bash
-      env:
-        INPUT_TAG: "cmoe640/dev-environment:${{ inputs.environment }}"
+      run: echo "${{ env.DOCKERHUB_TOKEN }}" | docker login -u "${{ env.DOCKERHUB_USERNAME }}" --password-stdin
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Check Base Image
+      id: check_base
+      shell: bash
       run: |
-        cd .github/scripts
-        ./target/release/step-check-base-image
+        # Input validation
+        TARGET_TAG="${{ inputs.docker_tag }}"
+        BASE_TAG="${{ inputs.base_tag }}"
+        
+        echo "Debug: TARGET_TAG=$TARGET_TAG"
+        echo "Debug: BASE_TAG=$BASE_TAG"
+        echo "Debug: ENV=${{ inputs.environment }}"
+        echo "Debug: DOCKERFILE_CHANGED=${{ inputs.dockerfile_changed }}"
+        
+        if [ -z "$TARGET_TAG" ]; then
+          echo "::error::docker_tag input is required"
+          exit 1
+        fi
+
+        # Source branch mapping for bootstrapping
+        get_source_branch() {
+          local tag=$1
+          case "$tag" in
+            "dev") echo "develop" ;;
+            "beta") echo "beta" ;;
+            "latest") echo "main" ;;
+            "pipeline") echo "develop" ;;
+            *) echo "develop" ;; # Default to develop for unknown tags
+          esac
+        }
+        
+        # Try tag inheritance chain
+        if docker manifest inspect cmoe640/dev-environment:$TARGET_TAG > /dev/null 2>&1; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+          echo "source_tag=$TARGET_TAG" >> $GITHUB_OUTPUT
+          echo "needs_inheritance=false" >> $GITHUB_OUTPUT
+          echo "build_from_source=false" >> $GITHUB_OUTPUT
+        elif docker manifest inspect cmoe640/dev-environment:$BASE_TAG > /dev/null 2>&1; then
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "source_tag=$BASE_TAG" >> $GITHUB_OUTPUT
+          echo "needs_inheritance=true" >> $GITHUB_OUTPUT
+          echo "build_from_source=false" >> $GITHUB_OUTPUT
+        else
+          # Bootstrap from source branch
+          SOURCE_BRANCH=$(get_source_branch "$TARGET_TAG")
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "source_tag=" >> $GITHUB_OUTPUT
+          echo "needs_inheritance=false" >> $GITHUB_OUTPUT
+          echo "build_from_source=true" >> $GITHUB_OUTPUT
+          echo "source_branch=$SOURCE_BRANCH" >> $GITHUB_OUTPUT
+        fi
+
+        # Pass through build info for next steps
+        echo "image_tag=$TARGET_TAG" >> $GITHUB_OUTPUT
+        echo "test_tag=$TARGET_TAG" >> $GITHUB_OUTPUT
+
+    - name: Build From Source
+      id: build_source
+      if: steps.check_base.outputs.build_from_source == 'true'
+      shell: bash
+      run: |
+        SOURCE_BRANCH="${{ steps.check_base.outputs.source_branch }}"
+        TARGET_TAG="${{ inputs.docker_tag }}"
+        
+        echo "🏗️ Building fresh image from $SOURCE_BRANCH branch"
+        
+        # Ensure we have the latest source
+        git fetch origin $SOURCE_BRANCH
+        git checkout origin/$SOURCE_BRANCH -- distributions/dockerhub/
+        
+        # Build using the branch's Dockerfile
+        echo "🚀 Building image from $SOURCE_BRANCH Dockerfile"
+        docker build \
+          -t cmoe640/dev-environment:$TARGET_TAG \
+          -f distributions/dockerhub/Dockerfile \
+          --build-arg BRANCH=$SOURCE_BRANCH \
+          .
+        
+        # Push immediately so it's available for next steps
+        echo "📤 Pushing image to registry"
+        docker push cmoe640/dev-environment:$TARGET_TAG
+        
+        echo "build_completed=true" >> $GITHUB_OUTPUT
+
+    - name: Create Missing Tags
+      id: create_tags
+      if: steps.check_base.outputs.needs_inheritance == 'true'
+      shell: bash
+      run: |
+        SOURCE_TAG="${{ steps.check_base.outputs.source_tag }}"
+        TARGET_TAG="${{ inputs.docker_tag }}"
+        
+        echo "Creating tag :$TARGET_TAG from :$SOURCE_TAG"
+        docker pull cmoe640/dev-environment:$SOURCE_TAG
+        docker tag cmoe640/dev-environment:$SOURCE_TAG cmoe640/dev-environment:$TARGET_TAG
+        docker push cmoe640/dev-environment:$TARGET_TAG
+
+    - name: Setup Image Tag
+      id: setup
+      shell: bash
+      run: |
+        if [ "${{ steps.check_base.outputs.build_from_source }}" == "true" ]; then
+          if [ "${{ steps.build_source.outputs.build_completed }}" != "true" ]; then
+            echo "::error::Build from source was required but failed"
+            exit 1
+          fi
+        elif [ -z "${{ steps.check_base.outputs.source_tag }}" ]; then
+          echo "::error::No source tag available and build from source not triggered"
+          exit 1
+        fi
+        
+        echo "image_tag=${{ inputs.docker_tag }}" >> $GITHUB_OUTPUT
+        echo "test_tag=${{ inputs.docker_tag }}" >> $GITHUB_OUTPUT
 
     - name: Setup Docker Environment
-      if: steps.check_image.outputs.exists != 'true'
+      if: steps.check_base.outputs.exists != 'true'
       id: setup_docker
       shell: bash
       run: |
@@ -54,7 +172,41 @@ runs:
       run: |
         echo "## 🐳 Docker Setup Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Environment Status" >> $GITHUB_STEP_SUMMARY
-        echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Docker Image: \`${{ steps.check_image.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Status: \`${{ steps.check_image.outputs.exists }}\`" >> $GITHUB_STEP_SUMMARY
+        
+        # Environment Details
+        echo "### Environment Configuration" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment:** \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Target Tag:** \`${{ steps.check_base.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Source Tag:** \`${{ steps.check_base.outputs.source_tag }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Build Strategy
+        echo "### Build Details" >> $GITHUB_STEP_SUMMARY
+        if [[ "${{ steps.check_base.outputs.build_from_source }}" == "true" ]]; then
+          echo "🏗️ **Building fresh image**" >> $GITHUB_STEP_SUMMARY
+          echo "- Source Branch: \`${{ steps.check_base.outputs.source_branch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Target Image: \`cmoe640/dev-environment:${{ steps.check_base.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+        elif [[ "${{ steps.check_base.outputs.needs_inheritance }}" == "true" ]]; then
+          echo "🔄 **Creating new tag**" >> $GITHUB_STEP_SUMMARY
+          echo "- Source Image: \`cmoe640/dev-environment:${{ steps.check_base.outputs.source_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Target Image: \`cmoe640/dev-environment:${{ steps.check_base.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "✅ **Using existing image**" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`cmoe640/dev-environment:${{ steps.check_base.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Final Status
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Status" >> $GITHUB_STEP_SUMMARY
+        if [[ "${{ steps.check_base.outputs.exists }}" == "true" ]]; then
+          echo "✅ **Image Ready**" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "🏗️ **Image Build Required**" >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Cleanup
+      if: always()
+      shell: bash
+      run: |
+        docker logout
+        rm -f ~/.docker/config.json /tmp/tag_utils.sh
