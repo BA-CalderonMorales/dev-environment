@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use anyhow::{anyhow, bail, Context, Result};
-use crate::Logger;
+use crate::logging::Logger;
 
 pub struct DistributionTest<'a> {
     logger: &'a dyn Logger,
@@ -13,8 +13,16 @@ impl<'a> DistributionTest<'a> {
     }
 
     pub async fn test_distribution_creation(&self, dockerfile: &Path, repo: &str) -> Result<()> {
-        self.logger.debug(&format!("Testing distribution creation with repo: {}", repo));
+        self.logger.debug(&format!(
+            "Testing distribution creation with repo: {} and dockerfile: {}",
+            repo,
+            dockerfile.display()
+        ));
         
+        if !dockerfile.exists() {
+            bail!("Dockerfile not found at: {}", dockerfile.display());
+        }
+
         // Get the project root directory (one level up from e2e)
         let project_root = std::env::current_dir()?
             .parent()
@@ -46,6 +54,11 @@ impl<'a> DistributionTest<'a> {
     pub async fn test_dockerhub_install(&self, image: &str) -> Result<()> {
         self.logger.debug(&format!("Testing DockerHub installation for image: {}", image));
         
+        // Validate image format
+        if !image.contains('/') || !image.contains(':') {
+            bail!("Invalid image format. Expected format: repository/image:tag");
+        }
+
         let output = Command::new("docker")
             .args(["pull", image])
             .output()
@@ -59,25 +72,35 @@ impl<'a> DistributionTest<'a> {
         Ok(())
     }
 
-    pub async fn test_direct_download(&self, version: &str) -> Result<()> {
-        self.logger.debug(&format!("Testing direct download for version: {}", version));
+    pub async fn test_direct_download(&self, tarfile: &Path, checksum: &Path) -> Result<()> {
+        self.logger.debug(&format!(
+            "Testing direct download verification for file: {} with checksum: {}", 
+            tarfile.display(),
+            checksum.display()
+        ));
         
-        let download_url = match version {
-            "latest" => "https://github.com/BA-CalderonMorales/dev-environment/releases/latest/download/dev-environment-latest.tar",
-            "beta" => "https://github.com/BA-CalderonMorales/dev-environment/releases/download/beta/dev-environment-beta.tar",
-            _ => bail!("Invalid version specified")
-        };
-
-        let output = Command::new("curl")
-            .args(["-L", "-o", &format!("dev-environment-{}.tar", version), download_url])
-            .output()
-            .context("Failed to download image")?;
-
-        if !output.status.success() {
-            bail!("Download failed: {}", String::from_utf8_lossy(&output.stderr));
+        if !tarfile.exists() {
+            bail!("Tar file not found at: {}", tarfile.display());
         }
 
-        self.logger.debug("Direct download successful");
+        if !checksum.exists() {  // Fixed extra parenthesis here
+            bail!("Checksum file not found at: {}", checksum.display());
+        }
+
+        // Verify checksum
+        let checksum_output = Command::new("sha256sum")
+            .arg("--check")
+            .arg(checksum)
+            .current_dir(tarfile.parent().unwrap())
+            .output()
+            .context("Failed to verify checksum")?;
+
+        if !checksum_output.status.success() {
+            bail!("Checksum verification failed: {}", 
+                String::from_utf8_lossy(&checksum_output.stderr));
+        }
+
+        self.logger.debug("Direct download verification successful");
         Ok(())
     }
 }

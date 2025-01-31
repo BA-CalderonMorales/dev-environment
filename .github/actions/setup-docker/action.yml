@@ -1,0 +1,60 @@
+name: 'Setup Docker'
+description: 'Sets up Docker environment and checks base image'
+
+inputs:
+  environment:
+    description: 'Environment name (main, beta, develop, pipeline)'
+    required: true
+
+outputs:
+  image_tag:
+    description: "Docker image tag to use"
+    value: ${{ steps.check_image.outputs.image_tag }}
+  base_image_ready:
+    description: "Whether base image exists"
+    value: ${{ steps.check_image.outputs.exists }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build workflow scripts
+      shell: bash
+      run: |
+        cd .github/scripts
+        cargo build --release
+
+    - name: Docker Login
+      uses: docker/login-action@v3
+      with:
+        username: ${{ env.DOCKERHUB_USERNAME }}
+        password: ${{ env.DOCKERHUB_TOKEN }}
+    
+    - name: Check Base Image
+      id: check_image
+      shell: bash
+      env:
+        INPUT_TAG: "cmoe640/dev-environment:${{ inputs.environment }}"
+      run: |
+        cd .github/scripts
+        ./target/release/step-check-base-image
+
+    - name: Setup Docker Environment
+      if: steps.check_image.outputs.exists != 'true'
+      id: setup_docker
+      shell: bash
+      run: |
+        cd .github/scripts
+        ./target/release/step-setup-docker-env
+
+    - name: Report Setup Status
+      shell: bash
+      run: |
+        echo "## 🐳 Docker Setup Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Environment Status" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Docker Image: \`${{ steps.check_image.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Status: \`${{ steps.check_image.outputs.exists }}\`" >> $GITHUB_STEP_SUMMARY

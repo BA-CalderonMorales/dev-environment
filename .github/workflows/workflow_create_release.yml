@@ -1,0 +1,47 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+      - beta
+      - 'release-*'
+  pull_request:
+    branches:
+      - main
+      - beta
+      - 'release-*'
+    paths:
+      - '.github/workflows/create_release.yml'
+      - 'version.txt'
+      - 'CHANGELOG.md'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. v1.2.3)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Is this a prerelease?'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create_release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4 
+      
+      - name: Create Release
+        uses: ./.github/actions/create-release
+        with:
+          version: ${{ inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          secrets: inherit
