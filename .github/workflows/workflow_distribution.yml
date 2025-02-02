@@ -8,6 +8,8 @@ on:
       - beta
       - develop
       - 'pipeline/*'
+      - 'bugfix/*'
+      - 'feature/*'
     paths:
       - 'distributions/dockerhub/**'
       - 'distributions/direct_download/**'

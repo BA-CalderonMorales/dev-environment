@@ -1,0 +1,37 @@
+name: 'Cache Cleanup Action'
+description: 'Cleanup GitHub Actions caches based on age and size thresholds'
+
+inputs:
+  max-age:
+    description: 'Maximum age of caches to keep (in days)'
+    required: true
+    default: '7'
+  max-size:
+    description: 'Maximum size of caches to keep (in GB)'
+    required: true
+    default: '5'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      shell: bash
+
+    - name: Cache Rust dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: cache-cleanup-action-deps
+
+    - name: Build and run cache cleanup
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        MAX_AGE: ${{ inputs.max-age }}
+        MAX_SIZE: ${{ inputs.max-size }}
+      shell: bash
+      run: |
+        cd ${{ github.action_path }}/../../scripts
+        echo "Running cache cleanup with max age: $MAX_AGE days, max size: $MAX_SIZE GB"
+        cargo run --bin workflow_cache_cleanup -- \
+          --max-age "$MAX_AGE" \
+          --max-size "$MAX_SIZE"
