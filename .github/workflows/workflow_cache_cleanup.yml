@@ -1,0 +1,37 @@
+name: Cache Cleanup
+
+on:
+  schedule:
+    # Runs at 00:00 UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write  # Required for cache cleanup
+
+jobs:
+  cleanup:
+    #####################################################################
+    # Cache Cleanup Job
+    # ----------------
+    # Purpose: Maintains optimal GitHub Actions cache storage
+    #
+    # Flow:
+    # 1. Identifies caches older than specified age threshold
+    # 2. Removes caches exceeding size limits
+    # 3. Maintains critical caches for active workflows
+    #
+    # Dependencies: None
+    # Outputs: None
+    # Side Effects: Deletes old/large workflow caches
+    #####################################################################
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Execute cache cleanup
+        uses: ./.github/actions/cache-cleanup
+        with:
+          max-age: 7  # Days
+          max-size: 5 # GB
+          secrets: inherit
