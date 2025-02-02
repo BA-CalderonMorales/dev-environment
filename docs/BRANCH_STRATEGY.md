@@ -75,29 +75,33 @@ These branches are temporary and should be deleted after merging:
 ## Branch Protection Rules
 
 ### `main` Branch
+- Will create `:latest` tag on DockerHub
 - Requires pull request reviews
-- Requires status checks to pass
+- Requires all workflow checks to pass
 - No direct pushes
 - No force pushes
-- Maintain linear history
+- Maintains linear history
 
 ### `beta` Branch
+- Will create `:beta` tag on DockerHub
 - Requires pull request reviews
-- Requires status checks to pass
+- Requires distribution workflow to pass
 - No direct pushes
 - Force pushes allowed for maintainers only
 
 ### `develop` Branch
+- Will create `:dev` tag on DockerHub
 - Requires pull request reviews
-- Requires status checks to pass
+- Requires distribution workflow to pass
 - No direct pushes
 - Force pushes allowed for maintainers only
 
 ### Pipeline Branch Rules
-- No protection rules to allow for rapid pipeline testing
-- Should only be used by DevOps team members
-- Must be reviewed before merging to `develop`
-- Should include detailed testing results in PR description
+- Creates `:pipeline` tag on DockerHub
+- Testing environment for CI/CD changes
+- Temporary tags cleaned up after PR closure
+- Must pass distribution workflow before merge
+- Should include testing results in PR description
 
 ## Testing Workflows
 
@@ -112,3 +116,24 @@ These branches are temporary and should be deleted after merging:
 2. Push changes to trigger workflow
 3. Monitor execution in GitHub Actions
 4. Iterate as needed before merging to `develop`
+
+### Available Workflows
+1. `workflow_distribution.yml`
+   - Handles Docker image builds and distribution
+   - Runs E2E tests
+   - Manages DockerHub tags
+   - Performs security scans
+   - Creates releases
+
+2. `workflow_create_release.yml`
+   - Triggered on version tags
+   - Creates GitHub releases
+   - Updates changelog
+
+3. `workflow_cleanup_dockerhub.yml`
+   - Manual cleanup of DockerHub tags
+   - Supports dry-run mode
+
+4. `workflow_cache_cleanup.yml`
+   - Daily cleanup of GitHub Actions cache
+   - Maintains optimal CI/CD performance

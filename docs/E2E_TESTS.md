@@ -41,6 +41,26 @@ The E2E tests run automatically on every pull request and merge to main as part 
 
 See [distribution.yml](../.github/workflows/distribution.yml) for the full workflow definition.
 
+## CI Integration
+
+Tests run automatically in these scenarios:
+- All PRs to main/beta/develop
+- Pushes to these branches
+- Manual workflow dispatch
+
+### Pipeline Integration
+Tests are part of the `workflow_distribution.yml` pipeline:
+1. Builds test image with `:pipeline` tag
+2. Runs full E2E test suite
+3. Reports results to PR
+4. Required for merge approval
+
+### Test Environment
+- Runs on `ubuntu-22.04` runners
+- Uses isolated Docker containers
+- Cleaned up after each run
+- Includes security scanning
+
 ## Adding New Tests
 
 To add a new test:

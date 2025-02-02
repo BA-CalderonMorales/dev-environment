@@ -290,3 +290,67 @@ graph LR
 - [ ] Automated changelog
 - [ ] Performance metrics
 - [ ] Compliance checks
+
+# CI/CD Workflows
+
+## Core Workflows
+
+### Distribution Workflow (`workflow_distribution.yml`)
+Primary workflow handling image builds and distribution.
+
+```mermaid
+graph TB
+    Push[Code Push/PR] --> Check{PR Status Check}
+    Check --> Tags[Tag Validation]
+    Tags --> Branch[Branch Validation]
+    Branch --> Changes[Change Detection]
+    Changes --> Docker[Docker Setup]
+    Docker --> Build[DockerHub Build]
+    Build --> E2E[E2E Tests]
+    E2E --> Security[Security Scan]
+    Security --> Release[Release Artifacts]
+```
+
+#### Triggers
+- Push to main/beta/develop branches
+- PRs to these branches
+- Manual dispatch with rebuild option
+
+#### Tag Strategy
+- `main` → `:latest` (stable)
+- `beta` → `:beta` (release candidate)
+- `develop` → `:dev` (development)
+- `pipeline/*` → `:pipeline` (temporary)
+
+### Support Workflows
+
+#### Create Release (`workflow_create_release.yml`)
+- Triggered by version tags or manually
+- Creates GitHub releases
+- Updates changelog
+
+#### DockerHub Cleanup (`workflow_cleanup_dockerhub.yml`)
+- Manual cleanup of Docker tags
+- Supports dry-run mode
+
+#### Cache Cleanup (`workflow_cache_cleanup.yml`)
+- Daily cleanup of GitHub Actions cache
+- Maintains optimal CI/CD performance
+
+## Branch Protection Rules
+
+### Protected Branches
+- `main`: Requires reviews, status checks, linear history
+- `beta`: Requires reviews, distribution workflow check
+- `develop`: Requires reviews, distribution workflow check
+
+### Status Checks
+- PR validation
+- E2E tests
+- Security scans
+- Documentation checks
+
+## Security & Permissions
+- GitHub Actions permissions scoped to requirements
+- Secrets management via repository settings
+- Required status checks for sensitive operations

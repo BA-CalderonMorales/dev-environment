@@ -1,44 +1,75 @@
 # Development Environment Documentation
 
-Welcome to our documentation! This guide will help you find the information you need.
+[![Experimental](https://img.shields.io/badge/Status-Experimental-orange.svg)](https://shields.io/)
+[![Version](https://img.shields.io/badge/Version-0.0.1-blue.svg)](https://shields.io/)
 
-## Getting Started
-- [Quick Start Guide](QUICK_START/README.md) - Get up and running in minutes
-  - [DockerHub Setup](QUICK_START/DOCKERHUB.md) - Fastest setup with good internet
-  - [Direct Download Setup](QUICK_START/DIRECT_DOWNLOAD.md) - Alternative installation method
-- [Requirements](REQUIREMENTS.md) - System requirements and prerequisites
-- [Features](FEATURES.md) - Full list of included tools and capabilities
+> ⚠️ This documentation is under active development and may change frequently
 
-## User Guides
-- [Usage Guide](USAGE_GUIDE.md) - Detailed usage instructions
-- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
-- [FAQ](FAQ.md) - Community-driven questions and answers
+## Essential Guides
 
-## Contributing
-- [Contributing Guide](CONTRIBUTING.md) - How to contribute to this project
-- [E2E Tests](E2E_TESTS.md) - End-to-end testing documentation
-- [Workflows](WORKFLOWS.md) - CI/CD pipeline documentation
+### First Steps
+1. [Quick Start Guide](QUICK_START/README.md) - Get running in 5 minutes
+2. [Requirements](REQUIREMENTS.md) - Ensure your system is compatible
+3. [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
 
-## Documentation Structure
+### Core Documentation
+- [Usage Guide](USAGE_GUIDE.md) - Daily usage instructions
+- [Features](FEATURES.md) - Capabilities and included tools
+- [Security](SECURITY.md) - Security considerations and best practices
+
+### Developer Documentation
+- [Contributing Guide](CONTRIBUTING.md) - How to help improve the project
+- [E2E Tests](E2E_TESTS.md) - Testing documentation
+- [Workflows](WORKFLOWS.md) - CI/CD pipeline details
+
+## Documentation Map
+
 ```
 docs/
-├── CONTRIBUTING.md       # Contribution guidelines
-├── E2E_TESTS.md         # Test documentation
-├── FAQ.md               # Frequently asked questions
-├── FEATURES.md          # Feature documentation
-├── QUICK_START/         # Getting started guides
-│   ├── README.md       # Common setup steps
-│   ├── DOCKERHUB.md    # DockerHub distribution
-│   └── BITTORRENT.md   # BitTorrent distribution
-├── README.md            # This file
-├── REQUIREMENTS.md      # System requirements
-├── TROUBLESHOOTING.md   # Common issues and solutions
-├── USAGE_GUIDE.md       # Detailed instructions
-└── WORKFLOWS.md         # CI/CD documentation
+├── Core Guides
+│   ├── QUICK_START/    # Getting started documentation
+│   │   ├── README.md   # Overview of setup options
+│   │   ├── DOCKERHUB.md    # Primary installation method
+│   │   └── DIRECT.md       # Alternative installation
+│   ├── REQUIREMENTS.md # System prerequisites
+│   ├── FEATURES.md    # Functionality overview
+│   └── SECURITY.md    # Security guidance
+│
+├── Usage & Support
+│   ├── USAGE_GUIDE.md # Detailed instructions
+│   └── TROUBLESHOOTING.md  # Problem solving
+│
+└── Development
+    ├── CONTRIBUTING.md # Contribution guidelines
+    ├── E2E_TESTS.md   # Testing documentation
+    └── WORKFLOWS.md    # CI/CD documentation
 ```
 
+## Documentation Versions
+
+- Current docs match software version 0.0.1
+- Breaking changes will be noted in changelogs
+- Historical versions available in git tags
+
 ## Contributing to Documentation
-We welcome contributions to our documentation! If you find something missing, unclear, or incorrect:
-1. Check our [Contributing Guide](CONTRIBUTING.md)
-2. Submit a pull request with your changes
-3. Help others by contributing to the [FAQ](FAQ.md)
+
+Help improve our docs:
+1. Check [Contributing Guide](CONTRIBUTING.md)
+2. Follow our [Documentation Standards](CONTRIBUTING.md#documentation)
+3. Submit PRs against the `develop` branch
+
+## Status & Roadmap
+
+Documentation priorities:
+- [ ] Complete Quick Start guides
+- [ ] Expand troubleshooting scenarios
+- [ ] Add architecture diagrams
+- [ ] Improve API documentation
+
+## Need Help?
+
+- 🔍 Use the sidebar navigation
+- 📝 [Open an issue](https://github.com/BA-CalderonMorales/dev-environment/issues) for doc problems
+
+---
+<sub>Last updated: 2025-02-02 | Documentation Version: 0.0.1</sub>
