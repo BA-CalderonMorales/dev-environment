@@ -1,160 +1,68 @@
-# Visual Documentation
+# 👋 Brandon A. Calderon-Morales
+ 
+** 💻 Just another dev **
 
-## System Overview
-
-### High-Level Architecture
 ```mermaid
-graph TD
-    subgraph User Interface
-        CLI[Command Line Interface]
-        GUI[Web Dashboard]
-    end
-    
-    subgraph Core System
-        ENV[Environment Manager]
-        CONF[Configuration System]
-        TOOL[Tool Orchestrator]
-    end
-    
-    subgraph Development Tools
-        LANG[Language Runtimes]
-        PKG[Package Managers]
-        IDE[Development Tools]
-    end
-
-    CLI --> ENV
-    GUI --> ENV
-    ENV --> CONF
-    ENV --> TOOL
-    TOOL --> LANG
-    TOOL --> PKG
-    TOOL --> IDE
+%% Hidden diagram for GitHub profile viewers
+flowchart TD
+    Visitor["🧑💻 GitHub Visitor"] -->|Reads Profile| A[Technical Skills]
+    Visitor -->|Explores| B[Active Projects]
+    Visitor -->|Connects| C[Collaboration Path]
+    Visitor -->|Humor| D[Secret Meme Portal]
+    style D fill:#f9f,stroke:#333
 ```
 
-### Distribution Workflow
+## 🛠️ Core Competencies
+
 ```mermaid
+%% Tech Ecosystem Map
 graph LR
-    subgraph Installation Options
-        DH[DockerHub Image]
-        SRC[Source Install]
-        BIN[Binary Release]
-    end
-
-    subgraph Verification
-        SEC[Security Checks]
-        DEPS[Dependency Check]
-        COMP[Compatibility Test]
-    end
-
-    subgraph Setup
-        CONF[Configuration]
-        ENV[Environment Setup]
-        TEST[Validation Tests]
-    end
-
-    DH --> SEC
-    SRC --> SEC
-    BIN --> SEC
-    SEC --> DEPS
-    DEPS --> COMP
-    COMP --> CONF
-    CONF --> ENV
-    ENV --> TEST
+    CICD[CI/CD Modernization] -->|GitHub Actions| Docker
+    CICD -->|Jenkins Migration| Security[Security Pipeline]
+    Security -->|SCA| Fortify
+    Security -->|Secrets| CyberArk
+    Docker -->|Optimization| Rust
+    Rust -->|Performance| DevEx[Developer Experience]
 ```
 
-### Component Relationships
+## 🌱 Active Project: [Dev Environment](https://github.com/BA-CalderonMorales/dev-environment)
+
 ```mermaid
-graph TD
-    subgraph Core Services
-        direction LR
-        CONFIG[Configuration Service]
-        HEALTH[Health Monitor]
-        UPDATE[Update Manager]
-    end
-
-    subgraph Runtime Environment
-        direction LR
-        NODE[Node.js Runtime]
-        GO[Go Tools]
-        RUST[Rust Toolchain]
-        DOCKER[Docker Engine]
-    end
-
-    subgraph Developer Tools
-        direction LR
-        GIT[Git Integration]
-        CI[CI Tools]
-        DEBUG[Debug Tools]
-    end
-
-    CONFIG --> Runtime Environment
-    HEALTH --> Runtime Environment
-    UPDATE --> Runtime Environment
-    Runtime Environment --> Developer Tools
+%% Project Evolution
+gantt
+    title 2025 Development Journey
+    dateFormat  YYYY-MM-DD
+    axisFormat %b %Y
+    section Core
 ```
 
-## Environment States
+**Why It Matters:**  
+*"Developer environments should be like oxygen: invisible when working perfectly, immediately responsive when adjustments are needed."*
 
-### Fresh Installation
+## 🧠 Knowledge Matrix
+
 ```mermaid
-stateDiagram-v2
-    [*] --> Download
-    Download --> Verification
-    Verification --> Configuration
-    Configuration --> ToolInstallation
-    ToolInstallation --> ValidationTests
-    ValidationTests --> Ready
-    Ready --> [*]
-```
-
-### Update Process
-```mermaid
-stateDiagram-v2
-    [*] --> CheckUpdate
-    CheckUpdate --> BackupEnv
-    BackupEnv --> DownloadUpdates
-    DownloadUpdates --> ApplyChanges
-    ApplyChanges --> ValidateSystem
-    ValidateSystem --> [*]
-```
-
-## Quick Reference
-
-### Required System Resources
-```mermaid
-pie
-    title "Minimum System Requirements"
-    "CPU Cores" : 2
-    "RAM (GB)" : 4
-    "Disk Space (GB)" : 10
-```
-
-### Tool Categories
-```mermaid
+%% Education Synergy
 mindmap
-    root((Development Environment))
-        Languages
-            Node.js
-            Go
-            Rust
-        Build Tools
-            Make
-            CMake
-            Gradle
-        Version Control
-            Git
-            Git LFS
-        Containers
-            Docker
-            Kubernetes Tools
-        Testing
-            Unit Test Frameworks
-            E2E Tools
-            Load Testing
+  root((UNO Studies))
+    CS Theory
+      Algorithms
+      System Design
+    Practical Application
+      --> Docker
+      --> Security
+      --> Rust
+    Professional Growth
+      --> Fiserv
+      --> OpenSource
 ```
 
-## Notes
+## 🤝 Collaboration Pathways
 
-- All diagrams are generated using Mermaid.js
-- System requirements may vary based on enabled features
-- Component relationships show default configurations
+[![Professional Connect](https://img.shields.io/badge/Architect_Level-LinkedIn-0A66C2)](https://www.linkedin.com/in/bcalderonmorales-cmoe)
+[![Culture Check](https://img.shields.io/badge/Meme_Proficiency_Test-Required-FF6F61)](https://img.shields.io/badge/Jokes_Understood-87%25-yellow)
+
+---
+
+> "The environment should empower first, enforce second, and entertain always.  
+> After all, we're building the future - might as well enjoy the ride."
