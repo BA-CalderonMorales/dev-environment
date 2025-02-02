@@ -30,6 +30,35 @@ cd e2e
 cargo test
 ```
 
+## Development Workflow
+
+### Branching Strategy
+1. Create feature branch from `develop`:
+   ```bash
+   git checkout develop
+   git checkout -b feature/your-feature
+   ```
+
+2. Make changes and test locally:
+   ```bash
+   # Run E2E tests
+   cd e2e
+   cargo test
+   ```
+
+3. Push changes and create PR:
+   - PRs to `develop` create `:dev` tag
+   - PRs to `beta` create `:beta` tag
+   - PRs to `main` create `:latest` tag
+
+4. CI/CD Pipeline:
+   - Automated testing
+   - Docker image builds
+   - Security scans
+   - Documentation checks
+
+See [WORKFLOWS.md](WORKFLOWS.md) for detailed CI/CD documentation.
+
 ## Workflow
 1. Create feature branch
 2. Make changes
@@ -44,4 +73,4 @@ cargo test
 See [WORKFLOWS.md](WORKFLOWS.md) for detailed CI/CD documentation.
 
 ## Testing
-See [E2E_TESTS.md](E2E_TESTS.md) for test suite documentation. 
+See [E2E_TESTS.md](E2E_TESTS.md) for test suite documentation.
