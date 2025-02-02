@@ -3,13 +3,18 @@
 ## Current Phase: Alpha
 Focusing on core stability and distribution.
 
-## 1. Distribution & CI/CD (Current)
+## 1. CI/CD & Infrastructure (Current)
 - [x] DockerHub distribution
 - [x] GitHub Actions workflows
 - [x] E2E testing
 - [x] Security scanning
 - [ ] Direct download implementation
 - [ ] Artifact verification
+- [ ] Fix manual workflow triggers (Cleanup GitHub, Cleanup Dockerhub)
+- [ ] Optimize Create Release workflow for beta/main branches
+- [ ] Skip pipeline for documentation PRs
+- [ ] Implement smart image caching strategy
+- [ ] Replace cached images when Dockerfile updates
 
 ## 2. Core Environment
 - [ ] Development tools
@@ -17,21 +22,37 @@ Focusing on core stability and distribution.
 - [ ] Git integration
 - [ ] Build tools
 - [ ] Package management
+- [ ] Multi-OS support for portability
+- [ ] Convert bash scripts to Rust
+- [ ] Optimize image size
+- [ ] Enhanced Dockerfile functionality
+- [ ] CLI tool for ease of use
 
-## 3. Documentation
+## 3. Language-Specific Images
+- [ ] Python development image
+- [ ] Rust development image
+- [ ] Node.js/Bun image
+- [ ] Backend-focused image
+- [ ] Custom image templates
+
+## 4. Documentation & Website
 - [x] Installation guide
 - [x] Basic usage
 - [ ] Advanced configuration
 - [ ] Contributing guidelines
 - [ ] API documentation
+- [ ] Documentation website
+- [ ] Migrate docs to website
+- [ ] Usage examples
+- [ ] Feature documentation
 
-## 4. Testing & Validation
+## 5. Testing & Validation
 - [x] Workflow testing
 - [ ] Integration tests
 - [ ] Performance benchmarks
 - [ ] Security audits
 
-## 5. Future Enhancements
+## 6. Future Enhancements
 - [ ] IDE integration
 - [ ] Custom templates
 - [ ] Plugin system

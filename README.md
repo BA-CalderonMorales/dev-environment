@@ -31,14 +31,35 @@ Prerequisites:
 
 For detailed setup instructions, see our [Quick Start Guide](docs/QUICK_START/README.md).
 
-## Project Status
+## Project Status & Roadmap
+
+### Current Focus
+- 🔄 CI/CD Pipeline Improvements
+  - Workflow optimizations
+  - Smart image caching
+  - Multi-OS support
+- 🐳 Docker Optimization
+  - Smaller image footprint
+  - Language-specific images
+  - Enhanced functionality
+- 🦀 Infrastructure Modernization
+  - Converting bash to Rust
+  - CLI tool development
+- 🌐 Documentation & Accessibility
+  - Documentation website
+  - Comprehensive guides
+  - Feature documentation
 
 ### Active Development
 - Core environment setup ✅
 - Documentation improvements 🚧
 - Testing infrastructure 🚧
 - Security hardening 🚧
-- Development flow (ensuring multiple devs can happily contribute) 🚧
+- Development flow improvements 🚧
+- Language-specific images 🚧
+- CLI tool development 🚧
+
+For detailed milestones and progress, see our [Milestones](docs/MILESTONES.md) document.
 
 ### Known Limitations
 - Early development stage (v0.0.1)
