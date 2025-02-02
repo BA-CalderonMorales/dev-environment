@@ -152,3 +152,4 @@ async fn main() -> Result<()> {
     checker.logger.info("✅ All required artifacts found");
     Ok(())
 }
+}
