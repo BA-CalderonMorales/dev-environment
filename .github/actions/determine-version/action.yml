@@ -1,0 +1,58 @@
+name: 'Determine Version'
+description: 'Determines the release version based on branch and current releases'
+
+inputs:
+  github_token:
+    description: 'GitHub token for release access'
+    required: true
+  initial_version:
+    description: 'Initial version if no releases exist'
+    required: true
+    default: 'v0.0.1'
+  ref:
+    description: 'Git reference (branch/tag)'
+    required: true
+  input_version:
+    description: 'Version from workflow input'
+    required: false
+  input_prerelease:
+    description: 'Prerelease flag from workflow input'
+    required: false
+
+outputs:
+  version:
+    description: 'Determined version number'
+    value: ${{ steps.determine.outputs.version }}
+  prerelease:
+    description: 'Whether this is a prerelease'
+    value: ${{ steps.determine.outputs.prerelease }}
+  docker_tag:
+    description: 'Docker tag to use'
+    value: ${{ steps.determine.outputs.docker_tag }}
+
+runs:
+  using: composite
+  steps:
+    - id: determine
+      shell: bash
+      run: |
+        if [[ "${{ inputs.ref }}" == "refs/heads/beta" || "${{ inputs.ref }}" == "refs/heads/main" ]]; then
+          current_version=$(gh release list --limit 1 | grep -oP 'v\d+\.\d+\.\d+' || echo "${{ inputs.initial_version }}")
+          
+          if [[ "${{ inputs.ref }}" == "refs/heads/beta" ]]; then
+            new_version=$(echo $current_version | awk -F. '{$NF+=1; print $1"."$2"."$NF}' OFS=.)
+            echo "version=$new_version" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "docker_tag=beta" >> $GITHUB_OUTPUT
+          else
+            echo "version=$current_version" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "docker_tag=latest" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "version=${{ inputs.input_version }}" >> $GITHUB_OUTPUT
+          echo "prerelease=${{ inputs.input_prerelease }}" >> $GITHUB_OUTPUT
+          echo "docker_tag=${{ inputs.input_version }}" >> $GITHUB_OUTPUT
+        fi
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}

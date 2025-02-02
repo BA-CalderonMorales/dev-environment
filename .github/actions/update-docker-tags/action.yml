@@ -1,0 +1,35 @@
+name: 'Update Docker Tags'
+description: 'Updates Docker image tags for releases'
+
+inputs:
+  docker_username:
+    description: 'DockerHub username'
+    required: true
+  docker_token:
+    description: 'DockerHub access token'
+    required: true
+  docker_image:
+    description: 'Docker image name'
+    required: true
+  version:
+    description: 'Version to tag'
+    required: true
+  docker_tag:
+    description: 'Docker tag (beta/latest)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        echo "${{ inputs.docker_token }}" | docker login -u "${{ inputs.docker_username }}" --password-stdin
+        
+        # Pull current image and update tag
+        docker pull ${{ inputs.docker_image }}:${{ inputs.docker_tag }}
+        docker tag ${{ inputs.docker_image }}:${{ inputs.docker_tag }} ${{ inputs.docker_image }}:${{ inputs.version }}
+        docker push ${{ inputs.docker_image }}:${{ inputs.version }}
+        
+        # Update branch-specific tag (beta or latest)
+        docker tag ${{ inputs.docker_image }}:${{ inputs.version }} ${{ inputs.docker_image }}:${{ inputs.docker_tag }}
+        docker push ${{ inputs.docker_image }}:${{ inputs.docker_tag }}
