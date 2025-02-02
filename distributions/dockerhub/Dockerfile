@@ -70,8 +70,7 @@ USER root
 # Copy and set permissions for startup scripts
 COPY startup/ /usr/src/startup/
 RUN chmod -R 755 /usr/src/startup && \
-    chown -R devuser:devuser /usr/src/startup && \
-    chmod +x /usr/src/startup/*.sh
+    chown -R devuser:devuser /usr/src/startup
 
 # Switch back to devuser for final setup
 USER devuser

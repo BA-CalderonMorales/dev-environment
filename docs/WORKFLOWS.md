@@ -1,91 +1,292 @@
 # Workflow Documentation
 
 ## Overview
-Our GitHub Actions workflows automate testing, building, and releasing the development environment.
+Our GitHub Actions workflows implement a secure, two-phase release process with robust artifact validation and automated rollbacks.
 
-## Workflow Components
+## System Architecture
 
-### Toolchain Setup
-- Uses stable Rust toolchain
-- Captures version information for debugging:
-  ```bash
-  rustc --version   # Rust compiler version
-  cargo --version   # Cargo package manager version
-  rustup --version  # Toolchain manager version
-  ```
-
-### Distribution Workflows
+### Complete Pipeline Overview
 ```mermaid
-sequenceDiagram
-    participant G as GitHub Actions
-    participant D as DockerHub Flow
-    participant B as BitTorrent Flow
-    participant E as E2E Tests
-
-    U->>G: Push Changes
-    G->>G: Check Path Changes
-    par Distribution Workflows
-        G->>D: Start DockerHub Flow
-        G->>B: Start BitTorrent Flow
+graph TB
+    subgraph "Phase 1: Distribution"
+        Push[Code Push] --> Checks{Path Changes?}
+        Checks -->|Yes| Dist[Distribution Workflow]
+        Checks -->|No| Skip[Skip Build]
+        
+        subgraph "Build Process"
+            Dist --> DockerB[DockerHub Build]
+            Dist --> DirectB[Direct Download Build]
+            DockerB --> Tests1[Security Scan]
+            DirectB --> Tests1
+            Tests1 --> E2E[E2E Tests]
+        end
+        
+        E2E -->|Success| Store[Store Artifacts]
+        E2E -->|Failure| Revert[Auto-Revert]
     end
-    D-->>E: Notify Completion
-    B-->>E: Notify Completion
-    E->>E: Run Integration Tests
+    
+    subgraph "Phase 2: Release"
+        Store --> RelTrig[Release Trigger]
+        RelTrig --> BranchCheck{Branch Type}
+        
+        BranchCheck -->|main| Stable[Stable Release]
+        BranchCheck -->|beta| Beta[Beta Release]
+        BranchCheck -->|release-*| RC[Release Candidate]
+        
+        Stable --> Verify[Artifact Verification]
+        Beta --> Verify
+        RC --> Verify
+        
+        Verify -->|Valid| Publish[Create Release]
+        Verify -->|Invalid| Fail[Fail Release]
+    end
+
+    style Push fill:#f9f,stroke:#333
+    style Store fill:#9f9,stroke:#333
+    style Fail fill:#f66,stroke:#333
+    style Revert fill:#f66,stroke:#333
 ```
 
-## Common Workflow States
-| State | Description | Next Action |
-|-------|-------------|-------------|
-| ✅ Success | All jobs completed | Release creation |
-| ❌ Failure | One or more jobs failed | Check specific job logs |
-| ⏳ Waiting | Waiting for other workflow | Monitor dependencies |
-| ⏭️ Skipped | Path conditions not met | None needed |
+### Artifact Verification Pipeline
+```mermaid
+flowchart TD
+    A[Start Verification] --> B{Artifacts Present?}
+    B -->|No| C[Download from Previous Run]
+    B -->|Yes| D{Checksums Match?}
+    C --> D
+    
+    D -->|No| E[Fail Release]
+    D -->|Yes| F{Size Valid?}
+    
+    F -->|No| E
+    F -->|Yes| G{Content Check}
+    
+    G -->|Failed| E
+    G -->|Passed| H{Docker Image?}
+    
+    H -->|Yes| I[Pull & Verify Image]
+    H -->|No| J[Final Validation]
+    
+    I -->|Success| J
+    I -->|Failure| E
+    
+    J -->|Pass| K[Release Creation]
+    J -->|Fail| E
+```
 
-## Version Control
-- Semantic versioning (MAJOR.MINOR.PATCH)
-- Automatic patch version increment on successful tests
-- Version format: `vX.Y.Z` (e.g., v0.1.0)
-- Release names include version and changes
+### Error Recovery Flow
+```mermaid
+sequenceDiagram
+    participant CI as GitHub Actions
+    participant Git as Git Repo
+    participant DH as DockerHub
+    participant GHA as GitHub Artifacts
+    
+    Note over CI: Job Failure Detected
+    CI->>Git: Trigger Revert Workflow
+    CI->>DH: Remove Tagged Image
+    CI->>GHA: Delete Failed Artifacts
+    
+    Git->>Git: Create Revert Commit
+    Git->>Git: Sign with GPG
+    Git->>CI: Push Revert
+    
+    Note over CI: Notify Team
+    CI->>CI: Create Issue
+    CI->>CI: Add Failure Labels
+```
 
-## Debugging Workflows
-- Check the Actions tab for specific workflow runs
-- Each job has detailed logs with toolchain versions
-- Failed steps are clearly marked
-- Environment and secret issues show in logs
+## Workflow States & Transitions
 
-## Adding New Workflows
-When adding new distribution methods:
-1. Create workflow file in `.github/workflows/`
-2. Define appropriate triggers
-3. Add to E2E test suite
-4. Update this documentation 
+### Distribution Pipeline States
+```mermaid
+stateDiagram-v2
+    [*] --> Triggered
+    Triggered --> Building
+    Building --> Testing
+    Testing --> Storing
+    Testing --> Failed
+    Storing --> Ready
+    Failed --> Reverting
+    Reverting --> [*]
+    Ready --> [*]
+    
+    state Building {
+        [*] --> DockerHub
+        [*] --> DirectDownload
+        DockerHub --> [*]
+        DirectDownload --> [*]
+    }
+    
+    state Testing {
+        [*] --> Security
+        Security --> E2E
+        E2E --> [*]
+    }
+```
 
-## Release Process
-- Triggered after successful E2E tests
-- Collects artifacts from all workflows
-- Generates comprehensive release notes
-- Includes all distribution methods
-- Documents availability constraints 
+## Critical Path Analysis
 
-## Workflow Development Guide
+### Success Path
+1. Code Push → Path Check
+2. Build Distribution
+3. Security Scans
+4. E2E Tests
+5. Artifact Storage
+6. Release Creation
+7. Documentation Update
 
-### Directory Structure
-- `.github/workflows/`: All GitHub Actions workflow files
-  - `bittorrent-build-and-seed.yml`: BitTorrent distribution workflow
-  - `dockerhub-build-and-push.yml`: DockerHub distribution workflow
-  - `e2e-integration-test.yml`: Integration test workflow
-  - `create-release.yml`: Release creation workflow
+### Failure Points & Mitigations
 
-### Development Process
-1. Create feature branch from develop
-2. Make workflow changes
-3. Push to feature branch
-4. Create PR to develop
-5. Verify workflow runs in PR
-6. Merge if successful
+| Stage | Failure | Mitigation |
+|-------|---------|------------|
+| Build | Docker build fails | Auto-revert, cached layers |
+| Tests | Security vulnerabilities | Block release, create issue |
+| Artifacts | Storage failure | Retry mechanism, temp storage |
+| Release | Missing artifacts | Re-run distribution |
+| DockerHub | Rate limits | Authenticated pulls, caching |
+| GPG | Signing fails | Fallback keys, manual intervention |
 
-### Best Practices
-- Keep workflows focused on a single responsibility
-- Test changes through pull requests
-- Document environment variables and secrets
-- Follow existing patterns for consistency 
+## Developer Guidelines
+
+### Branch Strategy
+```mermaid
+gitGraph
+    commit
+    branch develop
+    checkout develop
+    commit
+    branch feature/new-tool
+    checkout feature/new-tool
+    commit
+    commit
+    checkout develop
+    merge feature/new-tool
+    branch release-1.0
+    checkout release-1.0
+    commit
+    checkout main
+    merge release-1.0
+    branch beta
+    checkout beta
+    commit
+```
+
+### Release Checklist
+
+✅ Pre-Release
+- [ ] All tests passing
+- [ ] Security scan clear
+- [ ] Artifacts validated
+- [ ] Documentation updated
+- [ ] Version bumped
+- [ ] Changelog updated
+
+✅ Release
+- [ ] Branch protection rules met
+- [ ] Required approvals obtained
+- [ ] GPG signing configured
+- [ ] Distribution workflow successful
+- [ ] Artifacts available
+
+✅ Post-Release
+- [ ] Download links verified
+- [ ] DockerHub image available
+- [ ] Documentation links updated
+- [ ] Release notes complete
+- [ ] Notifications sent
+
+### Common Pitfalls
+
+❌ **Don't:**
+- Push directly to protected branches
+- Skip security scans
+- Force-push to release branches
+- Ignore failed tests
+- Bypass branch protection
+- Delete release tags
+
+✅ **Do:**
+- Use feature branches
+- Wait for all checks
+- Sign commits and tags
+- Follow versioning scheme
+- Update documentation
+- Verify artifacts
+
+## Emergency Procedures
+
+### Release Rollback
+```mermaid
+flowchart TD
+    A[Issue Detected] -->|Critical| B[Immediate Action]
+    A -->|Non-Critical| C[Standard Process]
+    
+    B --> D[Stop Distribution]
+    B --> E[Remove Release]
+    B --> F[Revert Tag]
+    
+    C --> G[Create Issue]
+    C --> H[Plan Fix]
+    C --> I[Normal Release]
+    
+    D --> J[Notify Users]
+    E --> J
+    F --> J
+```
+
+### Quick Reference
+
+🚨 **Emergency Contacts**
+- GitHub Team: @github-team
+- DevOps: @devops-team
+- Security: @security-team
+
+🔧 **Quick Commands**
+```bash
+# Revert last release
+git revert $(git rev-list -n 1 $(git tag | sort -V | tail -n 1))
+
+# Remove failed release
+git tag -d v1.2.3
+git push origin :v1.2.3
+
+# Check artifact status
+gh run download --name artifact-name
+```
+
+## Monitoring & Alerts
+
+### Key Metrics
+- Build Duration: < 15 minutes
+- Test Coverage: > 80%
+- Security Issues: 0 critical
+- Release Time: < 30 minutes
+- Artifact Size: < 1GB
+
+### Alert Thresholds
+```mermaid
+graph LR
+    A[Metrics] --> B{Duration}
+    A --> C{Coverage}
+    A --> D{Security}
+    
+    B -->|>15min| E[Warning]
+    B -->|>30min| F[Critical]
+    
+    C -->|<80%| G[Warning]
+    C -->|<70%| H[Critical]
+    
+    D -->|Any Critical| I[Block Release]
+    D -->|>5 High| J[Review Required]
+```
+
+## Future Enhancements
+
+### Planned Improvements
+- [ ] Automated dependency updates
+- [ ] Advanced artifact caching
+- [ ] Release candidate promotion
+- [ ] Automated changelog
+- [ ] Performance metrics
+- [ ] Compliance checks

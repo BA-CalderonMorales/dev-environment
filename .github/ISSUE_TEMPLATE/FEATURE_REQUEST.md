@@ -9,7 +9,7 @@ assignees: ''
 ## Feature Category
 <!-- Check one or more that apply -->
 - [ ] Development Environment
-- [ ] Distribution Method (DockerHub/BitTorrent)
+- [ ] Distribution Method (DockerHub/Direct Download)  // Updated distribution methods
 - [ ] CLI Tool
 - [ ] Documentation
 - [ ] Testing/CI
@@ -35,4 +35,4 @@ A clear and concise description of any alternative solutions or features you've 
 <!-- Add any other context about the feature request here -->
 - Environment details (if relevant)
 - Screenshots (if applicable)
-- Related issues/PRs 
+- Related issues/PRs

@@ -47,20 +47,19 @@ check_requirements() {
 determine_distribution() {
     if [ "$TEST_MODE" = "true" ] && [ "$LOCAL_TEST" = "true" ]; then
         echo -e "${YELLOW}Running in local test mode${NC}"
-        # Add specific test behavior here
         return 0
     fi
 
-    if [ "$PREFER_BITTORRENT" = "true" ]; then
-        echo -e "${YELLOW}BitTorrent distribution preferred${NC}"
-        if handle_bittorrent_distribution; then
+    if [ "$PREFER_DIRECT_DOWNLOAD" = "true" ]; then
+        echo -e "${YELLOW}Direct Download distribution preferred${NC}"
+        if handle_direct_download_distribution; then
             return 0
         else
             if [ "$TEST_MODE" = "true" ]; then
-                echo -e "${RED}BitTorrent distribution failed during test${NC}"
+                echo -e "${RED}Direct Download distribution failed during test${NC}"
                 exit 1
             fi
-            echo -e "${YELLOW}BitTorrent distribution failed, falling back to DockerHub...${NC}"
+            echo -e "${YELLOW}Direct Download failed, falling back to DockerHub...${NC}"
         fi
     fi
 

@@ -70,3 +70,6 @@ coverage/
 **/CACHEDIR.TAG
 **/target/
 **/Cargo.lock
+# Distribution artifacts
+distributions/direct_download/dev-environment.tar
+distributions/direct_download/checksum.txt

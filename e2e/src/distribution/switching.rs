@@ -56,9 +56,9 @@ pub async fn test_distribution_switching() -> Result<()> {
     println!("🧪 Running distribution switching tests...");
 
     let tests = vec![
-        ("BitTorrent Fallback", vec![("FORCE_BITTORRENT_FAIL", "true")]),
+        ("Direct Download Fallback", vec![("FORCE_DIRECT_DOWNLOAD_FAIL", "true")]),
         ("DockerHub Fallback", vec![("SIMULATE_DOCKERHUB_RATE_LIMIT", "true")]),
-        ("Preferred Distribution", vec![("PREFER_BITTORRENT", "true")]),
+        ("Preferred Distribution", vec![("PREFER_DIRECT_DOWNLOAD", "true")]),
     ];
 
     for (name, env_vars) in tests {
@@ -74,4 +74,4 @@ pub async fn test_distribution_switching() -> Result<()> {
 
     println!("✅ Distribution switching tests completed");
     Ok(())
-} 
+}

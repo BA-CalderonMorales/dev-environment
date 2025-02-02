@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use anyhow::{anyhow, bail, Context, Result};
-use crate::Logger;
+use crate::logging::Logger;
 
 pub struct DistributionTest<'a> {
     logger: &'a dyn Logger,
@@ -13,8 +13,16 @@ impl<'a> DistributionTest<'a> {
     }
 
     pub async fn test_distribution_creation(&self, dockerfile: &Path, repo: &str) -> Result<()> {
-        self.logger.debug(&format!("Testing distribution creation with repo: {}", repo));
+        self.logger.debug(&format!(
+            "Testing distribution creation with repo: {} and dockerfile: {}",
+            repo,
+            dockerfile.display()
+        ));
         
+        if !dockerfile.exists() {
+            bail!("Dockerfile not found at: {}", dockerfile.display());
+        }
+
         // Get the project root directory (one level up from e2e)
         let project_root = std::env::current_dir()?
             .parent()
@@ -46,6 +54,11 @@ impl<'a> DistributionTest<'a> {
     pub async fn test_dockerhub_install(&self, image: &str) -> Result<()> {
         self.logger.debug(&format!("Testing DockerHub installation for image: {}", image));
         
+        // Validate image format
+        if !image.contains('/') || !image.contains(':') {
+            bail!("Invalid image format. Expected format: repository/image:tag");
+        }
+
         let output = Command::new("docker")
             .args(["pull", image])
             .output()
@@ -59,40 +72,35 @@ impl<'a> DistributionTest<'a> {
         Ok(())
     }
 
-    pub async fn test_torrent_creation(&self) -> Result<()> {
-        self.logger.debug("Testing torrent creation");
+    pub async fn test_direct_download(&self, tarfile: &Path, checksum: &Path) -> Result<()> {
+        self.logger.debug(&format!(
+            "Testing direct download verification for file: {} with checksum: {}", 
+            tarfile.display(),
+            checksum.display()
+        ));
         
-        // Verify torrent file structure exists
-        let torrent_dir = PathBuf::from("artifacts/bittorrent");
-        if !torrent_dir.exists() {
-            std::fs::create_dir_all(&torrent_dir)
-                .context("Failed to create torrent directory")?;
+        if !tarfile.exists() {
+            bail!("Tar file not found at: {}", tarfile.display());
         }
 
-        self.logger.debug("Torrent creation successful");
-        Ok(())
-    }
-
-    pub async fn test_torrent_install(&self, torrent: &Path, checksum: &Path) -> Result<()> {
-        self.logger.debug(&format!("Testing torrent installation from: {:?}", torrent));
-        
-        // Create directory if it doesn't exist
-        if let Some(parent) = torrent.parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create torrent directory")?;
+        if !checksum.exists() {  // Fixed extra parenthesis here
+            bail!("Checksum file not found at: {}", checksum.display());
         }
 
-        // Create empty files for testing if they don't exist
-        if !torrent.exists() {
-            std::fs::write(torrent, "test")
-                .context("Failed to create test torrent file")?;
-        }
-        if !checksum.exists() {
-            std::fs::write(checksum, "test")
-                .context("Failed to create test checksum file")?;
+        // Verify checksum
+        let checksum_output = Command::new("sha256sum")
+            .arg("--check")
+            .arg(checksum)
+            .current_dir(tarfile.parent().unwrap())
+            .output()
+            .context("Failed to verify checksum")?;
+
+        if !checksum_output.status.success() {
+            bail!("Checksum verification failed: {}", 
+                String::from_utf8_lossy(&checksum_output.stderr));
         }
 
-        self.logger.debug("Torrent installation successful");
+        self.logger.debug("Direct download verification successful");
         Ok(())
     }
 }

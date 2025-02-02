@@ -1,0 +1,22 @@
+name: Cleanup DockerHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual deletions)'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  dockerhub_cleanup:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dockerhub Cleanup
+        uses: ./.github/actions/dockerhub-cleanup
+        with:
+          dry_run: ${{ inputs.dry_run }}
+          secrets: inherit

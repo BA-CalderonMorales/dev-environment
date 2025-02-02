@@ -1,0 +1,56 @@
+name: 'DockerHub Cleanup'
+description: 'Manually cleanup old DockerHub images'
+
+inputs:
+  dry_run:
+    description: 'Dry run (no actual deletions)'
+    required: true
+    default: 'true'
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+    - name: Login to DockerHub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ env.DOCKERHUB_USERNAME }}
+        password: ${{ env.DOCKERHUB_TOKEN }}
+
+    - name: List and Clean Images
+      shell: bash
+      run: |
+        echo "Current tags in repository:"
+        curl -s "https://hub.docker.com/v2/repositories/cmoe640/dev-environment/tags/?page_size=100" | jq -r '.results[].name'
+        
+        if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+          echo "DRY RUN - No deletions will be performed"
+          exit 0
+        fi
+
+        PROTECTED_TAGS="latest|stable|beta|dev|pipeline"
+        for tag in $(curl -s "https://hub.docker.com/v2/repositories/cmoe640/dev-environment/tags/?page_size=100" | jq -r '.results[].name'); do
+          if ! echo "$tag" | grep -E "^($PROTECTED_TAGS)$" > /dev/null; then
+            echo "Deleting tag: $tag"
+            curl -s -X DELETE \
+              -H "Authorization: Bearer ${{ env.DOCKERHUB_TOKEN }}" \
+              "https://hub.docker.com/v2/repositories/cmoe640/dev-environment/tags/$tag/"
+          else
+            echo "Keeping protected tag: $tag"
+          fi
+        done
+
+    - name: Create Cleanup Summary
+      shell: bash
+      run: |
+        echo "## 🧹 DockerHub Cleanup Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Mode" >> $GITHUB_STEP_SUMMARY
+        echo "- Dry Run: \`${{ inputs.dry_run }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Protected Tags" >> $GITHUB_STEP_SUMMARY
+        echo "- latest" >> $GITHUB_STEP_SUMMARY
+        echo "- stable" >> $GITHUB_STEP_SUMMARY
+        echo "- beta" >> $GITHUB_STEP_SUMMARY
+        echo "- dev" >> $GITHUB_STEP_SUMMARY
+        echo "- pipeline" >> $GITHUB_STEP_SUMMARY

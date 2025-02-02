@@ -1,0 +1,26 @@
+name: 'Create Deployment Summary'
+description: 'Generates deployment summary and success notification'
+
+inputs:
+  environment:
+    description: 'Target environment name'
+    required: true
+  ref_name:
+    description: 'Git branch/ref name'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Create Summary
+      shell: bash
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Environment: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "### Branch: ${{ inputs.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Docker Tags:" >> $GITHUB_STEP_SUMMARY
+        echo "- \`cmoe640/dev-environment:dev\`" >> $GITHUB_STEP_SUMMARY
+        
+        echo "::notice::Deployment to ${{ inputs.environment }} completed successfully!"
