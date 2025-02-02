@@ -11,11 +11,26 @@ A consistent, pre-configured development environment that just works.
 
 ## Installation
 
-We provide two reliable methods to get started:
+### Available Tags
+We maintain several Docker image tags for different use cases:
+
+- `:latest` - Production-ready, stable release (recommended)
+- `:beta` - Release candidate, feature-complete but under testing
+- `:dev` - Development branch builds with latest features
+- `:pipeline` - CI/CD builds (not recommended for general use)
+
+Choose your preferred installation method:
 
 1. **DockerHub** (Recommended): 
    ```bash
+   # For stable release (recommended)
    docker pull cmoe640/dev-environment:latest
+
+   # For beta features
+   docker pull cmoe640/dev-environment:beta
+
+   # For development version
+   docker pull cmoe640/dev-environment:dev
    ```
 
 2. **Direct Download**: Visit our [latest release](https://github.com/BA-CalderonMorales/dev-environment/releases/latest) page.
