@@ -1,0 +1,136 @@
+name: 'Direct Download Build'
+description: 'Builds direct download artifacts from Docker images'
+
+inputs:
+  image_changed:
+    description: 'Whether the Docker image was changed'
+    required: true
+  source_branch:
+    description: 'Source branch for building'
+    required: false
+  build_from_source:
+    description: 'Whether to build from source'
+    required: false
+    default: 'false'
+
+outputs:
+  artifact_name:
+    description: "Name of the uploaded artifact"
+    value: ${{ steps.upload.outputs.artifact_name }}
+  build_changed:
+    description: "Whether the build was changed"
+    value: ${{ steps.check_changes.outputs.changed }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check Build State
+      id: check_changes
+      shell: bash
+      run: |
+        CHANGED=false
+        if [[ "${{ inputs.image_changed }}" == "true" || "${{ inputs.build_from_source }}" == "true" ]]; then
+          CHANGED=true
+          echo "🌟 Detected changes requiring rebuild"
+        else
+          echo "⏭️ No changes detected"
+        fi
+        echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+
+    - name: Prepare Build Environment
+      if: steps.check_changes.outputs.changed == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          ca-certificates \
+          curl \
+          gnupg \
+          lsb-release \
+          jq
+
+    - name: Setup Source
+      if: steps.check_changes.outputs.changed == 'true'
+      shell: bash
+      run: |
+        if [[ "${{ inputs.build_from_source }}" == "true" ]]; then
+          echo "🔄 Checking out source from branch: ${{ inputs.source_branch }}"
+          git fetch origin ${{ inputs.source_branch }}
+          git checkout origin/${{ inputs.source_branch }} -- distributions/dockerhub/
+        else
+          echo "📦 Using existing image for packaging"
+        fi
+
+    - name: Process Docker Image
+      if: steps.check_changes.outputs.changed == 'true'
+      shell: bash
+      run: |
+        mkdir -p distributions/direct_download
+        
+        if [[ "${{ inputs.build_from_source }}" == "true" ]]; then
+          echo "🏗️ Building from source configuration"
+          # Use current branch's Dockerfile
+          docker build \
+            -t temp-export-image \
+            -f distributions/dockerhub/Dockerfile .
+          
+          CONTAINER_ID=$(docker create temp-export-image)
+        else
+          echo "📥 Pulling existing image"
+          IMAGE_TAG=$(jq -r '.image' artifacts/dockerhub/image-info.json)
+          docker pull $IMAGE_TAG
+          CONTAINER_ID=$(docker create $IMAGE_TAG)
+        fi
+        
+        echo "📦 Exporting container filesystem"
+        docker export $CONTAINER_ID > distributions/direct_download/dev-environment.tar
+        docker rm $CONTAINER_ID
+        
+        if [[ "${{ inputs.build_from_source }}" == "true" ]]; then
+          docker rmi temp-export-image
+        fi
+
+    - name: Generate checksum
+      if: steps.check_changes.outputs.changed == 'true'
+      shell: bash
+      run: |
+        cd distributions/direct_download
+        sha256sum dev-environment.tar > checksum.txt
+
+    - name: Prepare No-Change Artifacts
+      if: steps.check_changes.outputs.changed != 'true'
+      shell: bash
+      run: |
+        mkdir -p artifacts/direct_download
+        echo '{
+          "version": "${{ github.sha }}",
+          "date": "'$(date -u +"%Y-%m-%d %H:%M UTC")'",
+          "changes": false,
+          "message": "No changes detected, using existing package"
+        }' > artifacts/direct_download/info.json
+
+    - name: Upload Artifacts
+      id: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: direct-download-artifacts
+        path: |
+          ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/direct_download/dev-environment.tar' || '' }}
+          ${{ steps.check_changes.outputs.changed == 'true' && 'distributions/direct_download/checksum.txt' || '' }}
+          ${{ steps.check_changes.outputs.changed != 'true' && 'artifacts/direct_download/info.json' || '' }}
+        retention-days: 5
+
+    - name: Report Build Status
+      shell: bash
+      run: |
+        echo "## 📦 Direct Download Build Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Build Status" >> $GITHUB_STEP_SUMMARY
+        echo "- Changes Detected: \`${{ steps.check_changes.outputs.changed }}\`" >> $GITHUB_STEP_SUMMARY
+        if [[ "${{ steps.check_changes.outputs.changed }}" == "true" ]]; then
+          echo "- Artifacts Generated:" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`dev-environment.tar\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`checksum.txt\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- No changes detected, skipped artifact generation" >> $GITHUB_STEP_SUMMARY
+        fi

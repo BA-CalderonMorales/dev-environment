@@ -39,7 +39,14 @@ runs:
         TEST_ENV: ${{ inputs.environment }}
       run: |
         cd e2e
-        cargo test --release -- --nocapture
+        mkdir -p test-results
+        
+        # Run tests with proper argument syntax
+        RUST_BACKTRACE=1 RUST_TEST_NOCAPTURE=1 \
+        cargo test --release --bin e2e-tests -- --test-threads=1 2>&1 | tee test-results/output.txt
+        
+        # Save exit code properly
+        echo ${PIPESTATUS[0]} > test-results/status.txt
 
     - name: Cleanup
       if: always()
@@ -53,8 +60,37 @@ runs:
     - name: Report Test Results
       shell: bash
       run: |
+        cd e2e
         echo "## 🧪 E2E Test Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Test Environment" >> $GITHUB_STEP_SUMMARY
         echo "- Image: \`${{ inputs.test_image }}\`" >> $GITHUB_STEP_SUMMARY
         echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f test-results/output.txt ]; then
+          # Extract test execution details
+          echo "Test Execution Summary:" >> $GITHUB_STEP_SUMMARY
+          echo "-------------------" >> $GITHUB_STEP_SUMMARY
+          {
+            grep "running.*test" test-results/output.txt || true
+            echo ""
+            grep "test.*\.\.\." test-results/output.txt || true
+            echo ""
+            grep "test result:" test-results/output.txt || true
+          } >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ No test results found" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        
+        # Add overall status with proper pipeline failure
+        if [ -f test-results/status.txt ] && [ "$(cat test-results/status.txt)" = "0" ]; then
+          echo "✅ **All tests passed successfully**" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Tests failed or encountered errors**" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi

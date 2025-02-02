@@ -1,3 +1,6 @@
+#![cfg_attr(test, deny(missing_docs))]
+#![doc(html_no_source)]
+
 //! Core library traits and utilities for E2E testing framework
 
 pub mod common;
