@@ -1,57 +1,46 @@
 # Usage Guide
 
-## Overview
-This development environment provides a consistent, tested workspace using either DockerHub or direct download distribution methods.
+## Quick Start
 
-## Getting Started
-
-### Prerequisites
-- Docker Engine v20.10.0 or higher
-- Git
-
-### Installation Methods
-
-#### Method 1: DockerHub (Recommended)
-The fastest way to get started is using our DockerHub distribution:
-
+### DockerHub Installation
 ```bash
+# Pull stable version
 docker pull cmoe640/dev-environment:latest
-docker run -it cmoe640/dev-environment
+
+# Or development version
+docker pull cmoe640/dev-environment:dev
 ```
 
-#### Method 2: Direct Download
-For situations where DockerHub access is limited:
+### Tag Selection
+- `:latest` - Stable release (recommended)
+- `:beta` - Pre-release testing
+- `:dev` - Latest features
+- `:pipeline` - CI/CD builds (avoid)
 
-1. Download the package from our release page
-2. Verify the checksum
-3. Run the installation script
-
-```bash
-# Verify package
-sha256sum dev-environment.tar.gz
-
-# Install
-./install.sh
-```
-
-## Using the Environment
+## Basic Usage
 
 ### Starting the Environment
 ```bash
-# Start with default settings
-./startup/start-dev.sh
+docker run -it cmoe640/dev-environment:latest
 ```
 
 ### Development Workflow
-1. Start the environment
-2. Access your workspace
-3. Use integrated development tools
-4. Commit and push changes
+1. Pull latest version
+2. Start container
+3. Begin development
+4. Commit changes
+5. Push to repository
 
-### Common Tasks
-- Access container shell: `docker exec -it dev-environment bash`
-- Update environment: `./startup/update.sh`
-- Check status: `./startup/status.sh`
+## Advanced Usage
+
+### Custom Configuration
+```bash
+# Mount custom config
+docker run -v ~/.myconfig:/config -it cmoe640/dev-environment:latest
+```
+
+### Troubleshooting
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues and solutions.
 
 ## Next Steps
 - Read the [Contributing Guide](CONTRIBUTING.md) to help improve the project

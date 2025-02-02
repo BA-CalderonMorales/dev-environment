@@ -1,41 +1,23 @@
 # Troubleshooting Guide
 
-## Quick Fixes for Common Issues
+## Quick Reference
 
 💡 Most issues can be solved by:
 1. Open Docker Desktop
 2. Wait 1-2 minutes for the whale icon to stop animating
 3. Try your docker command again
 
-## Windows-Specific Issues
+## Installation & Setup
 
-### Git Bash: winpty Error
-When running interactive containers in Git Bash, you might see terminal errors.
+### Docker Tags
+Choose the right tag for your needs:
+- `:latest` - Stable, production-ready (recommended)
+- `:beta` - Release candidate, feature-complete but under testing
+- `:dev` - Latest features, potentially unstable
+- `:pipeline` - CI/CD builds (not for general use)
 
-**Solution:**
-Add `winpty` before your docker run commands:
-```bash
-winpty docker run -it cmoe640/dev-environment:latest
-```
+### Common Installation Issues
 
-Or create an alias in your ~/.bashrc:
-```bash
-alias docker="winpty docker"
-```
-
-### Docker Desktop Connection Error
-```bash
-error: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified
-```
-
-**Solution:**
-1. Check Docker Desktop is running (whale icon in system tray)
-2. Wait 1-2 minutes for full initialization
-3. Try command again
-
-## Docker Issues by Category
-
-### 1. Installation Issues
 #### Docker Not Installed
 ```bash
 Error: Cannot connect to the Docker daemon
@@ -51,7 +33,7 @@ sudo systemctl start docker
 # Start Docker Desktop
 ```
 
-### 2. Permission Issues
+### Permission Issues
 #### Permission Issues
 ```bash
 Error: Got permission denied while trying to connect to the Docker daemon socket
@@ -64,7 +46,30 @@ sudo usermod -aG docker $USER
 # Then log out and back in
 ```
 
-### 3. Connection Issues
+## Platform-Specific Issues
+
+### Windows Issues
+
+#### Git Bash: winpty Error
+When running interactive containers in Git Bash, you might see terminal errors.
+
+**Solution:**
+Add `winpty` before your docker run commands:
+```bash
+winpty docker run -it cmoe640/dev-environment:latest
+```
+
+### Docker Desktop Connection Error
+```bash
+error: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified
+```
+
+**Solution:**
+1. Check Docker Desktop is running (whale icon in system tray)
+2. Wait 1-2 minutes for full initialization
+3. Try command again
+
+### Docker Connection Issues
 #### "Cannot find the file specified" or Docker Connection Errors
 
 Follow these steps in order:
@@ -101,7 +106,7 @@ Follow these steps in order:
 
 Need more help? Visit our [GitHub Issues](https://github.com/yourusername/dev-environment/issues)
 
-### 4. Resource Issues
+### Resource Issues
 #### Resource Constraints
 ```bash
 Error: Insufficient memory/CPU
@@ -111,7 +116,7 @@ Error: Insufficient memory/CPU
 2. Increase memory/CPU allocation
 3. Restart Docker Desktop
 
-### 5. Distribution Issues
+### Distribution Issues
 
 #### Download Issues
 ```bash
@@ -136,6 +141,24 @@ Error: invalid tar header
 ls -lh dev-environment-latest.tar
 ```
 
+## Development Issues
+
+### E2E Test Failures
+If your E2E tests are failing, verify:
+1. Docker daemon is running
+2. Correct tag is being used
+3. Required permissions are set
+4. No network conflicts
+
+### Log Access
+Logs are stored in `startup/logs/` inside the container.
+
+### Security Issues
+Report security concerns by:
+1. Opening a draft security advisory
+2. Submitting a security-related PR
+3. Issues are handled sequentially (first come, first serve)
+
 ## Terminal-Specific Issues
 
 ### Git Bash
@@ -153,8 +176,22 @@ ls -lh dev-environment-latest.tar
 
 If your issue isn't covered here:
 1. Check [existing issues](https://github.com/yourusername/dev-environment/issues)
-2. Check our [FAQ](FAQ.md)
-3. Create a new issue with:
+2. Create a new issue with:
    - Error message
    - Steps to reproduce
    - System information
+   - Environment details
+
+## Contributing
+
+Want to improve this guide?
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a PR to `develop`
+
+Include:
+- Clear problem description
+- Detailed solution steps
+- Relevant examples
+- Links to related documentation
