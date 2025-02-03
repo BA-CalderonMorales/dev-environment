@@ -1,0 +1,71 @@
+name: 'Process Release Queue'
+description: 'Processes the release queue and determines next release'
+
+inputs:
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+  trigger_sha:
+    description: 'SHA that triggered the workflow'
+    required: false
+  source_branch:
+    description: 'Branch that triggered the workflow'
+    required: false
+
+outputs:
+  sha:
+    description: 'SHA to release'
+    value: ${{ steps.process.outputs.sha }}
+  branch:
+    description: 'Branch being released'
+    value: ${{ steps.process.outputs.branch }}
+  can_proceed:
+    description: 'Whether release can proceed'
+    value: ${{ steps.process.outputs.can_proceed }}
+
+runs:
+  using: composite
+  steps:
+    - id: process
+      shell: bash
+      run: |
+        # Handle direct trigger vs queue processing
+        if [[ -n "${{ inputs.trigger_sha }}" ]]; then
+          # Direct trigger from distribution workflow
+          echo "sha=${{ inputs.trigger_sha }}" >> $GITHUB_OUTPUT
+          echo "branch=${{ inputs.source_branch }}" >> $GITHUB_OUTPUT
+          echo "can_proceed=true" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Get queue issue
+        QUEUE_ISSUE=$(gh issue list --label "release-queue" --json number --jq '.[0].number')
+        if [[ -z "$QUEUE_ISSUE" ]]; then
+          echo "No queue found. Exiting."
+          echo "can_proceed=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Get next queued item
+        NEXT_RELEASE=$(gh issue view "$QUEUE_ISSUE" --json comments \
+          --jq '.comments[].body | select(startswith("QUEUED:")) | split("\n")[0]' \
+          | head -n 1)
+
+        if [[ -z "$NEXT_RELEASE" ]]; then
+          echo "Queue is empty. Exiting."
+          echo "can_proceed=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Parse release info
+        SHA=$(echo "$NEXT_RELEASE" | grep -o 'SHA:[^|]*' | cut -d: -f2)
+        BRANCH=$(echo "$NEXT_RELEASE" | grep -o 'BRANCH:[^|]*' | cut -d: -f2)
+
+        echo "sha=$SHA" >> $GITHUB_OUTPUT
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        echo "can_proceed=true" >> $GITHUB_OUTPUT
+
+        # Mark as processing
+        gh issue comment "$QUEUE_ISSUE" --body "PROCESSING:$NEXT_RELEASE"
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}

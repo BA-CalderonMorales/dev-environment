@@ -476,3 +476,9 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           sha: ${{ github.sha }}
           branch: ${{ github.ref_name }}
+
+      - uses: ./.github/actions/trigger-release-workflow
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.ref }}
+          sha: ${{ github.sha }}
