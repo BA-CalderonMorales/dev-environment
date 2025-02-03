@@ -1,18 +1,26 @@
 name: Create Release
 
 on:
+  # Manual trigger with optional SHA/branch override
   workflow_dispatch:
     inputs:
       trigger_sha:
-        description: 'SHA that triggered the release'
-        required: true
+        description: 'SHA to release (optional)'
+        required: false
         type: string
       source_branch:
-        description: 'Branch that triggered the release'
-        required: true
+        description: 'Source branch (optional)'
+        required: false
         type: string
+      force_process:
+        description: 'Force queue processing'
+        required: false
+        type: boolean
+        default: false
+  # Weekly scheduled release processing
   schedule:
-    - cron: '*/15 * * * *'  # Process queue every 15 minutes
+    # Run every Saturday at 10:00 AM CST (16:00 UTC)
+    - cron: '0 16 * * SAT'
 
 permissions:
   contents: write
@@ -52,12 +60,24 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Check if this is a manual trigger with specific SHA/branch
+      - id: check_inputs
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
+            echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
+          else
+            echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
+          fi
+
       - id: queue
         uses: ./.github/actions/process-release-queue
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_sha: ${{ inputs.trigger_sha }}
           source_branch: ${{ inputs.source_branch }}
+          force_process: ${{ inputs.force_process }}
+          is_scheduled: ${{ github.event_name == 'schedule' }}
 
       - id: version
         if: steps.queue.outputs.can_proceed == 'true'
