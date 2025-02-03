@@ -342,7 +342,6 @@ jobs:
     runs-on: ubuntu-22.04
     if: |
       success() && 
-      needs.detect_changes.outputs.docker_changed == 'true' &&
       (github.ref == 'refs/heads/main' || 
        github.ref == 'refs/heads/beta' || 
        github.ref == 'refs/heads/develop')
@@ -351,6 +350,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/release-artifacts
         id: release_artifacts
+        with:
+          has_docker_changes: ${{ needs.detect_changes.outputs.docker_changed }}
         env:
           RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -438,15 +439,15 @@ jobs:
   #####################################################################
   notify_success:
     runs-on: ubuntu-22.04
-    needs: [validate_branch, dockerhub_build, e2e_tests, security_scan]
-    if: success()
+    needs: [validate_branch, dockerhub_build, e2e_tests, security_scan, release_artifacts]
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     steps:
       - uses: actions/checkout@v4
-      - name: Create Deployment Summary
-        uses: ./.github/actions/create-deploy-summary
+      - uses: ./.github/actions/create-deploy-summary
         with:
           environment: ${{ needs.validate_branch.outputs.environment }}
           ref_name: ${{ github.ref_name }}
+          has_artifacts: ${{ needs.release_artifacts.result == 'success' }}
 
   #####################################################################
   # Queue Release
@@ -464,21 +465,36 @@ jobs:
   #####################################################################
   queue_release:
     runs-on: ubuntu-22.04
+    # Changed condition to include PR merges to beta/main
     if: |
       success() &&
-      github.event_name == 'push' &&
-      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')
+      ((github.event_name == 'push' && (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')) ||
+       (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true &&
+        (github.event.pull_request.base.ref == 'beta' || github.event.pull_request.base.ref == 'main')))
     needs: [dockerhub_build, e2e_tests, security_scan, release_artifacts]
     steps:
       - uses: actions/checkout@v4
+      
+      # Get the correct SHA and branch based on event type
+      - name: Set Release Info
+        id: release_info
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+            echo "branch=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+          else
+            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
       - uses: ./.github/actions/queue-release
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          sha: ${{ github.sha }}
-          branch: ${{ github.ref_name }}
+          sha: ${{ steps.release_info.outputs.sha }}
+          branch: ${{ steps.release_info.outputs.branch }}
 
       - uses: ./.github/actions/trigger-release-workflow
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.ref }}
-          sha: ${{ github.sha }}
+          sha: ${{ steps.release_info.outputs.sha }}
