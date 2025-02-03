@@ -1,26 +1,39 @@
-name: 'Create Deployment Summary'
-description: 'Generates deployment summary and success notification'
+name: 'Create Deploy Summary'
+description: 'Creates a deployment summary with correct environment and tag information'
 
 inputs:
   environment:
-    description: 'Target environment name'
+    description: 'Target environment'
     required: true
   ref_name:
-    description: 'Git branch/ref name'
+    description: 'Branch or tag name'
+    required: true
+  has_artifacts:
+    description: 'Whether artifacts were created'
     required: true
 
 runs:
-  using: 'composite'
+  using: composite
   steps:
-    - name: Create Summary
+    - id: summary
       shell: bash
       run: |
+        # Determine correct Docker tag based on branch
+        case "${{ inputs.ref_name }}" in
+          "main")
+            DOCKER_TAG="latest"
+            ;;
+          "beta")
+            DOCKER_TAG="beta"
+            ;;
+          *)
+            DOCKER_TAG="dev"
+            ;;
+        esac
+
+        # Create summary
         echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Environment: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-        echo "### Branch: ${{ inputs.ref_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Docker Tags:" >> $GITHUB_STEP_SUMMARY
-        echo "- \`cmoe640/dev-environment:dev\`" >> $GITHUB_STEP_SUMMARY
-        
-        echo "::notice::Deployment to ${{ inputs.environment }} completed successfully!"
+        echo "Environment: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "Branch: ${{ inputs.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "Docker Tags:" >> $GITHUB_STEP_SUMMARY
+        echo "cmoe640/dev-environment:${DOCKER_TAG}" >> $GITHUB_STEP_SUMMARY

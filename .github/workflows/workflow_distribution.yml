@@ -465,27 +465,25 @@ jobs:
   #####################################################################
   queue_release:
     runs-on: ubuntu-22.04
-    # Changed condition to include PR merges to beta/main
+    # Simplified condition to catch both direct pushes and PR merges
     if: |
       success() &&
-      ((github.event_name == 'push' && (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')) ||
-       (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true &&
+      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main' ||
+       (github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
         (github.event.pull_request.base.ref == 'beta' || github.event.pull_request.base.ref == 'main')))
-    needs: [dockerhub_build, e2e_tests, security_scan, release_artifacts]
+    # Remove dependency on release_artifacts to prevent skipping
+    needs: [dockerhub_build, e2e_tests, security_scan]
     steps:
       - uses: actions/checkout@v4
       
-      # Get the correct SHA and branch based on event type
-      - name: Set Release Info
+      - uses: ./.github/actions/set-release-info
         id: release_info
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-            echo "branch=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
-          else
-            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
+        with:
+          event_name: ${{ github.event_name }}
+          event_sha: ${{ github.sha }}
+          pr_head_sha: ${{ github.event.pull_request.head.sha }}
+          pr_base_ref: ${{ github.event.pull_request.base.ref }}
+          ref_name: ${{ github.ref_name }}
 
       - uses: ./.github/actions/queue-release
         with:
