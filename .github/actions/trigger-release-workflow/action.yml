@@ -1,0 +1,32 @@
+name: 'Trigger Release Workflow'
+description: 'Triggers the release workflow after successful distribution'
+
+inputs:
+  github_token:
+    description: 'GitHub token for workflow dispatch'
+    required: true
+  ref:
+    description: 'Git reference to use'
+    required: true
+  sha:
+    description: 'Commit SHA that triggered the workflow'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Trigger Workflow
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          await github.rest.actions.createWorkflowDispatch({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            workflow_id: 'workflow_create_release.yml',
+            ref: '${{ inputs.ref }}',
+            inputs: {
+              trigger_sha: '${{ inputs.sha }}',
+              source_branch: '${{ inputs.ref }}'
+            }
+          });

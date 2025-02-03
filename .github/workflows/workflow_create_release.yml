@@ -1,99 +1,116 @@
 name: Create Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-    branches:
-      - main
-      - beta
-      - 'release-*'
-  pull_request:
-    branches:
-      - main
-      - beta
-      - 'release-*'
-    paths:
-      - '.github/workflows/create_release.yml'
-      - 'version.txt'
-      - 'CHANGELOG.md'
+  # Manual trigger with optional SHA/branch override
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version to release (e.g. v1.2.0)'
-        required: true
+      trigger_sha:
+        description: 'SHA to release (optional)'
+        required: false
         type: string
-      prerelease:
-        description: 'Is this a prerelease?'
-        required: true
+      source_branch:
+        description: 'Source branch (optional)'
+        required: false
+        type: string
+      force_process:
+        description: 'Force queue processing'
+        required: false
         type: boolean
-        default: true
+        default: false
+  # Weekly scheduled release processing
   schedule:
-    - cron: '*/15 * * * *'  # Run every 15 minutes
-
-env:
-  MAINTAINER_GITHUB: '@yourgithubusername'  # Replace with your GitHub username
-  INITIAL_VERSION: 'v0.0.1'
-  DOCKER_IMAGE: 'your-dockerhub-username/image-name'  # Replace with your image name
+    # Run every Saturday at 10:00 AM CST (16:00 UTC)
+    - cron: '0 16 * * SAT'
 
 permissions:
   contents: write
   pull-requests: write
   issues: write
 
+env:
+  MAINTAINER_GITHUB: '@yourgithubusername'
+  INITIAL_VERSION: 'v0.0.1'
+  DOCKER_IMAGE: 'your-dockerhub-username/image-name'
+
 jobs:
   #####################################################################
-  # Create Release
-  # -------------
-  # Purpose: Creates GitHub releases and updates Docker tags
+  # Process Release Queue
+  # -------------------
+  # Purpose: Processes the release queue and prepares for release creation
   #
   # Flow:
-  # 1. Verifies distribution workflow success
-  # 2. Determines version based on branch
-  # 3. Creates GitHub release
-  # 4. Updates Docker tags
-  #
-  # Dependencies: None
-  # Outputs: None
-  # Used by: N/A - Final job
+  # 1. Gets next item from queue
+  # 2. Verifies all prerequisites
+  # 3. Sets up release parameters
   #####################################################################
-  create_release:
+  process_queue:
     runs-on: ubuntu-22.04
+    outputs:
+      sha: ${{ steps.queue.outputs.sha }}
+      branch: ${{ steps.queue.outputs.branch }}
+      can_proceed: ${{ steps.queue.outputs.can_proceed }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for version calculations
-      
-      - name: Check Distribution Status
-        id: check_distribution
-        uses: ./.github/actions/check-distribution-status
+          fetch-depth: 0
+
+      - uses: ./.github/actions/initialize-labels
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          maintainer: ${{ env.MAINTAINER_GITHUB }}
-          event_sha: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Wait for Queue
-        if: steps.check_distribution.outputs.can_proceed != 'true'
+      # Check if this is a manual trigger with specific SHA/branch
+      - id: check_inputs
+        shell: bash
         run: |
-          echo "This release is waiting in queue. Will be retried automatically when previous releases complete."
-          exit 1
+          if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
+            echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
+          else
+            echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Determine Version
-        id: version
+      - id: queue
+        uses: ./.github/actions/process-release-queue
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          trigger_sha: ${{ inputs.trigger_sha }}
+          source_branch: ${{ inputs.source_branch }}
+          force_process: ${{ inputs.force_process }}
+          is_scheduled: ${{ github.event_name == 'schedule' }}
+
+      - id: version
+        if: steps.queue.outputs.can_proceed == 'true'
         uses: ./.github/actions/determine-version
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ steps.queue.outputs.branch }}
           initial_version: ${{ env.INITIAL_VERSION }}
-          ref: ${{ github.ref }}
-          input_version: ${{ inputs.version }}
-          input_prerelease: ${{ inputs.prerelease }}
+
+  #####################################################################
+  # Create Release
+  # -------------
+  # Purpose: Creates the actual release if queue processing succeeded
+  #
+  # Flow:
+  # 1. Creates GitHub release
+  # 2. Updates Docker tags
+  # 3. Updates documentation
+  #####################################################################
+  create_release:
+    needs: process_queue
+    if: needs.process_queue.outputs.can_proceed == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Create Release
         uses: ./.github/actions/create-release
         with:
-          version: ${{ steps.version.outputs.version }}
-          prerelease: ${{ steps.version.outputs.prerelease }}
+          version: ${{ needs.process_queue.outputs.version }}
+          prerelease: ${{ needs.process_queue.outputs.prerelease }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
@@ -103,87 +120,28 @@ jobs:
           bot_domain: ${{ secrets.BOT_DOMAIN }}
 
       - name: Update Docker Tags
-        if: success() && (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')
         uses: ./.github/actions/update-docker-tags
         with:
           docker_username: ${{ secrets.DOCKERHUB_USERNAME }}
           docker_token: ${{ secrets.DOCKERHUB_TOKEN }}
           docker_image: ${{ env.DOCKER_IMAGE }}
-          version: ${{ steps.version.outputs.version }}
-          docker_tag: ${{ steps.version.outputs.docker_tag }}
+          version: ${{ needs.process_queue.outputs.version }}
+          docker_tag: ${{ contains(needs.process_queue.outputs.branch, 'beta') && 'beta' || 'latest' }}
 
-  process_release_queue:
+  #####################################################################
+  # Handle Failure
+  # -------------
+  # Purpose: Handles any failures in the release process
+  #####################################################################
+  handle_failure:
+    needs: [process_queue, create_release]
+    if: failure()
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/handle-release-failure
         with:
-          fetch-depth: 0
-
-      - name: Process Queue
-        id: process_queue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Get queue issue
-          QUEUE_ISSUE=$(gh issue list --label "release-queue" --json number --jq '.[0].number')
-          if [[ -z "$QUEUE_ISSUE" ]]; then
-            echo "No queue found. Exiting."
-            exit 0
-          fi
-          
-          # Get oldest queued item from comments
-          NEXT_RELEASE=$(gh issue view "$QUEUE_ISSUE" --json comments \
-            --jq '.comments[].body | select(startswith("QUEUED:")) | split("\n")[0]' \
-            | head -n 1)
-          
-          if [[ -z "$NEXT_RELEASE" ]]; then
-            echo "Queue is empty. Exiting."
-            exit 0
-          fi
-          
-          # Parse release info
-          SHA=$(echo "$NEXT_RELEASE" | grep -o 'SHA:[^|]*' | cut -d: -f2)
-          BRANCH=$(echo "$NEXT_RELEASE" | grep -o 'BRANCH:[^|]*' | cut -d: -f2)
-          
-          echo "sha=$SHA" >> $GITHUB_OUTPUT
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          echo "queue_issue=$QUEUE_ISSUE" >> $GITHUB_OUTPUT
-          echo "queue_entry=$NEXT_RELEASE" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        if: steps.process_queue.outputs.sha != ''
-        uses: ./.github/actions/create-release
-        with:
-          version: ${{ steps.version.outputs.version }}
-          prerelease: ${{ contains(steps.process_queue.outputs.branch, 'beta') }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
-          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
-          bot_github_token: ${{ secrets.BOT_GITHUB_TOKEN }}
-          bot_email: ${{ secrets.BOT_EMAIL }}
-          bot_name: ${{ secrets.BOT_NAME }}
-          bot_domain: ${{ secrets.BOT_DOMAIN }}
-
-      - name: Update Queue
-        if: steps.process_queue.outputs.queue_issue != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Remove processed entry from queue
-          gh issue comment "${{ steps.process_queue.outputs.queue_issue }}" \
-            --body "PROCESSED:${{ steps.process_queue.outputs.queue_entry }}"
-          
-          # Update issue to show processing completed
-          gh issue edit "${{ steps.process_queue.outputs.queue_issue }}" \
-            --body "Last processed: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-      - name: Handle Release Failure
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh issue create \
-            --title "⚠️ Release Creation Failed" \
-            --body "Failed to process release for SHA:${{ steps.process_queue.outputs.sha }} (${{ steps.process_queue.outputs.branch }}). CC: ${{ env.MAINTAINER_GITHUB }}" \
-            --label "bug,release-failed"
+          maintainer: ${{ env.MAINTAINER_GITHUB }}
+          sha: ${{ needs.process_queue.outputs.sha }}
+          branch: ${{ needs.process_queue.outputs.branch }}
