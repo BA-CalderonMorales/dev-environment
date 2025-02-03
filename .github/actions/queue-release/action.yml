@@ -1,0 +1,45 @@
+name: 'Queue Release'
+description: 'Manages the release queue for beta and main branch merges'
+
+inputs:
+  github_token:
+    description: 'GitHub token for queue management'
+    required: true
+  sha:
+    description: 'Commit SHA to queue'
+    required: true
+  branch:
+    description: 'Branch name (beta/main)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: manage_queue
+      shell: bash
+      run: |
+        # Get or create queue issue
+        QUEUE_ISSUE=$(gh issue list --label "release-queue" | awk 'NR==1{print $1}')
+        
+        if [[ -z "$QUEUE_ISSUE" ]]; then
+          QUEUE_ISSUE=$(gh issue create \
+            --title "🔄 Release Queue" \
+            --body "Automated release queue management system." \
+            --label "release-queue" | grep -o '[0-9]*$')
+        fi
+        
+        # Format queue entry with metadata
+        ENTRY="SHA:${{ inputs.sha }}|BRANCH:${{ inputs.branch }}|TIME:$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        
+        # Add to queue and update metadata
+        gh issue comment "$QUEUE_ISSUE" --body "QUEUED:$ENTRY"
+        
+        # Update issue body with queue statistics
+        STATS="Queue Statistics (Updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ"))
+        - Branch: ${{ inputs.branch }}
+        - Latest SHA: ${{ inputs.sha }}
+        - Total Queued: $(gh issue view "$QUEUE_ISSUE" --json comments --jq '.comments | length')"
+        
+        gh issue edit "$QUEUE_ISSUE" --body "$STATS"
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}

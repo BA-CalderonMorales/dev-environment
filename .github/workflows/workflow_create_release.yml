@@ -28,6 +28,8 @@ on:
         required: true
         type: boolean
         default: true
+  schedule:
+    - cron: '*/15 * * * *'  # Run every 15 minutes
 
 env:
   MAINTAINER_GITHUB: '@yourgithubusername'  # Replace with your GitHub username
@@ -37,6 +39,7 @@ env:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   #####################################################################
@@ -108,3 +111,79 @@ jobs:
           docker_image: ${{ env.DOCKER_IMAGE }}
           version: ${{ steps.version.outputs.version }}
           docker_tag: ${{ steps.version.outputs.docker_tag }}
+
+  process_release_queue:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Process Queue
+        id: process_queue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get queue issue
+          QUEUE_ISSUE=$(gh issue list --label "release-queue" --json number --jq '.[0].number')
+          if [[ -z "$QUEUE_ISSUE" ]]; then
+            echo "No queue found. Exiting."
+            exit 0
+          fi
+          
+          # Get oldest queued item from comments
+          NEXT_RELEASE=$(gh issue view "$QUEUE_ISSUE" --json comments \
+            --jq '.comments[].body | select(startswith("QUEUED:")) | split("\n")[0]' \
+            | head -n 1)
+          
+          if [[ -z "$NEXT_RELEASE" ]]; then
+            echo "Queue is empty. Exiting."
+            exit 0
+          fi
+          
+          # Parse release info
+          SHA=$(echo "$NEXT_RELEASE" | grep -o 'SHA:[^|]*' | cut -d: -f2)
+          BRANCH=$(echo "$NEXT_RELEASE" | grep -o 'BRANCH:[^|]*' | cut -d: -f2)
+          
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "queue_issue=$QUEUE_ISSUE" >> $GITHUB_OUTPUT
+          echo "queue_entry=$NEXT_RELEASE" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        if: steps.process_queue.outputs.sha != ''
+        uses: ./.github/actions/create-release
+        with:
+          version: ${{ steps.version.outputs.version }}
+          prerelease: ${{ contains(steps.process_queue.outputs.branch, 'beta') }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
+          bot_github_token: ${{ secrets.BOT_GITHUB_TOKEN }}
+          bot_email: ${{ secrets.BOT_EMAIL }}
+          bot_name: ${{ secrets.BOT_NAME }}
+          bot_domain: ${{ secrets.BOT_DOMAIN }}
+
+      - name: Update Queue
+        if: steps.process_queue.outputs.queue_issue != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Remove processed entry from queue
+          gh issue comment "${{ steps.process_queue.outputs.queue_issue }}" \
+            --body "PROCESSED:${{ steps.process_queue.outputs.queue_entry }}"
+          
+          # Update issue to show processing completed
+          gh issue edit "${{ steps.process_queue.outputs.queue_issue }}" \
+            --body "Last processed: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+      - name: Handle Release Failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "⚠️ Release Creation Failed" \
+            --body "Failed to process release for SHA:${{ steps.process_queue.outputs.sha }} (${{ steps.process_queue.outputs.branch }}). CC: ${{ env.MAINTAINER_GITHUB }}" \
+            --label "bug,release-failed"

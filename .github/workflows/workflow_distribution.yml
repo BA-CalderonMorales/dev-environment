@@ -447,3 +447,32 @@ jobs:
         with:
           environment: ${{ needs.validate_branch.outputs.environment }}
           ref_name: ${{ github.ref_name }}
+
+  #####################################################################
+  # Queue Release
+  # ------------
+  # Purpose: Adds successful merges to release queue
+  #
+  # Flow:
+  # 1. Checks if merge was to beta/main
+  # 2. Verifies all tests passed
+  # 3. Adds to release queue if successful
+  #
+  # Dependencies: All previous jobs
+  # Outputs: None
+  # Conditions: Only runs on successful merges to beta/main
+  #####################################################################
+  queue_release:
+    runs-on: ubuntu-22.04
+    if: |
+      success() &&
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')
+    needs: [dockerhub_build, e2e_tests, security_scan, release_artifacts]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/queue-release
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          sha: ${{ github.sha }}
+          branch: ${{ github.ref_name }}
