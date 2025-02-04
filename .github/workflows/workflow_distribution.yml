@@ -466,39 +466,19 @@ jobs:
   queue_release:
     runs-on: ubuntu-22.04
     needs: [setup_docker, e2e_tests, security_scan, notify_success]
-    if: |
+    if: >
       success() &&
-      (
-        (
-          github.event_name == 'pull_request' &&
-          github.event.action == 'closed' &&
-          github.event.pull_request.merged == true &&
-          (
-            (github.event.pull_request.base.ref == 'beta' && github.event.pull_request.head.ref == 'develop') ||
-            (github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'beta')
-          )
-        ) ||
-        (
-          github.event_name == 'push' &&
-          github.ref == 'refs/heads/beta' &&
-          startsWith(github.event.head_commit.message, 'Merge pull request') &&
-          contains(github.event.head_commit.message, '/develop')
-        )
-      )
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main' &&
+      contains(github.event.head_commit.message, 'Merge pull request') &&
+      contains(github.event.head_commit.message, '/develop') || contains(github.event.head_commit.message, '/beta')
     steps:
       - name: Debug Event Info
         run: |
           echo "=== Debug Info ==="
           echo "Event name: ${{ github.event_name }}"
-          echo "Event action: ${{ github.event.action }}"
           echo "Branch (ref): ${{ github.ref }}"
           echo "Commit message: ${{ github.event.head_commit.message }}"
-          echo "Job status: ${{ job.status }}"
-          echo "Needs status:"
-          echo "  setup_docker: ${{ needs.setup_docker.result }}"
-          echo "  e2e_tests: ${{ needs.e2e_tests.result }}"
-          echo "  security_scan: ${{ needs.security_scan.result }}"
-          echo "  notify_success: ${{ needs.notify_success.result }}"
           echo "=================="
       - uses: actions/checkout@v4
 
