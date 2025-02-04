@@ -56,13 +56,14 @@ jobs:
       allowed: ${{ steps.check.outputs.allowed }}
     steps:
       - id: check
+        shell: bash
         run: |
-          BRANCH="${{ github.ref_name }}"
-          # For workflow_dispatch, use the input branch
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            BRANCH="${{ inputs.source_branch }}"
+          # Use the source_branch input if available; otherwise, default to github.ref_name.
+          BRANCH="${{ github.event.inputs.source_branch }}"
+          if [[ -z "$BRANCH" ]]; then
+            BRANCH="${{ github.ref_name }}"
           fi
-          
+          echo "Using branch: $BRANCH"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           
           if [[ "$BRANCH" == "beta" || "$BRANCH" == "main" ]]; then

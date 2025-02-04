@@ -465,16 +465,25 @@ jobs:
   #####################################################################
   queue_release:
     runs-on: ubuntu-22.04
-    # Add notify_success to needs array to ensure all checks have passed
     needs: [setup_docker, e2e_tests, security_scan, notify_success]
     if: |
       success() &&
-      github.event_name == 'pull_request' &&
-      github.event.action == 'closed' &&
-      github.event.pull_request.merged == true &&
       (
-        (github.event.pull_request.base.ref == 'beta' && github.event.pull_request.head.ref == 'develop') ||
-        (github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'beta')
+        (
+          github.event_name == 'pull_request' &&
+          github.event.action == 'closed' &&
+          github.event.pull_request.merged == true &&
+          (
+            (github.event.pull_request.base.ref == 'beta' && github.event.pull_request.head.ref == 'develop') ||
+            (github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'beta')
+          )
+        ) ||
+        (
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/beta' &&
+          startsWith(github.event.head_commit.message, 'Merge pull request') &&
+          contains(github.event.head_commit.message, '/develop')
+        )
       )
     steps:
       - name: Debug Event Info
@@ -482,9 +491,8 @@ jobs:
           echo "=== Debug Info ==="
           echo "Event name: ${{ github.event_name }}"
           echo "Event action: ${{ github.event.action }}"
-          echo "PR merged: ${{ github.event.pull_request.merged }}"
-          echo "Base ref: ${{ github.event.pull_request.base.ref }}"
-          echo "Head ref: ${{ github.event.pull_request.head.ref }}"
+          echo "Branch (ref): ${{ github.ref }}"
+          echo "Commit message: ${{ github.event.head_commit.message }}"
           echo "Job status: ${{ job.status }}"
           echo "Needs status:"
           echo "  setup_docker: ${{ needs.setup_docker.result }}"
@@ -493,7 +501,7 @@ jobs:
           echo "  notify_success: ${{ needs.notify_success.result }}"
           echo "=================="
       - uses: actions/checkout@v4
-      
+
       - uses: ./.github/actions/set-release-info
         id: release_info
         with:
@@ -504,6 +512,7 @@ jobs:
           ref_name: ${{ github.ref_name }}
 
       - uses: ./.github/actions/queue-release
+        id: queue_release
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           sha: ${{ steps.release_info.outputs.sha }}
