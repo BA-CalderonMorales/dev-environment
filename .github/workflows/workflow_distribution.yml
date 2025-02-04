@@ -471,8 +471,7 @@ jobs:
       (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main' ||
        (github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
         (github.event.pull_request.base.ref == 'beta' || github.event.pull_request.base.ref == 'main')))
-    # Remove dependency on release_artifacts to prevent skipping
-    needs: [dockerhub_build, e2e_tests, security_scan]
+    needs: [setup_docker, e2e_tests, security_scan] # ensure tests and security scan succeed
     steps:
       - uses: actions/checkout@v4
       
