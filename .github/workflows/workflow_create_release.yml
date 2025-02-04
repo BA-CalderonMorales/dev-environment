@@ -1,7 +1,7 @@
 name: Create Release
 
 on:
-  # Manual trigger with optional SHA/branch override
+  # Manual trigger with branch protection
   workflow_dispatch:
     inputs:
       trigger_sha:
@@ -9,18 +9,24 @@ on:
         required: false
         type: string
       source_branch:
-        description: 'Source branch (optional)'
+        description: 'Branch (must be beta or main)'
         required: false
         type: string
+        default: 'beta'
       force_process:
         description: 'Force queue processing'
         required: false
         type: boolean
         default: false
-  # Weekly scheduled release processing
+  # Weekly scheduled release processing - only on beta/main
   schedule:
     # Run every Saturday at 10:00 AM CST (16:00 UTC)
     - cron: '0 16 * * SAT'
+
+# Add concurrency to prevent multiple releases running simultaneously
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -28,11 +34,46 @@ permissions:
   issues: write
 
 env:
-  MAINTAINER_GITHUB: '@yourgithubusername'
+  MAINTAINER_GITHUB: '@BA-CalderonMorales'
   INITIAL_VERSION: 'v0.0.1'
-  DOCKER_IMAGE: 'your-dockerhub-username/image-name'
+  DOCKER_IMAGE: 'cmo640/dev-environment'
 
 jobs:
+  #####################################################################
+  # Branch Protection Check
+  # ---------------------
+  # Purpose: Ensures releases only run on beta/main branches
+  #
+  # Flow:
+  # 1. Validates branch name
+  # 2. Blocks unauthorized release attempts
+  # 3. Sets release type for downstream jobs
+  #####################################################################
+  branch_check:
+    runs-on: ubuntu-22.04
+    outputs:
+      branch: ${{ steps.check.outputs.branch }}
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - id: check
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          # For workflow_dispatch, use the input branch
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            BRANCH="${{ inputs.source_branch }}"
+          fi
+          
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          
+          if [[ "$BRANCH" == "beta" || "$BRANCH" == "main" ]]; then
+            echo "allowed=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Releases are only allowed on beta and main branches" >> $GITHUB_STEP_SUMMARY
+            echo "Branch attempted: $BRANCH" >> $GITHUB_STEP_SUMMARY
+            echo "allowed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
   #####################################################################
   # Process Release Queue
   # -------------------
@@ -44,6 +85,8 @@ jobs:
   # 3. Sets up release parameters
   #####################################################################
   process_queue:
+    needs: branch_check
+    if: needs.branch_check.outputs.allowed == 'true'
     runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.queue.outputs.sha }}
@@ -98,8 +141,10 @@ jobs:
   # 3. Updates documentation
   #####################################################################
   create_release:
-    needs: process_queue
-    if: needs.process_queue.outputs.can_proceed == 'true'
+    needs: [branch_check, process_queue]
+    if: |
+      needs.branch_check.outputs.allowed == 'true' &&
+      needs.process_queue.outputs.can_proceed == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -134,8 +179,10 @@ jobs:
   # Purpose: Handles any failures in the release process
   #####################################################################
   handle_failure:
-    needs: [process_queue, create_release]
-    if: failure()
+    needs: [branch_check, process_queue, create_release]
+    if: |
+      always() &&
+      (needs.branch_check.outputs.allowed == 'true' && failure())
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
