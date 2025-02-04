@@ -465,16 +465,29 @@ jobs:
   #####################################################################
   queue_release:
     runs-on: ubuntu-22.04
-    # Simplified condition to catch both direct pushes and PR merges
+    # Refine conditions to catch develop -> beta merge
     if: |
-      success() &&
-      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main' ||
-       (github.event_name == 'pull_request' && github.event.pull_request.merged == true &&
-        (github.event.pull_request.base.ref == 'beta' || github.event.pull_request.base.ref == 'main')))
-    needs: [setup_docker, e2e_tests, security_scan] # ensure tests and security scan succeed
+      success() && (
+        (github.event_name == 'push' && (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')) ||
+        (github.event_name == 'pull_request' && 
+         github.event.pull_request.merged == true && 
+         (github.event.pull_request.base.ref == 'beta' || github.event.pull_request.base.ref == 'main') &&
+         github.event.pull_request.head.ref == 'develop')
+      )
+    # Only depend on critical jobs
+    needs: [validate_branch, e2e_tests, security_scan]
     steps:
       - uses: actions/checkout@v4
       
+      # Add debug logging
+      - name: Debug Event Info
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Base ref: ${{ github.event.pull_request.base.ref }}"
+          echo "Head ref: ${{ github.event.pull_request.head.ref }}"
+          echo "Is merged: ${{ github.event.pull_request.merged }}"
+          
       - uses: ./.github/actions/set-release-info
         id: release_info
         with:
