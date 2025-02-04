@@ -465,29 +465,41 @@ jobs:
   #####################################################################
   queue_release:
     runs-on: ubuntu-22.04
-    # Refine conditions to catch develop -> beta merge
+    # Simplified to focus on merge events only
     if: |
-      success() && (
-        (github.event_name == 'push' && (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main')) ||
-        (github.event_name == 'pull_request' && 
-         github.event.pull_request.merged == true && 
-         (github.event.pull_request.base.ref == 'beta' || github.event.pull_request.base.ref == 'main') &&
-         github.event.pull_request.head.ref == 'develop')
+      success() && 
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      (
+        (github.event.pull_request.base.ref == 'beta' && github.event.pull_request.head.ref == 'develop') ||
+        (github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'beta')
       )
-    # Only depend on critical jobs
-    needs: [validate_branch, e2e_tests, security_scan]
+    needs: [setup_docker, e2e_tests, security_scan]
     steps:
+      # Add debug logging first
+      - name: Debug Event Info
+        run: |
+          echo "=== Debug Info ==="
+          echo "Event name: ${{ github.event_name }}"
+          echo "PR merged: ${{ github.event.pull_request.merged }}"
+          echo "Base ref: ${{ github.event.pull_request.base.ref }}"
+          echo "Head ref: ${{ github.event.pull_request.head.ref }}"
+          echo "=================="
       - uses: actions/checkout@v4
       
-      # Add debug logging
+      # Enhanced debug logging
       - name: Debug Event Info
         run: |
           echo "Event name: ${{ github.event_name }}"
+          echo "Event action: ${{ github.event.action }}"
           echo "Ref: ${{ github.ref }}"
           echo "Base ref: ${{ github.event.pull_request.base.ref }}"
           echo "Head ref: ${{ github.event.pull_request.head.ref }}"
           echo "Is merged: ${{ github.event.pull_request.merged }}"
-          
+          echo "Created: ${{ github.event.created }}"
+          echo "Sender: ${{ github.event.sender.login }}"
+          echo "Repository: ${{ github.repository }}"
+
       - uses: ./.github/actions/set-release-info
         id: release_info
         with:
