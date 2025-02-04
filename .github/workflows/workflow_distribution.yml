@@ -465,16 +465,18 @@ jobs:
   #####################################################################
   queue_release:
     runs-on: ubuntu-22.04
-    # Simplified to focus on merge events only
-    if: |
-      success() && 
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.merged == true &&
-      (
-        (github.event.pull_request.base.ref == 'beta' && github.event.pull_request.head.ref == 'develop') ||
-        (github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'beta')
-      )
     needs: [setup_docker, e2e_tests, security_scan]
+    if: |
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.merged == true &&
+        (
+          (github.event.pull_request.base.ref == 'beta' && github.event.pull_request.head.ref == 'develop') ||
+          (github.event.pull_request.base.ref == 'main' && github.event.pull_request.head.ref == 'beta')
+        )
+      ) &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     steps:
       # Add debug logging first
       - name: Debug Event Info
