@@ -72,3 +72,6 @@ runs:
       run: |
         # Clean up temporary files but never fail
         rm -f summary.md || true
+
+# Analysis: The action always sets summary_created to true (after warning and defaulting to development)
+# so it is unlikely to prevent queue_release unless the environment input indirectly affects downstream conditions.

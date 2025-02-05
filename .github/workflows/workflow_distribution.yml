@@ -440,14 +440,33 @@ jobs:
   notify_success:
     runs-on: ubuntu-22.04
     needs: [validate_branch, dockerhub_build, e2e_tests, security_scan, release_artifacts]
+    # Define which jobs are optional vs required
+    env:
+      OPTIONAL_JOBS: '["release_artifacts"]'
+      REQUIRED_JOBS: '["dockerhub_build", "e2e_tests", "security_scan"]'
     if: |
       always() && 
       !contains(needs.*.result, 'failure') && 
-      !contains(needs.*.result, 'cancelled') && 
-      !contains(needs.*.result, 'skipped')
+      !contains(needs.*.result, 'cancelled') &&
+      contains(toJSON(needs.dockerhub_build.result), 'success') &&
+      contains(toJSON(needs.e2e_tests.result), 'success') &&
+      contains(toJSON(needs.security_scan.result), 'success')
     outputs:
       deployment_success: ${{ steps.deploy_summary.outputs.summary_created }}
+      optional_jobs_skipped: ${{ steps.check_jobs.outputs.optional_skipped }}
     steps:
+      - name: Check Optional Jobs
+        id: check_jobs
+        run: |
+          skipped=false
+          for job in $(echo $OPTIONAL_JOBS | jq -r '.[]'); do
+            if [ "${needs[job].result}" == "skipped" ]; then
+              skipped=true
+              echo "Optional job $job was skipped (expected behavior)"
+            fi
+          done
+          echo "optional_skipped=$skipped" >> $GITHUB_OUTPUT
+
       - uses: actions/checkout@v4
       - id: deploy_summary
         uses: ./.github/actions/create-deploy-summary
@@ -477,22 +496,21 @@ jobs:
       success() &&
       github.event_name == 'push' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta') &&
-      contains(github.event.head_commit.message, 'Merge pull request') &&
-      (contains(github.event.head_commit.message, '/develop') || contains(github.event.head_commit.message, '/beta')) &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled') &&
-      needs.notify_success.outputs.deployment_success == 'true'
+      github.event.pull_request.merged == true &&
+      (github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'beta') &&
+      needs.notify_success.outputs.deployment_success == 'true' &&
+      needs.e2e_tests.result == 'success' &&
+      needs.security_scan.result == 'success'
     steps:
       - name: Debug Event Info
         run: |
           echo "=== Debug Info ==="
           echo "Event name: ${{ github.event_name }}"
           echo "Branch (ref): ${{ github.ref }}"
-          echo "Commit message: ${{ github.event.head_commit.message }}"
-          echo "Setup Docker result: ${{ needs.setup_docker.result }}"
-          echo "E2E Tests result: ${{ needs.e2e_tests.result }}"
-          echo "Security Scan result: ${{ needs.security_scan.result }}"
-          echo "Notify Success result: ${{ needs.notify_success.result }}"
+          echo "PR merged: ${{ github.event.pull_request.merged }}"
+          echo "Base ref: ${{ github.event.pull_request.base.ref }}"
+          echo "Deploy success: ${{ needs.notify_success.outputs.deployment_success }}"
+          echo "Optional jobs skipped: ${{ needs.notify_success.outputs.optional_jobs_skipped }}"
           echo "=================="
 
       - uses: actions/checkout@v4
