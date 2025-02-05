@@ -1,5 +1,9 @@
 name: Distribution
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   # Only trigger on push if there's no active PR for the branch
   push:
@@ -526,7 +530,17 @@ jobs:
           branch: ${{ steps.release_info.outputs.branch }}
 
       - uses: ./.github/actions/trigger-release-workflow
+
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.ref }}
           sha: ${{ steps.release_info.outputs.sha }}
+      - name: Notify Release Queue Status
+        if: success()
+        uses: ./.github/actions/notify-release-status
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          teams_webhook: ${{ secrets.TEAMS_WEBHOOK }}  # Optional
+          slack_webhook: ${{ secrets.SLACK_WEBHOOK }}  # Optional
+          position: ${{ steps.queue_release.outputs.queue_position }}
+          estimated_time: ${{ steps.queue_release.outputs.estimated_time }}

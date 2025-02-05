@@ -58,15 +58,18 @@ jobs:
       - id: check
         shell: bash
         run: |
-          # Use the source_branch input if available; otherwise, default to github.ref_name.
+          # Use the source_branch input if available; otherwise, default to github.ref
           BRANCH="${{ github.event.inputs.source_branch }}"
           if [[ -z "$BRANCH" ]]; then
-            BRANCH="${{ github.ref_name }}"
+            # Strip refs/heads/ prefix if present
+            BRANCH="${{ github.ref }}"
+            BRANCH=${BRANCH#refs/heads/}
           fi
           echo "Using branch: $BRANCH"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           
           if [[ "$BRANCH" == "beta" || "$BRANCH" == "main" ]]; then
+            echo "✅ Branch '$BRANCH' is allowed for releases" >> $GITHUB_STEP_SUMMARY
             echo "allowed=true" >> $GITHUB_OUTPUT
           else
             echo "❌ Releases are only allowed on beta and main branches" >> $GITHUB_STEP_SUMMARY
