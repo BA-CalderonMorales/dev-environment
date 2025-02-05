@@ -34,56 +34,51 @@ runs:
   using: "composite"
   steps:
     - uses: actions/checkout@v4
-
-    - name: Download distribution artifacts
-      uses: dawidd6/action-download-artifact@v3
       with:
-        github_token: ${{ inputs.github_token }}
-        workflow: distribution.yml
-        workflow_conclusion: success
-        name: direct-download-artifacts
-        path: artifacts/direct_download
+        fetch-depth: 0  # Need full history for proper versioning
 
-    - name: Verify artifacts
+    - name: Extract assets from Docker image
       shell: bash
       run: |
-        if [ ! -f "artifacts/direct_download/dev-environment.tar" ] || [ ! -f "artifacts/direct_download/checksum.txt" ]; then
-          echo "Error: Required artifacts not found. Ensure distribution workflow completed successfully."
-          exit 1
-        fi
-
-    - name: Set release info
-      id: release_info
-      shell: bash
-      run: |
-        if [[ ${{ github.ref }} == refs/heads/beta ]]; then
-          echo "version=$(date +'%Y.%m.%d')-beta" >> $GITHUB_OUTPUT
-          echo "is_prerelease=true" >> $GITHUB_OUTPUT
-          echo "release_type=Beta Release" >> $GITHUB_OUTPUT
-        else
-          echo "version=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
-          echo "is_prerelease=false" >> $GITHUB_OUTPUT
-          echo "release_type=Stable Release" >> $GITHUB_OUTPUT
-        fi
+        # Use the Docker image we already have instead of artifacts
+        DOCKER_TAG=${{ inputs.version }}
+        docker pull cmoe640/dev-environment:${DOCKER_TAG}
+        
+        # Create release assets directory
+        mkdir -p release_assets
+        
+        # Extract files directly from container
+        docker create --name temp_container cmoe640/dev-environment:${DOCKER_TAG}
+        docker cp temp_container:/app/. ./release_assets/
+        docker rm temp_container
+        
+        # Create archive
+        cd release_assets
+        tar -czf ../dev-environment.tar.gz .
+        cd ..
+        sha256sum dev-environment.tar.gz > checksum.txt
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.release_info.outputs.version }}
-        name: "${{ steps.release_info.outputs.release_type }} ${{ steps.release_info.outputs.version }}"
+        tag_name: ${{ inputs.version }}
+        name: "${{ inputs.prerelease && 'Beta' || 'Stable' }} Release ${{ inputs.version }}"
         body: |
-          ## ${{ steps.release_info.outputs.release_type }}
+          ## Release Notes
           
-          ### Changes
-          ${{ github.event.head_commit.message }}
+          ### Docker Image
+          ```
+          docker pull cmoe640/dev-environment:${{ inputs.version }}
+          ```
           
-          ### Distribution Methods
-          - DockerHub: `cmoe640/dev-environment:${{ steps.release_info.outputs.version }}`
-          - Direct Download: See release assets below
-        prerelease: ${{ steps.release_info.outputs.is_prerelease }}
+          ### SHA256 Checksums
+          ```
+          $(cat checksum.txt)
+          ```
+        prerelease: ${{ inputs.prerelease }}
         files: |
-          artifacts/direct_download/dev-environment.tar
-          artifacts/direct_download/checksum.txt
+          dev-environment.tar.gz
+          checksum.txt
         draft: false
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
