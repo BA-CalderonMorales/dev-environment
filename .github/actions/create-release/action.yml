@@ -96,6 +96,7 @@ runs:
         gpg-connect-agent reloadagent /bye
       env:
         GPG_TTY: $(tty)
+        GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
 
     - name: Configure Git
       shell: bash
