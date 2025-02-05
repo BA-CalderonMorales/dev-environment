@@ -1,0 +1,72 @@
+name: 'Notify Release Status'
+description: 'Sends notifications about release queue status'
+
+inputs:
+  github_token:
+    description: 'GitHub token for API operations'
+    required: true
+  teams_webhook:
+    description: 'Microsoft Teams webhook URL'
+    required: false
+  slack_webhook:
+    description: 'Slack webhook URL'
+    required: false
+  position:
+    description: 'Position in release queue'
+    required: true
+  estimated_time:
+    description: 'Estimated time until release'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create GitHub Comment
+      shell: bash
+      run: |
+        PR_NUMBER=$(gh pr list \
+          --json number,headRefName \
+          --jq ".[] | select(.headRefName == \"$GITHUB_REF_NAME\") | .number")
+        
+        if [[ -n "$PR_NUMBER" ]]; then
+          COMMENT="## 🚀 Release Queue Status\n"
+          COMMENT+="- Queue Position: #${{ inputs.position }}\n"
+          COMMENT+="- Estimated Release Time: ${{ inputs.estimated_time }}\n"
+          COMMENT+="- Branch: ${GITHUB_REF_NAME}\n"
+          COMMENT+="- Commit: ${GITHUB_SHA:0:7}\n"
+          
+          gh pr comment $PR_NUMBER --body "$COMMENT"
+        fi
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+
+    - name: Send Teams Notification
+      if: inputs.teams_webhook
+      shell: bash
+      run: |
+        curl -H "Content-Type: application/json" \
+          -d '{
+            "text": "**Release Queue Update**\nPosition: #${{ inputs.position }}\nETA: ${{ inputs.estimated_time }}\nBranch: '"${GITHUB_REF_NAME}"'\nCommit: '"${GITHUB_SHA:0:7}"'"
+          }' \
+          ${{ inputs.teams_webhook }}
+
+    - name: Send Slack Notification
+      if: inputs.slack_webhook
+      shell: bash
+      run: |
+        curl -X POST -H "Content-Type: application/json" \
+          -d '{
+            "text": "*Release Queue Update*\nPosition: #${{ inputs.position }}\nETA: ${{ inputs.estimated_time }}\nBranch: '"${GITHUB_REF_NAME}"'\nCommit: '"${GITHUB_SHA:0:7}"'"
+          }' \
+          ${{ inputs.slack_webhook }}
+
+    - name: Update Step Summary
+      shell: bash
+      run: |
+        {
+          echo "## 📋 Release Queue Status"
+          echo "- Queue Position: #${{ inputs.position }}"
+          echo "- Estimated Release Time: ${{ inputs.estimated_time }}"
+          echo "- Branch: ${GITHUB_REF_NAME}"
+          echo "- Commit: ${GITHUB_SHA:0:7}"
+        } >> $GITHUB_STEP_SUMMARY
