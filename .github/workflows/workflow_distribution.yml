@@ -440,10 +440,9 @@ jobs:
   notify_success:
     runs-on: ubuntu-22.04
     needs: [validate_branch, dockerhub_build, e2e_tests, security_scan, release_artifacts]
-    # Define which jobs are optional vs required
     env:
-      OPTIONAL_JOBS: '["release_artifacts"]'
-      REQUIRED_JOBS: '["dockerhub_build", "e2e_tests", "security_scan"]'
+      OPTIONAL_JOBS: release_artifacts
+      REQUIRED_JOBS: dockerhub_build e2e_tests security_scan
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     outputs:
       deployment_success: ${{ steps.deploy_summary.outputs.summary_created }}
@@ -453,8 +452,8 @@ jobs:
         id: check_jobs
         run: |
           skipped=false
-          for job in $(echo $OPTIONAL_JOBS | jq -r '.[]'); do
-            if [ "${needs[job].result}" == "skipped" ]; then
+          for job in $OPTIONAL_JOBS; do
+            if [[ "${{ needs[format('{0}', job)].result }}" == "skipped" ]]; then
               skipped=true
               echo "Optional job $job was skipped (expected behavior)"
             fi
