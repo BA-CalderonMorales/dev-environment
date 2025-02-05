@@ -440,10 +440,17 @@ jobs:
   notify_success:
     runs-on: ubuntu-22.04
     needs: [validate_branch, dockerhub_build, e2e_tests, security_scan, release_artifacts]
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    if: |
+      always() && 
+      !contains(needs.*.result, 'failure') && 
+      !contains(needs.*.result, 'cancelled') && 
+      !contains(needs.*.result, 'skipped')
+    outputs:
+      deployment_success: ${{ steps.deploy_summary.outputs.summary_created }}
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/create-deploy-summary
+      - id: deploy_summary
+        uses: ./.github/actions/create-deploy-summary
         with:
           environment: ${{ needs.validate_branch.outputs.environment }}
           ref_name: ${{ github.ref_name }}
@@ -466,12 +473,15 @@ jobs:
   queue_release:
     runs-on: ubuntu-22.04
     needs: [setup_docker, e2e_tests, security_scan, notify_success]
-    if: >
+    if: |
       success() &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta') &&
       contains(github.event.head_commit.message, 'Merge pull request') &&
-      contains(github.event.head_commit.message, '/develop') || contains(github.event.head_commit.message, '/beta')
+      (contains(github.event.head_commit.message, '/develop') || contains(github.event.head_commit.message, '/beta')) &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      needs.notify_success.outputs.deployment_success == 'true'
     steps:
       - name: Debug Event Info
         run: |
@@ -479,9 +489,13 @@ jobs:
           echo "Event name: ${{ github.event_name }}"
           echo "Branch (ref): ${{ github.ref }}"
           echo "Commit message: ${{ github.event.head_commit.message }}"
+          echo "Setup Docker result: ${{ needs.setup_docker.result }}"
+          echo "E2E Tests result: ${{ needs.e2e_tests.result }}"
+          echo "Security Scan result: ${{ needs.security_scan.result }}"
+          echo "Notify Success result: ${{ needs.notify_success.result }}"
           echo "=================="
-      - uses: actions/checkout@v4
 
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/set-release-info
         id: release_info
         with:
