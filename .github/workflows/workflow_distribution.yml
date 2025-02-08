@@ -5,30 +5,32 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  # Simplified push trigger to ensure it runs on main branches
+  # Only trigger on push if there's no active PR for the branch
   push:
     branches: 
-      - develop    # Explicitly include develop
-      - beta       # Explicitly include beta 
-      - main       # Explicitly include main
+      - main
+      - beta
+      - develop
       - 'pipeline/*'
       - 'bugfix/*'
       - 'feature/*'
-    paths-ignore:
-      - '**.md'
+    paths:
+      - 'distributions/dockerhub/**'
+      - 'distributions/direct_download/**'
+      - 'startup/**'
+      - '.github/workflows/**'
       - 'docs/**'
-      - '.gitignore'
 
   pull_request:
     types: [opened, synchronize, reopened]
-    paths-ignore:
-      - '**.md'
+    paths:
+      - 'distributions/dockerhub/**'
+      - 'distributions/direct_download/**'
+      - 'startup/**'
+      - '.github/workflows/**'
       - 'docs/**'
-      - '.gitignore'
     branches:
       - develop
-      - beta
-      - main
       - hotfix/*
       - bugfix/*
       - feature/*
