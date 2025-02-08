@@ -61,14 +61,21 @@ jobs:
           # Use the source_branch input if available; otherwise, default to github.ref
           BRANCH="${{ github.event.inputs.source_branch }}"
           if [[ -z "$BRANCH" ]]; then
-            # Strip refs/heads/ prefix if present
+            # Extract branch name from github.ref
             BRANCH="${{ github.ref }}"
+            # Remove refs/heads/ prefix if present
             BRANCH=${BRANCH#refs/heads/}
+            # Remove refs/tags/ prefix if present
+            BRANCH=${BRANCH#refs/tags/}
           fi
+          
           echo "Using branch: $BRANCH"
           echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           
-          if [[ "$BRANCH" == "beta" || "$BRANCH" == "main" ]]; then
+          # Normalize branch name for comparison
+          NORMALIZED_BRANCH=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]')
+          
+          if [[ "$NORMALIZED_BRANCH" == "beta" || "$NORMALIZED_BRANCH" == "main" ]]; then
             echo "✅ Branch '$BRANCH' is allowed for releases" >> $GITHUB_STEP_SUMMARY
             echo "allowed=true" >> $GITHUB_OUTPUT
           else
