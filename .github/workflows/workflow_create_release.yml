@@ -55,35 +55,12 @@ jobs:
       branch: ${{ steps.check.outputs.branch }}
       allowed: ${{ steps.check.outputs.allowed }}
     steps:
-      - id: check
-        shell: bash
-        run: |
-          # Use the source_branch input if available; otherwise, default to github.ref
-          BRANCH="${{ github.event.inputs.source_branch }}"
-          if [[ -z "$BRANCH" ]]; then
-            # Extract branch name from github.ref
-            BRANCH="${{ github.ref }}"
-            # Remove refs/heads/ prefix if present
-            BRANCH=${BRANCH#refs/heads/}
-            # Remove refs/tags/ prefix if present
-            BRANCH=${BRANCH#refs/tags/}
-          fi
-          
-          echo "Using branch: $BRANCH"
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          
-          # Normalize branch name for comparison
-          NORMALIZED_BRANCH=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]')
-          
-          if [[ "$NORMALIZED_BRANCH" == "beta" || "$NORMALIZED_BRANCH" == "main" ]]; then
-            echo "✅ Branch '$BRANCH' is allowed for releases" >> $GITHUB_STEP_SUMMARY
-            echo "allowed=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Releases are only allowed on beta and main branches" >> $GITHUB_STEP_SUMMARY
-            echo "Branch attempted: $BRANCH" >> $GITHUB_STEP_SUMMARY
-            echo "allowed=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/check-branch
+        id: check
+        with:
+          source_branch: ${{ github.event.inputs.source_branch }}
+          github_ref: ${{ github.ref }}
 
   #####################################################################
   # Process Release Queue
@@ -114,18 +91,25 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Check if this is a manual trigger with specific SHA/branch
-      - id: check_inputs
-        shell: bash
-        run: |
-          if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
-            echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
-          else
-            echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
-          fi
+      # Check manual inputs
+      - uses: ./.github/actions/check-manual-inputs
+        id: check_inputs
+        with:
+          trigger_sha: ${{ inputs.trigger_sha }}
+          source_branch: ${{ inputs.source_branch }}
 
-      - id: queue
-        uses: ./.github/actions/process-release-queue
+      # Validate release conditions
+      - uses: ./.github/actions/validate-release-conditions
+        id: validate
+        with:
+          branch_allowed: ${{ needs.branch_check.outputs.allowed }}
+          can_proceed: true  # Initial assumption, will be refined by queue processing
+          using_manual_inputs: ${{ steps.check_inputs.outputs.using_manual_inputs }}
+          is_scheduled: ${{ github.event_name == 'schedule' }}
+
+      - uses: ./.github/actions/process-release-queue
+        id: queue
+        if: steps.validate.outputs.should_proceed == 'true'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_sha: ${{ inputs.trigger_sha }}
@@ -133,9 +117,9 @@ jobs:
           force_process: ${{ inputs.force_process }}
           is_scheduled: ${{ github.event_name == 'schedule' }}
 
-      - id: version
+      - uses: ./.github/actions/determine-version
+        id: version
         if: steps.queue.outputs.can_proceed == 'true'
-        uses: ./.github/actions/determine-version
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ steps.queue.outputs.branch }}

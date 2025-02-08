@@ -1,0 +1,25 @@
+name: 'Check Manual Inputs'
+description: 'Validates manual trigger inputs for releases'
+
+inputs:
+  trigger_sha:
+    description: 'SHA to release'
+    required: false
+  source_branch:
+    description: 'Source branch'
+    required: false
+
+outputs:
+  using_manual_inputs:
+    description: 'Whether using manual inputs'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: |
+        if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
+          echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
+        else
+          echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
+        fi
