@@ -60,11 +60,24 @@ runs:
         # Generate checksums
         sha256sum dev-environment.tar.gz > checksum.txt
 
+    - name: Validate Version
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+        if [[ -z "$VERSION" ]]; then
+          echo "::error::No version provided. Cannot create release without a tag."
+          exit 1
+        fi
+        
+        # Remove 'v' prefix if present for consistency
+        VERSION=${VERSION#v}
+        echo "VALIDATED_VERSION=v${VERSION}" >> $GITHUB_ENV
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ inputs.version }}
-        name: "${{ inputs.prerelease && 'Beta' || 'Stable' }} Release ${{ inputs.version }}"
+        tag_name: ${{ env.VALIDATED_VERSION }}
+        name: "${{ inputs.prerelease && 'Beta' || 'Stable' }} Release ${{ env.VALIDATED_VERSION }}"
         body: |
           ## Release Notes
           ${{ steps.process.outputs.notes }}
@@ -78,11 +91,11 @@ runs:
           ### Installation
           ```bash
           # Download and extract
-          curl -LO https://github.com/BA-CalderonMorales/dev-environment/releases/download/${{ inputs.version }}/dev-environment.tar.gz
+          curl -LO https://github.com/BA-CalderonMorales/dev-environment/releases/download/${{ env.VALIDATED_VERSION }}/dev-environment.tar.gz
           tar xzf dev-environment.tar.gz
           
           # Optional: Build Docker container locally
-          docker build -t dev-environment:${{ inputs.version }} .
+          docker build -t dev-environment:${{ env.VALIDATED_VERSION }} .
           ```
           
           ### Verification

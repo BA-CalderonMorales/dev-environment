@@ -155,6 +155,12 @@ jobs:
       needs.process_queue.outputs.can_proceed == 'true'
     runs-on: ubuntu-22.04
     steps:
+      # Add debug step
+      - name: Debug Version Info
+        run: |
+          echo "Version from process_queue: ${{ needs.process_queue.outputs.version }}"
+          echo "Is prerelease: ${{ needs.process_queue.outputs.prerelease }}"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
