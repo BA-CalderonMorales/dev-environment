@@ -40,15 +40,14 @@ runs:
     - name: Extract assets from Docker image
       shell: bash
       run: |
-        # Use the Docker image we already have instead of artifacts
-        DOCKER_TAG=${{ inputs.version }}
-        docker pull cmoe640/dev-environment:${DOCKER_TAG}
+        # Use version from inputs for Docker tag
+        docker pull cmo640/dev-environment:${{ inputs.version }}
         
         # Create release assets directory
         mkdir -p release_assets
         
         # Extract files directly from container
-        docker create --name temp_container cmoe640/dev-environment:${DOCKER_TAG}
+        docker create --name temp_container cmo640/dev-environment:${{ inputs.version }}
         docker cp temp_container:/app/. ./release_assets/
         docker rm temp_container
         
@@ -68,7 +67,7 @@ runs:
           
           ### Docker Image
           ```
-          docker pull cmoe640/dev-environment:${{ inputs.version }}
+          docker pull cmo640/dev-environment:${{ inputs.version }}
           ```
           
           ### SHA256 Checksums
