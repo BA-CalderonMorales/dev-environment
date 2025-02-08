@@ -1,0 +1,43 @@
+name: 'Validate Release Conditions'
+description: 'Checks if a release should proceed based on various conditions'
+
+inputs:
+  branch_allowed:
+    description: 'Whether branch is allowed for releases'
+    required: true
+  can_proceed:
+    description: 'Whether queue processing allows proceeding'
+    required: true
+  using_manual_inputs:
+    description: 'Whether using manual inputs'
+    required: true
+  is_scheduled:
+    description: 'Whether this is a scheduled run'
+    required: true
+
+outputs:
+  should_proceed:
+    description: 'Whether release should proceed'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: |
+        if [[ "${{ inputs.branch_allowed }}" != "true" ]]; then
+          echo "Branch not allowed for releases"
+          echo "should_proceed=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        if [[ "${{ inputs.can_proceed }}" != "true" ]]; then
+          echo "Queue processing indicates release should not proceed"
+          echo "should_proceed=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Add additional validation logic here
+        # For example, checking if the last release was too recent for scheduled runs
+
+        echo "All conditions met for release"
+        echo "should_proceed=true" >> $GITHUB_OUTPUT

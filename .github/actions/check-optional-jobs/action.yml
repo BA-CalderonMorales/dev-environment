@@ -1,0 +1,28 @@
+name: 'Check Optional Jobs'
+description: 'Validates optional job results'
+
+inputs:
+  job_results:
+    description: 'JSON string of job results'
+    required: true
+  optional_jobs:
+    description: 'Space-separated list of optional job names'
+    required: true
+
+outputs:
+  optional_skipped:
+    description: 'Whether any optional jobs were skipped'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: |
+        skipped=false
+        for job in ${{ inputs.optional_jobs }}; do
+          if [[ "${{ fromJson(inputs.job_results)[job] }}" == "skipped" ]]; then
+            skipped=true
+            echo "Optional job $job was skipped (expected behavior)"
+          fi
+        done
+        echo "optional_skipped=$skipped" >> $GITHUB_OUTPUT

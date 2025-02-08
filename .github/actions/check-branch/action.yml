@@ -1,0 +1,43 @@
+name: 'Check Branch'
+description: 'Validates branch name and ensures releases only run on allowed branches'
+
+inputs:
+  source_branch:
+    description: 'Branch to validate'
+    required: false
+  github_ref:
+    description: 'GitHub ref'
+    required: true
+
+outputs:
+  branch:
+    description: 'Normalized branch name'
+  allowed:
+    description: 'Whether branch is allowed'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: |
+        BRANCH="${{ inputs.source_branch }}"
+        if [[ -z "$BRANCH" ]]; then
+          BRANCH="${{ inputs.github_ref }}"
+          BRANCH=${BRANCH#refs/heads/}
+          BRANCH=${BRANCH#refs/tags/}
+        fi
+        
+        echo "Using branch: $BRANCH"
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        
+        NORMALIZED_BRANCH=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]')
+        
+        if [[ "$NORMALIZED_BRANCH" == "beta" || "$NORMALIZED_BRANCH" == "main" ]]; then
+          echo "✅ Branch '$BRANCH' is allowed for releases" >> $GITHUB_STEP_SUMMARY
+          echo "allowed=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Releases are only allowed on beta and main branches" >> $GITHUB_STEP_SUMMARY
+          echo "Branch attempted: $BRANCH" >> $GITHUB_STEP_SUMMARY
+          echo "allowed=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
