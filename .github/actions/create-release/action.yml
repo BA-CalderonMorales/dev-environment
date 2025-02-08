@@ -33,6 +33,30 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Debug Inputs
+      shell: bash
+      run: |
+        echo "=== Input Validation ==="
+        echo "Version Input: '${{ inputs.version }}'"
+        echo "Prerelease Flag: '${{ inputs.prerelease }}'"
+        echo "GitHub Ref: '${{ github.ref }}'"
+        echo "GitHub SHA: '${{ github.sha }}'"
+        echo "======================="
+
+    - name: Initial Version Check
+      shell: bash
+      run: |
+        if [[ -z "${{ inputs.version }}" ]]; then
+          echo "::error::Version input is empty. This likely means version determination failed in an earlier step."
+          echo "Action inputs available:"
+          env | grep "INPUT_"
+          echo "GitHub context:"
+          echo "  ref: ${{ github.ref }}"
+          echo "  sha: ${{ github.sha }}"
+          echo "  event_name: ${{ github.event_name }}"
+          exit 1
+        fi
+
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
@@ -42,28 +66,41 @@ runs:
     - name: Package Release Assets
       shell: bash
       run: |
+        echo "=== Packaging Assets ==="
+        echo "Current directory: $(pwd)"
+        echo "Directory contents:"
+        ls -la
+        
         # Create staging area
         mkdir -p release_assets
         
-        # Copy application code and configs
-        cp -r distributions startup docs release_assets/
+        echo "Copying distribution files..."
+        cp -rv distributions startup docs release_assets/
         
-        # Include Dockerfile for users who want to build locally
-        cp Dockerfile* release_assets/ 2>/dev/null || true
-        cp docker-compose*.yml release_assets/ 2>/dev/null || true
+        echo "Copying Docker files..."
+        cp -v Dockerfile* release_assets/ 2>/dev/null || echo "No Dockerfile found"
+        cp -v docker-compose*.yml release_assets/ 2>/dev/null || echo "No docker-compose.yml found"
         
-        # Package everything
+        echo "Creating tarball..."
         cd release_assets
         tar -czf ../dev-environment.tar.gz .
         cd ..
         
-        # Generate checksums
+        echo "Generating checksums..."
         sha256sum dev-environment.tar.gz > checksum.txt
+        
+        echo "=== Package Complete ==="
+        echo "Tarball size: $(ls -lh dev-environment.tar.gz)"
+        echo "Checksum:"
+        cat checksum.txt
 
     - name: Validate Version
       shell: bash
       run: |
+        echo "=== Version Validation ==="
         VERSION="${{ inputs.version }}"
+        echo "Raw version input: $VERSION"
+        
         if [[ -z "$VERSION" ]]; then
           echo "::error::No version provided. Cannot create release without a tag."
           exit 1
@@ -72,6 +109,7 @@ runs:
         # Normalize version format
         VERSION=${VERSION#v}  # Remove v prefix if present
         VERSION="v${VERSION}" # Ensure v prefix
+        echo "Normalized version: $VERSION"
         
         # Validate semver format
         if ! echo "$VERSION" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.[0-9]+)?$'; then
@@ -80,8 +118,19 @@ runs:
           exit 1
         fi
         
-        echo "Using version: $VERSION"
+        echo "Version validation passed"
         echo "VALIDATED_VERSION=$VERSION" >> $GITHUB_ENV
+        echo "======================="
+
+    - name: Debug Release Info
+      shell: bash
+      run: |
+        echo "=== Release Information ==="
+        echo "Version: ${{ env.VALIDATED_VERSION }}"
+        echo "Type: ${{ inputs.prerelease && 'Beta' || 'Production' }}"
+        echo "Branch: ${{ github.ref_name }}"
+        echo "Assets ready: $(ls -1 dev-environment.tar.gz checksum.txt 2>/dev/null | wc -l) files"
+        echo "======================="
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
