@@ -158,6 +158,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.ref }}
+          clean: false
 
       - name: Create Release
         uses: ./.github/actions/create-release
@@ -172,14 +174,14 @@ jobs:
           bot_name: ${{ secrets.BOT_NAME }}
           bot_domain: ${{ secrets.BOT_DOMAIN }}
 
-      - name: Update Docker Tags
+      - name: Update Docker Tags  # Re-add this step
+        if: success()  # Only run if release creation succeeded
         uses: ./.github/actions/update-docker-tags
         with:
-          docker_username: ${{ secrets.DOCKERHUB_USERNAME }}
-          docker_token: ${{ secrets.DOCKERHUB_TOKEN }}
-          docker_image: ${{ env.DOCKER_IMAGE }}
           version: ${{ needs.process_queue.outputs.version }}
-          docker_tag: ${{ contains(needs.process_queue.outputs.branch, 'beta') && 'beta' || 'latest' }}
+          prerelease: ${{ needs.process_queue.outputs.prerelease }}
+          registry_token: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry_username: ${{ secrets.DOCKERHUB_USERNAME }}
 
   #####################################################################
   # Handle Failure
