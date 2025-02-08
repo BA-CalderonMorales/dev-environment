@@ -11,10 +11,7 @@ on:
       source_branch:
         description: 'Branch (must be beta or main)'
         required: false
-        type: choice
-        options:
-        - beta
-        - main
+        type: string
         default: 'beta'
       force_process:
         description: 'Force queue processing'
@@ -56,14 +53,30 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       branch: ${{ steps.check.outputs.branch }}
-      is_beta: ${{ steps.check.outputs.is_beta }}
+      allowed: ${{ steps.check.outputs.allowed }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/check-branch
-        id: check
-        with:
-          source_branch: ${{ github.event.inputs.source_branch }}
-          github_ref: ${{ github.ref }}
+      - id: check
+        shell: bash
+        run: |
+          # Use the source_branch input if available; otherwise, default to github.ref
+          BRANCH="${{ github.event.inputs.source_branch }}"
+          if [[ -z "$BRANCH" ]]; then
+            # Strip refs/heads/ prefix if present
+            BRANCH="${{ github.ref }}"
+            BRANCH=${BRANCH#refs/heads/}
+          fi
+          echo "Using branch: $BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          
+          if [[ "$BRANCH" == "beta" || "$BRANCH" == "main" ]]; then
+            echo "✅ Branch '$BRANCH' is allowed for releases" >> $GITHUB_STEP_SUMMARY
+            echo "allowed=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Releases are only allowed on beta and main branches" >> $GITHUB_STEP_SUMMARY
+            echo "Branch attempted: $BRANCH" >> $GITHUB_STEP_SUMMARY
+            echo "allowed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
 
   #####################################################################
   # Process Release Queue
@@ -77,7 +90,8 @@ jobs:
   #####################################################################
   process_queue:
     needs: branch_check
-    if: needs.branch_check.outputs.is_beta == 'true'
+    if: |
+      github.event_name == 'workflow_dispatch' || needs.branch_check.outputs.allowed == 'true'
     runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.queue.outputs.sha }}
@@ -94,25 +108,18 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Check manual inputs
-      - uses: ./.github/actions/check-manual-inputs
-        id: check_inputs
-        with:
-          trigger_sha: ${{ inputs.trigger_sha }}
-          source_branch: ${{ inputs.source_branch }}
+      # Check if this is a manual trigger with specific SHA/branch
+      - id: check_inputs
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
+            echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
+          else
+            echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
+          fi
 
-      # Validate release conditions
-      - uses: ./.github/actions/validate-release-conditions
-        id: validate
-        with:
-          branch_allowed: ${{ needs.branch_check.outputs.is_beta }}
-          can_proceed: true  # Initial assumption, will be refined by queue processing
-          using_manual_inputs: ${{ steps.check_inputs.outputs.using_manual_inputs }}
-          is_scheduled: ${{ github.event_name == 'schedule' }}
-
-      - uses: ./.github/actions/process-release-queue
-        id: queue
-        if: steps.validate.outputs.should_proceed == 'true'
+      - id: queue
+        uses: ./.github/actions/process-release-queue
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_sha: ${{ inputs.trigger_sha }}
@@ -120,9 +127,9 @@ jobs:
           force_process: ${{ inputs.force_process }}
           is_scheduled: ${{ github.event_name == 'schedule' }}
 
-      - uses: ./.github/actions/determine-version
-        id: version
+      - id: version
         if: steps.queue.outputs.can_proceed == 'true'
+        uses: ./.github/actions/determine-version
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ steps.queue.outputs.branch }}
@@ -141,7 +148,8 @@ jobs:
   create_release:
     needs: [branch_check, process_queue]
     if: |
-      needs.branch_check.outputs.is_beta == 'true' &&
+      github.event_name == 'workflow_dispatch' && needs.process_queue.outputs.can_proceed == 'true' ||
+      needs.branch_check.outputs.allowed == 'true' &&
       needs.process_queue.outputs.can_proceed == 'true'
     runs-on: ubuntu-22.04
     steps:
@@ -180,7 +188,7 @@ jobs:
     needs: [branch_check, process_queue, create_release]
     if: |
       always() &&
-      (needs.branch_check.outputs.is_beta == 'true' && failure())
+      (needs.branch_check.outputs.allowed == 'true' && failure())
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
