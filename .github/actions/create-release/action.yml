@@ -1,5 +1,5 @@
 name: 'Create Release'
-description: 'Creates a new release by packaging current codebase and Docker state'
+description: 'Creates a new release with packaged application state'
 
 inputs:
   version:
@@ -35,34 +35,30 @@ runs:
   steps:
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Full history needed for proper versioning
+        fetch-depth: 0
+        ref: ${{ github.ref }} # Prevents branch deletion
+        clean: false # Preserves local changes
 
-    - name: Extract current Docker image state
+    - name: Package Release Assets
       shell: bash
       run: |
-        # The Docker tag (:beta or :latest) represents our current stable state
-        # We pull this instead of building new to ensure consistency
-        echo "Pulling current Docker state from ${{ inputs.version }}"
-        docker pull cmo640/dev-environment:${{ inputs.version }}
-        
-        # Create staging area for release assets
+        # Create staging area
         mkdir -p release_assets
         
-        # Extract current application state from Docker image
-        # This ensures our release matches exactly what's in production/beta
-        docker create --name temp_container cmo640/dev-environment:${{ inputs.version }}
-        docker cp temp_container:/app/. ./release_assets/
-        docker rm temp_container
+        # Copy application code and configs
+        cp -r distributions startup docs release_assets/
         
-        # Package everything into a distributable archive
-        # This becomes our binary release asset
+        # Include Dockerfile for users who want to build locally
+        cp Dockerfile* release_assets/ 2>/dev/null || true
+        cp docker-compose*.yml release_assets/ 2>/dev/null || true
+        
+        # Package everything
         cd release_assets
         tar -czf ../dev-environment.tar.gz .
         cd ..
         
-        # Generate checksums for verification
+        # Generate checksums
         sha256sum dev-environment.tar.gz > checksum.txt
-        echo "Release archive and checksums created"
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
@@ -71,25 +67,23 @@ runs:
         name: "${{ inputs.prerelease && 'Beta' || 'Stable' }} Release ${{ inputs.version }}"
         body: |
           ## Release Notes
-          
-          ${{ inputs.release_notes }}
-          
-          ### Changes Included
-          The following changes are included in this release:
-          
           ${{ steps.process.outputs.notes }}
           
           ### Distributions
+          This release includes:
+          - Complete development environment configuration
+          - Docker setup files for containerized usage
+          - Direct deployment scripts
           
-          #### Docker Image
+          ### Installation
           ```bash
-          docker pull cmo640/dev-environment:${{ inputs.version }}
+          # Download and extract
+          curl -LO https://github.com/BA-CalderonMorales/dev-environment/releases/download/${{ inputs.version }}/dev-environment.tar.gz
+          tar xzf dev-environment.tar.gz
+          
+          # Optional: Build Docker container locally
+          docker build -t dev-environment:${{ inputs.version }} .
           ```
-          
-          This image represents the current ${{ inputs.prerelease && 'beta' || 'production' }} state.
-          
-          #### Binary Distribution
-          A standalone environment tarball is available for non-Docker users.
           
           ### Verification
           SHA256 Checksums:
@@ -97,12 +91,12 @@ runs:
           $(cat checksum.txt)
           ```
           
-          ### Additional Notes
-          - Environment: ${{ inputs.prerelease && 'Beta Testing' || 'Production' }}
+          ### Environment Info
+          - Type: ${{ inputs.prerelease && 'Beta' || 'Production' }}
           - Released: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          - Branch: ${{ steps.process.outputs.branch }}
+          - Branch: ${{ github.ref_name }}
           
-          For detailed documentation, please see our [Quick Start Guide](docs/QUICK_START.md).
+          For setup instructions, see our [Quick Start Guide](docs/QUICK_START.md).
         
         prerelease: ${{ inputs.prerelease }}
         files: |
