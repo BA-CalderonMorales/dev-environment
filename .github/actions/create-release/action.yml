@@ -69,9 +69,19 @@ runs:
           exit 1
         fi
         
-        # Remove 'v' prefix if present for consistency
-        VERSION=${VERSION#v}
-        echo "VALIDATED_VERSION=v${VERSION}" >> $GITHUB_ENV
+        # Normalize version format
+        VERSION=${VERSION#v}  # Remove v prefix if present
+        VERSION="v${VERSION}" # Ensure v prefix
+        
+        # Validate semver format
+        if ! echo "$VERSION" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.[0-9]+)?$'; then
+          echo "::error::Invalid version format: $VERSION"
+          echo "Version must match pattern: v1.2.3 or v1.2.3-beta.1"
+          exit 1
+        fi
+        
+        echo "Using version: $VERSION"
+        echo "VALIDATED_VERSION=$VERSION" >> $GITHUB_ENV
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1

@@ -137,6 +137,12 @@ jobs:
           ref: ${{ steps.queue.outputs.branch }}
           initial_version: ${{ env.INITIAL_VERSION }}
 
+      - name: Debug Version Output
+        if: steps.version.outputs.version
+        run: |
+          echo "Version determined: ${{ steps.version.outputs.version }}"
+          echo "Is prerelease: ${{ steps.version.outputs.prerelease }}"
+
   #####################################################################
   # Create Release
   # -------------
@@ -241,16 +247,21 @@ jobs:
                 ...context.repo,
                 issue_number: issue.number,
                 body: success 
-                  ? `✅ Release processed successfully` 
+                  : `❌ Release processing failed`
                   : `❌ Release processing failed`
               });
               
               if (success) {
-                await github.rest.issues.update({
                   ...context.repo,
+                  ...context.repo,
+                  state: 'closed',
                   issue_number: issue.number,
                   state: 'closed',
                   labels: ['released']
                 });
               }
             }
+              }
+            }
+                  labels: ['released']
+                });
