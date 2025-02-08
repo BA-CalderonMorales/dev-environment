@@ -1,98 +1,74 @@
-name: Process Release Queue
-description: Processes the release queue and determines the next item to release
+name: 'Process Release Queue'
+description: 'Processes the release queue in chronological order'
 
 inputs:
   github_token:
+    description: 'GitHub token for operations'
     required: true
-    description: GitHub token for API access
-  issue_number:
-    required: false
-    default: '31'
-    description: Release queue issue number
-  trigger_sha:
-    required: false
-    description: Specific SHA to process
-  source_branch:
-    required: false
-    description: Source branch for the release
-  force_process:
-    required: false
-    default: 'false'
-    description: Force processing of queue
+  is_scheduled:
+    description: 'Whether this is a scheduled run'
+    required: true
 
 outputs:
   sha:
-    description: SHA to be released
+    description: 'SHA to release'
     value: ${{ steps.process.outputs.sha }}
   branch:
-    description: Branch to release from
+    description: 'Branch to release from'
     value: ${{ steps.process.outputs.branch }}
   can_proceed:
-    description: Whether release can proceed
+    description: 'Whether release can proceed'
     value: ${{ steps.process.outputs.can_proceed }}
+  release_notes:
+    description: 'Aggregated release notes'
+    value: ${{ steps.process.outputs.notes }}
 
 runs:
-  using: composite
+  using: "composite"
   steps:
     - id: process
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-        ISSUE_NUMBER: ${{ inputs.issue_number }}
+        GH_TOKEN: ${{ inputs.github_token }}
       run: |
-        # Get all comments from the issue
-        comments=$(gh api \
-          -H "Accept: application/vnd.github+json" \
-          /repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments \
-          --jq '.[].body')
-
-        # Function to extract latest state for a SHA
-        get_latest_state() {
-          local sha=$1
-          echo "$comments" | grep -F "SHA:$sha" | tail -n1
-        }
-
-        # Function to check if SHA is already completed/failed
-        is_sha_completed() {
-          local sha=$1
-          local latest=$(get_latest_state "$sha")
-          [[ "$latest" == *"COMPLETED:"* || "$latest" == *"FAILED:"* ]]
-        }
-
-        # If specific SHA requested, verify it's in queue and not completed
-        if [[ -n "${{ inputs.trigger_sha }}" ]]; then
-          if ! echo "$comments" | grep -q "SHA:${{ inputs.trigger_sha }}"; then
-            echo "Requested SHA not found in queue"
-            echo "can_proceed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          if ! [[ "${{ inputs.force_process }}" == "true" ]] && is_sha_completed "${{ inputs.trigger_sha }}"; then
-            echo "SHA already processed and force_process not enabled"
-            echo "can_proceed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          echo "sha=${{ inputs.trigger_sha }}" >> $GITHUB_OUTPUT
-          echo "branch=${{ inputs.source_branch }}" >> $GITHUB_OUTPUT
-          echo "can_proceed=true" >> $GITHUB_OUTPUT
+        # Find queue issue
+        QUEUE_ISSUE_NUMBER=$(gh issue list --search "🔄 Release Queue in:title" --json number --jq '.[0].number')
+        
+        if [[ -z "$QUEUE_ISSUE_NUMBER" ]]; then
+          echo "No release queue found"
+          echo "can_proceed=false" >> $GITHUB_OUTPUT
           exit 0
         fi
-
-        # Find oldest unprocessed SHA
-        while read -r line; do
-          if [[ "$line" =~ QUEUED:SHA:([a-f0-9]+)\|BRANCH:([^|]+)\|TIME ]]; then
-            sha="${BASH_REMATCH[1]}"
-            branch="${BASH_REMATCH[2]}"
-            
-            if ! is_sha_completed "$sha"; then
-              echo "sha=$sha" >> $GITHUB_OUTPUT
-              echo "branch=$branch" >> $GITHUB_OUTPUT
-              echo "can_proceed=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          fi
-        done < <(echo "$comments" | sort)
-
-        echo "No eligible items in queue"
-        echo "can_proceed=false" >> $GITHUB_OUTPUT
+        
+        # Get oldest unprocessed item
+        COMMENTS=$(gh issue view $QUEUE_ISSUE_NUMBER --json comments --jq '.comments[].body')
+        QUEUE_ITEMS=$(echo "$COMMENTS" | grep "^QUEUED:" | sort -t'|' -k3)
+        
+        if [[ -z "$QUEUE_ITEMS" ]]; then
+          echo "Queue is empty"
+          echo "can_proceed=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Process oldest item
+        NEXT_ITEM=$(echo "$QUEUE_ITEMS" | head -n 1)
+        SHA=$(echo "$NEXT_ITEM" | grep -oP "SHA:\K[a-f0-9]+")
+        BRANCH=$(echo "$NEXT_ITEM" | grep -oP "BRANCH:\K[^|]+")
+        
+        # Gather release notes from associated PRs
+        NOTES=$(gh pr list --search "$SHA" --json title,body,labels --jq '.[] | "- " + .title + "\n\n  " + (.body | split("\n")[0] // "")' || echo "")
+        if [[ -z "$NOTES" ]]; then
+          # Fall back to commit message if no PR found
+          NOTES=$(git log -1 --pretty=format:"- %s%n%n  %b" $SHA)
+        fi
+        
+        # Mark as processing
+        gh issue comment $QUEUE_ISSUE_NUMBER --body "PROCESSING:$NEXT_ITEM at $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+        
+        # Set outputs
+        echo "sha=$SHA" >> $GITHUB_OUTPUT
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        echo "can_proceed=true" >> $GITHUB_OUTPUT
+        echo "notes<<EOF" >> $GITHUB_OUTPUT
+        echo "$NOTES" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT

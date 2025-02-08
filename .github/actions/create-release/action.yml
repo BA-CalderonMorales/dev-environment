@@ -1,5 +1,5 @@
 name: 'Create Release'
-description: 'Creates a new release with proper versioning and tags'
+description: 'Creates a new release by packaging current codebase and Docker state'
 
 inputs:
   version:
@@ -35,29 +35,36 @@ runs:
   steps:
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Need full history for proper versioning
+        fetch-depth: 0  # Full history needed for proper versioning
 
-    - name: Extract assets from Docker image
+    - name: Extract current Docker image state
       shell: bash
       run: |
-        # Use version from inputs for Docker tag
+        # The Docker tag (:beta or :latest) represents our current stable state
+        # We pull this instead of building new to ensure consistency
+        echo "Pulling current Docker state from ${{ inputs.version }}"
         docker pull cmo640/dev-environment:${{ inputs.version }}
         
-        # Create release assets directory
+        # Create staging area for release assets
         mkdir -p release_assets
         
-        # Extract files directly from container
+        # Extract current application state from Docker image
+        # This ensures our release matches exactly what's in production/beta
         docker create --name temp_container cmo640/dev-environment:${{ inputs.version }}
         docker cp temp_container:/app/. ./release_assets/
         docker rm temp_container
         
-        # Create archive
+        # Package everything into a distributable archive
+        # This becomes our binary release asset
         cd release_assets
         tar -czf ../dev-environment.tar.gz .
         cd ..
+        
+        # Generate checksums for verification
         sha256sum dev-environment.tar.gz > checksum.txt
+        echo "Release archive and checksums created"
 
-    - name: Create Release
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ inputs.version }}
@@ -65,15 +72,38 @@ runs:
         body: |
           ## Release Notes
           
-          ### Docker Image
-          ```
+          ${{ inputs.release_notes }}
+          
+          ### Changes Included
+          The following changes are included in this release:
+          
+          ${{ steps.process.outputs.notes }}
+          
+          ### Distributions
+          
+          #### Docker Image
+          ```bash
           docker pull cmo640/dev-environment:${{ inputs.version }}
           ```
           
-          ### SHA256 Checksums
+          This image represents the current ${{ inputs.prerelease && 'beta' || 'production' }} state.
+          
+          #### Binary Distribution
+          A standalone environment tarball is available for non-Docker users.
+          
+          ### Verification
+          SHA256 Checksums:
           ```
           $(cat checksum.txt)
           ```
+          
+          ### Additional Notes
+          - Environment: ${{ inputs.prerelease && 'Beta Testing' || 'Production' }}
+          - Released: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - Branch: ${{ steps.process.outputs.branch }}
+          
+          For detailed documentation, please see our [Quick Start Guide](docs/QUICK_START.md).
+        
         prerelease: ${{ inputs.prerelease }}
         files: |
           dev-environment.tar.gz
@@ -108,8 +138,11 @@ runs:
         BOT_NAME: ${{ inputs.bot_name }}
         BOT_DOMAIN: ${{ inputs.bot_domain }}
       run: |
+        # Keep documentation pointing to latest release for easier user access
         RELEASE_TAG=$(gh release list -L 1 | cut -f1)
         sed -i "s|releases/[^/]*/download/|releases/latest/download/|g" docs/QUICK_START.md
+        
+        # Update documentation with bot credentials for tracking
         git config user.name "${BOT_NAME}"
         git config user.email "${BOT_EMAIL}@${BOT_DOMAIN}"
         git add docs/QUICK_START.md
