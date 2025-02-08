@@ -43,7 +43,7 @@ runs:
             Last Updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
             
             Branch: ${{ inputs.branch }}
-            Latest SHA: ${{{ inputs.sha }}}" \
+            Latest SHA: ${{ inputs.sha }}" \
             --label "release-queue" \
             --label "automated" \
             --json number --jq '.number')
