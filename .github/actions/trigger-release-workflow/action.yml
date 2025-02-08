@@ -1,32 +1,42 @@
 name: 'Trigger Release Workflow'
-description: 'Triggers the release workflow after successful distribution'
+description: 'Triggers the release workflow for eligible branches'
 
 inputs:
   github_token:
-    description: 'GitHub token for workflow dispatch'
+    description: 'GitHub token'
     required: true
   ref:
-    description: 'Git reference to use'
+    description: 'Git ref to release from'
     required: true
   sha:
-    description: 'Commit SHA that triggered the workflow'
+    description: 'Commit SHA to release'
     required: true
 
 runs:
-  using: composite
+  using: 'composite'
   steps:
-    - name: Trigger Workflow
-      uses: actions/github-script@v7
+    - uses: actions/github-script@v7
       with:
         github-token: ${{ inputs.github_token }}
         script: |
+          // Normalize branch name by removing refs/heads/ prefix
+          const branch = context.ref.replace('refs/heads/', '');
+          
+          // Only trigger for beta/main branches
+          if (!['beta', 'main'].includes(branch)) {
+            console.log(`Branch ${branch} not eligible for release workflow`);
+            return;
+          }
+
           await github.rest.actions.createWorkflowDispatch({
             owner: context.repo.owner,
             repo: context.repo.repo,
             workflow_id: 'workflow_create_release.yml',
-            ref: '${{ inputs.ref }}',
+            ref: context.ref,
             inputs: {
-              trigger_sha: '${{ inputs.sha }}',
-              source_branch: '${{ inputs.ref }}'
+              trigger_sha: context.sha,
+              source_branch: branch  // Use normalized branch name
             }
           });
+          
+          console.log(`Triggered release workflow for ${branch} at ${context.sha}`);
