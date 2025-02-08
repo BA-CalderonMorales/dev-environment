@@ -11,7 +11,10 @@ on:
       source_branch:
         description: 'Branch (must be beta or main)'
         required: false
-        type: string
+        type: choice
+        options:
+        - beta
+        - main
         default: 'beta'
       force_process:
         description: 'Force queue processing'
@@ -53,7 +56,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       branch: ${{ steps.check.outputs.branch }}
-      allowed: ${{ steps.check.outputs.allowed }}
+      is_beta: ${{ steps.check.outputs.is_beta }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/check-branch
@@ -74,7 +77,7 @@ jobs:
   #####################################################################
   process_queue:
     needs: branch_check
-    if: needs.branch_check.outputs.allowed == 'true'
+    if: needs.branch_check.outputs.is_beta == 'true'
     runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.queue.outputs.sha }}
@@ -102,7 +105,7 @@ jobs:
       - uses: ./.github/actions/validate-release-conditions
         id: validate
         with:
-          branch_allowed: ${{ needs.branch_check.outputs.allowed }}
+          branch_allowed: ${{ needs.branch_check.outputs.is_beta }}
           can_proceed: true  # Initial assumption, will be refined by queue processing
           using_manual_inputs: ${{ steps.check_inputs.outputs.using_manual_inputs }}
           is_scheduled: ${{ github.event_name == 'schedule' }}
@@ -138,7 +141,7 @@ jobs:
   create_release:
     needs: [branch_check, process_queue]
     if: |
-      needs.branch_check.outputs.allowed == 'true' &&
+      needs.branch_check.outputs.is_beta == 'true' &&
       needs.process_queue.outputs.can_proceed == 'true'
     runs-on: ubuntu-22.04
     steps:
@@ -177,7 +180,7 @@ jobs:
     needs: [branch_check, process_queue, create_release]
     if: |
       always() &&
-      (needs.branch_check.outputs.allowed == 'true' && failure())
+      (needs.branch_check.outputs.is_beta == 'true' && failure())
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
