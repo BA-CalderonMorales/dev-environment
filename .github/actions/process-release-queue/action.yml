@@ -1,34 +1,34 @@
-name: 'Process Release Queue'
-description: 'Processes the release queue and determines next release'
+name: Process Release Queue
+description: Processes the release queue and determines the next item to release
 
 inputs:
   github_token:
-    description: 'GitHub token for API access'
     required: true
+    description: GitHub token for API access
+  issue_number:
+    required: false
+    default: '31'
+    description: Release queue issue number
   trigger_sha:
-    description: 'SHA that triggered the workflow'
     required: false
+    description: Specific SHA to process
   source_branch:
-    description: 'Branch that triggered the workflow'
     required: false
+    description: Source branch for the release
   force_process:
-    description: 'Force queue processing'
     required: false
     default: 'false'
-  is_scheduled:
-    description: 'Whether this is a scheduled run'
-    required: false
-    default: 'false'
+    description: Force processing of queue
 
 outputs:
   sha:
-    description: 'SHA to release'
+    description: SHA to be released
     value: ${{ steps.process.outputs.sha }}
   branch:
-    description: 'Branch being released'
+    description: Branch to release from
     value: ${{ steps.process.outputs.branch }}
   can_proceed:
-    description: 'Whether release can proceed'
+    description: Whether release can proceed
     value: ${{ steps.process.outputs.can_proceed }}
 
 runs:
@@ -36,63 +36,63 @@ runs:
   steps:
     - id: process
       shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        ISSUE_NUMBER: ${{ inputs.issue_number }}
       run: |
-        # Function to log with timestamp
-        log_msg() {
-          echo "$(date -u '+%Y-%m-%d %H:%M:%S UTC') - $1"
+        # Get all comments from the issue
+        comments=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          /repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments \
+          --jq '.[].body')
+
+        # Function to extract latest state for a SHA
+        get_latest_state() {
+          local sha=$1
+          echo "$comments" | grep -F "SHA:$sha" | tail -n1
         }
 
-        # Handle direct trigger with SHA/branch
-        if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
-          log_msg "Processing direct trigger"
+        # Function to check if SHA is already completed/failed
+        is_sha_completed() {
+          local sha=$1
+          local latest=$(get_latest_state "$sha")
+          [[ "$latest" == *"COMPLETED:"* || "$latest" == *"FAILED:"* ]]
+        }
+
+        # If specific SHA requested, verify it's in queue and not completed
+        if [[ -n "${{ inputs.trigger_sha }}" ]]; then
+          if ! echo "$comments" | grep -q "SHA:${{ inputs.trigger_sha }}"; then
+            echo "Requested SHA not found in queue"
+            echo "can_proceed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          if ! [[ "${{ inputs.force_process }}" == "true" ]] && is_sha_completed "${{ inputs.trigger_sha }}"; then
+            echo "SHA already processed and force_process not enabled"
+            echo "can_proceed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
           echo "sha=${{ inputs.trigger_sha }}" >> $GITHUB_OUTPUT
           echo "branch=${{ inputs.source_branch }}" >> $GITHUB_OUTPUT
           echo "can_proceed=true" >> $GITHUB_OUTPUT
           exit 0
         fi
 
-        # Get queue issue
-        QUEUE_ISSUE=$(gh issue list --label "release-queue" --json number --jq '.[0].number')
-        if [[ -z "$QUEUE_ISSUE" ]]; then
-          log_msg "No release queue found"
-          if [[ "${{ inputs.force_process }}" == "true" ]]; then
-            log_msg "Force processing enabled - creating queue"
-            QUEUE_ISSUE=$(gh issue create \
-              --title "🔄 Release Queue" \
-              --body "Automated release queue management system." \
-              --label "release-queue" | grep -o '[0-9]*$')
-          else
-            log_msg "Exiting - no force process flag"
-            echo "can_proceed=false" >> $GITHUB_OUTPUT
-            exit 0
+        # Find oldest unprocessed SHA
+        while read -r line; do
+          if [[ "$line" =~ QUEUED:SHA:([a-f0-9]+)\|BRANCH:([^|]+)\|TIME ]]; then
+            sha="${BASH_REMATCH[1]}"
+            branch="${BASH_REMATCH[2]}"
+            
+            if ! is_sha_completed "$sha"; then
+              echo "sha=$sha" >> $GITHUB_OUTPUT
+              echo "branch=$branch" >> $GITHUB_OUTPUT
+              echo "can_proceed=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
           fi
-        fi
+        done < <(echo "$comments" | sort)
 
-        # Get next queued item
-        NEXT_RELEASE=$(gh issue view "$QUEUE_ISSUE" --json comments \
-          --jq '.comments[].body | select(startswith("QUEUED:")) | split("\n")[0]' \
-          | head -n 1)
-
-        if [[ -z "$NEXT_RELEASE" ]]; then
-          log_msg "Queue is empty"
-          if [[ "${{ inputs.is_scheduled }}" == "true" ]]; then
-            log_msg "Scheduled run - updating queue status"
-            gh issue comment "$QUEUE_ISSUE" --body "Weekly check: Queue empty at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          fi
-          echo "can_proceed=false" >> $GITHUB_OUTPUT
-          exit 0
-        fi
-
-        # Parse release info
-        SHA=$(echo "$NEXT_RELEASE" | grep -o 'SHA:[^|]*' | cut -d: -f2)
-        BRANCH=$(echo "$NEXT_RELEASE" | grep -o 'BRANCH:[^|]*' | cut -d: -f2)
-
-        log_msg "Processing release: SHA=$SHA BRANCH=$BRANCH"
-        echo "sha=$SHA" >> $GITHUB_OUTPUT
-        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-        echo "can_proceed=true" >> $GITHUB_OUTPUT
-
-        # Mark as processing
-        gh issue comment "$QUEUE_ISSUE" --body "PROCESSING:$NEXT_RELEASE at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
+        echo "No eligible items in queue"
+        echo "can_proceed=false" >> $GITHUB_OUTPUT
