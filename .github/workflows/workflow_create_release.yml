@@ -91,7 +91,9 @@ jobs:
   process_queue:
     needs: branch_check
     if: |
-      github.event_name == 'workflow_dispatch' || needs.branch_check.outputs.allowed == 'true'
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'schedule' && 
+      needs.branch_check.outputs.allowed == 'true'
     runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.queue.outputs.sha }}
@@ -198,3 +200,49 @@ jobs:
           maintainer: ${{ env.MAINTAINER_GITHUB }}
           sha: ${{ needs.process_queue.outputs.sha }}
           branch: ${{ needs.process_queue.outputs.branch }}
+
+  #####################################################################
+  # Notify Queue
+  # -------------
+  # Purpose: Notifies the status of the release queue
+  #####################################################################
+  notify_queue:
+    needs: [process_queue, create_release]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Notify Queue Status
+        if: needs.process_queue.outputs.can_proceed == 'false'
+        run: |
+          echo "No items in release queue to process"
+          echo "Next scheduled release window: Saturday at 10:00 AM CST"
+
+      - name: Update Issue Status
+        if: needs.process_queue.outputs.sha
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const sha = '${{ needs.process_queue.outputs.sha }}';
+            const success = '${{ needs.create_release.result }}' === 'success';
+            
+            const query = `is:issue is:open label:pending-release sha:${sha}`;
+            const issues = await github.rest.search.issuesAndPullRequests({q: query});
+            
+            for (const issue of issues.data.items) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: success 
+                  ? `✅ Release processed successfully` 
+                  : `❌ Release processing failed`
+              });
+              
+              if (success) {
+                await github.rest.issues.update({
+                  ...context.repo,
+                  issue_number: issue.number,
+                  state: 'closed',
+                  labels: ['released']
+                });
+              }
+            }
