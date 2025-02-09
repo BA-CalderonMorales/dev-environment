@@ -1,3 +1,16 @@
+//
+// This script is used by the cache-cleanup action (.github/actions/cache-cleanup/action.yml)
+// to manage GitHub Actions cache cleanup based on age and size thresholds.
+//
+// Action inputs:
+// - max-age: Maximum age of caches to keep (in days)
+// - max-size: Maximum size of caches to keep (in GB)
+//
+// The script uses the GitHub API to:
+// 1. List all repository caches
+// 2. Delete caches that exceed thresholds
+// 3. Log cleanup operations for auditability
+
 use anyhow::Result;
 use octocrab::Octocrab;
 use serde::Deserialize;
@@ -21,19 +34,11 @@ struct ListCachesResponse {
 #[tokio::main]
 async fn main() -> Result<()> {
     init_logging();
-    let is_local = env::var("GITHUB_ACTIONS").is_err();
-    let logger = get_logger(is_local);
+    let logger = get_logger(false);
 
     logger.info("🧹 Starting cache cleanup...");
 
-    if is_local {
-        logger.info("🏠 Running in local development mode (compilation test only)");
-        logger.debug("Local environment detected - skipping GitHub API calls");
-        logger.info("✅ Script compiled successfully!");
-        return Ok(());
-    }
-
-    logger.debug("Loading environment variables");
+    // Get required environment variables
     let github_token = env::var("GITHUB_TOKEN")
         .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not found"))?;
     let repository = env::var("GITHUB_REPOSITORY")

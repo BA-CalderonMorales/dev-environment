@@ -32,6 +32,6 @@ runs:
       run: |
         cd ${{ github.action_path }}/../../scripts
         echo "Running cache cleanup with max age: $MAX_AGE days, max size: $MAX_SIZE GB"
-        cargo run --bin workflow_cache_cleanup -- \
+        cargo run --bin step_cache_cleanup -- \
           --max-age "$MAX_AGE" \
           --max-size "$MAX_SIZE"
