@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     }
 
     let status = child.wait()?;
-    if (!status.success()) {
+    if !status.success() {
         anyhow::bail!("Failed to import GPG key");
     }
 
@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
         .args(["reloadagent", "/bye"])
         .status()?;
 
-    if (!status.success()) {
+    if !status.success() {
         anyhow::bail!("Failed to reload GPG agent");
     }
 
