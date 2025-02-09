@@ -35,182 +35,58 @@ runs:
   steps:
     - name: Debug Inputs
       shell: bash
-      run: |
-        echo "=== Input Validation ==="
-        echo "Version Input: '${{ inputs.version }}'"
-        echo "Prerelease Flag: '${{ inputs.prerelease }}'"
-        echo "GitHub Ref: '${{ github.ref }}'"
-        echo "GitHub SHA: '${{ github.sha }}'"
-        echo "======================="
-
-    - name: Initial Version Check
-      shell: bash
-      run: |
-        if [[ -z "${{ inputs.version }}" ]]; then
-          echo "::error::Version input is empty. This likely means version determination failed in an earlier step."
-          echo "Action inputs available:"
-          env | grep "INPUT_"
-          echo "GitHub context:"
-          echo "  ref: ${{ github.ref }}"
-          echo "  sha: ${{ github.sha }}"
-          echo "  event_name: ${{ github.event_name }}"
-          exit 1
-        fi
-
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        ref: ${{ github.ref }} # Prevents branch deletion
-        clean: false # Preserves local changes
-
-    - name: Package Release Assets
-      shell: bash
-      run: |
-        echo "=== Packaging Assets ==="
-        echo "Current directory: $(pwd)"
-        echo "Directory contents:"
-        ls -la
-        
-        # Create staging area
-        mkdir -p release_assets
-        
-        echo "Copying distribution files..."
-        cp -rv distributions startup docs release_assets/
-        
-        echo "Copying Docker files..."
-        cp -v Dockerfile* release_assets/ 2>/dev/null || echo "No Dockerfile found"
-        cp -v docker-compose*.yml release_assets/ 2>/dev/null || echo "No docker-compose.yml found"
-        
-        echo "Creating tarball..."
-        cd release_assets
-        tar -czf ../dev-environment.tar.gz .
-        cd ..
-        
-        echo "Generating checksums..."
-        sha256sum dev-environment.tar.gz > checksum.txt
-        
-        echo "=== Package Complete ==="
-        echo "Tarball size: $(ls -lh dev-environment.tar.gz)"
-        echo "Checksum:"
-        cat checksum.txt
+      run: cargo run --bin step_debug_inputs
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        GITHUB_REF: ${{ github.ref }}
+        GITHUB_SHA: ${{ github.sha }}
+        RUST_LOG: info
 
     - name: Validate Version
       shell: bash
-      run: |
-        echo "=== Version Validation ==="
-        VERSION="${{ inputs.version }}"
-        echo "Raw version input: $VERSION"
-        
-        if [[ -z "$VERSION" ]]; then
-          echo "::error::No version provided. Cannot create release without a tag."
-          exit 1
-        fi
-        
-        # Normalize version format
-        VERSION=${VERSION#v}  # Remove v prefix if present
-        VERSION="v${VERSION}" # Ensure v prefix
-        echo "Normalized version: $VERSION"
-        
-        # Validate semver format
-        if ! echo "$VERSION" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.[0-9]+)?$'; then
-          echo "::error::Invalid version format: $VERSION"
-          echo "Version must match pattern: v1.2.3 or v1.2.3-beta.1"
-          exit 1
-        fi
-        
-        echo "Version validation passed"
-        echo "VALIDATED_VERSION=$VERSION" >> $GITHUB_ENV
-        echo "======================="
-
-    - name: Debug Release Info
-      shell: bash
-      run: |
-        echo "=== Release Information ==="
-        echo "Version: ${{ env.VALIDATED_VERSION }}"
-        echo "Type: ${{ inputs.prerelease && 'Beta' || 'Production' }}"
-        echo "Branch: ${{ github.ref_name }}"
-        echo "Assets ready: $(ls -1 dev-environment.tar.gz checksum.txt 2>/dev/null | wc -l) files"
-        echo "======================="
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ env.VALIDATED_VERSION }}
-        name: "${{ inputs.prerelease && 'Beta' || 'Stable' }} Release ${{ env.VALIDATED_VERSION }}"
-        body: |
-          ## Release Notes
-          ${{ steps.process.outputs.notes }}
-          
-          ### Distributions
-          This release includes:
-          - Complete development environment configuration
-          - Docker setup files for containerized usage
-          - Direct deployment scripts
-          
-          ### Installation
-          ```bash
-          # Download and extract
-          curl -LO https://github.com/BA-CalderonMorales/dev-environment/releases/download/${{ env.VALIDATED_VERSION }}/dev-environment.tar.gz
-          tar xzf dev-environment.tar.gz
-          
-          # Optional: Build Docker container locally
-          docker build -t dev-environment:${{ env.VALIDATED_VERSION }} .
-          ```
-          
-          ### Verification
-          SHA256 Checksums:
-          ```
-          $(cat checksum.txt)
-          ```
-          
-          ### Environment Info
-          - Type: ${{ inputs.prerelease && 'Beta' || 'Production' }}
-          - Released: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          - Branch: ${{ github.ref_name }}
-          
-          For setup instructions, see our [Quick Start Guide](docs/QUICK_START.md).
-        
-        prerelease: ${{ inputs.prerelease }}
-        files: |
-          dev-environment.tar.gz
-          checksum.txt
-        draft: false
+      run: cargo run --bin step_validate_version
       env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_VERSION: ${{ inputs.version }}
+        RUST_LOG: info
 
-    - name: Import GPG key
+    - name: Package Release Assets
       shell: bash
-      run: |
-        echo "${{ inputs.bot_gpg_private_key }}" | gpg --batch --import
-        echo "allow-preset-passphrase" > ~/.gnupg/gpg-agent.conf
-        gpg-connect-agent reloadagent /bye
+      run: cargo run --bin step_package_assets
       env:
-        GPG_TTY: $(tty)
-        GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        RUST_LOG: info
+
+    - name: Setup GPG
+      shell: bash
+      run: cargo run --bin step_setup_gpg
+      env:
+        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
+        INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        RUST_LOG: info
 
     - name: Configure Git
       shell: bash
-      run: |
-        git config --global user.name "${{ inputs.bot_name }}"
-        git config --global user.email "${{ inputs.bot_email }}"
-        git config --global user.signingkey "${{ inputs.bot_gpg_private_key }}"
-        git config --global commit.gpgsign true
+      run: cargo run --bin step_configure_git
+      env:
+        INPUT_BOT_NAME: ${{ inputs.bot_name }}
+        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
+        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
+        RUST_LOG: info
 
-    - name: Update Documentation Links
+    - name: Create GitHub Release
       shell: bash
+      run: cargo run --bin step_create_release
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        RUST_LOG: info
+
+    - name: Update Documentation
+      shell: bash
+      run: cargo run --bin step_update_docs
       env:
         GH_TOKEN: ${{ inputs.bot_github_token }}
         BOT_EMAIL: ${{ inputs.bot_email }}
         BOT_NAME: ${{ inputs.bot_name }}
         BOT_DOMAIN: ${{ inputs.bot_domain }}
-      run: |
-        # Keep documentation pointing to latest release for easier user access
-        RELEASE_TAG=$(gh release list -L 1 | cut -f1)
-        sed -i "s|releases/[^/]*/download/|releases/latest/download/|g" docs/QUICK_START.md
-        
-        # Update documentation with bot credentials for tracking
-        git config user.name "${BOT_NAME}"
-        git config user.email "${BOT_EMAIL}@${BOT_DOMAIN}"
-        git add docs/QUICK_START.md
-        git commit -S -m "docs: update distribution links to ${RELEASE_TAG}" || true
-        git push origin HEAD:${{ github.ref_name }}
+        RUST_LOG: info
