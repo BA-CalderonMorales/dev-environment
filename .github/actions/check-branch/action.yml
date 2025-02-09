@@ -1,0 +1,41 @@
+name: 'Branch Normalizer'
+description: 'Normalizes branch names for release processing'
+
+inputs:
+  source_branch:
+    description: 'Branch to normalize (optional)'
+    required: false
+  github_ref:
+    description: 'GitHub ref'
+    required: true
+
+outputs:
+  branch:
+    description: 'Normalized branch name'
+  is_beta:
+    description: 'Whether this is beta branch'
+
+runs:
+  using: 'composite'
+  steps:
+    - shell: bash
+      run: |
+        # Extract branch name
+        BRANCH="${{ inputs.source_branch }}"
+        if [[ -z "$BRANCH" ]]; then
+          BRANCH="${{ inputs.github_ref }}"
+        fi
+        
+        # Normalize by removing prefixes
+        BRANCH=${BRANCH#refs/heads/}
+        BRANCH=${BRANCH#refs/tags/}
+        
+        echo "Using branch: $BRANCH"
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        
+        # Set beta flag for Docker tagging
+        if [[ "${BRANCH,,}" == "beta" ]]; then
+          echo "is_beta=true" >> $GITHUB_OUTPUT
+        else
+          echo "is_beta=false" >> $GITHUB_OUTPUT
+        fi

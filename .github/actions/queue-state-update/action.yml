@@ -1,0 +1,58 @@
+name: Update Queue State
+description: Updates the state of a release queue item
+
+inputs:
+  github_token:
+    required: true
+    description: GitHub token for API access
+  issue_number:
+    required: false
+    default: '31'
+    description: Release queue issue number
+  sha:
+    required: true
+    description: SHA being processed
+  branch:
+    required: true
+    description: Branch being processed
+  state:
+    required: true
+    description: New state (PROCESSING, COMPLETED, FAILED)
+  error_message:
+    required: false
+    description: Error message if state is FAILED
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        ISSUE_NUMBER: ${{ inputs.issue_number }}
+      run: |
+        timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        
+        case "${{ inputs.state }}" in
+          PROCESSING)
+            message="PROCESSING:SHA:${{ inputs.sha }}|BRANCH:${{ inputs.branch }}|TIME:$timestamp"
+            ;;
+          COMPLETED)
+            message="COMPLETED:SHA:${{ inputs.sha }}|BRANCH:${{ inputs.branch }}|TIME:$timestamp"
+            ;;
+          FAILED)
+            message="FAILED:SHA:${{ inputs.sha }}|BRANCH:${{ inputs.branch }}|TIME:$timestamp"
+            if [[ -n "${{ inputs.error_message }}" ]]; then
+              message="$message\n\nError: ${{ inputs.error_message }}"
+            fi
+            ;;
+          *)
+            echo "Invalid state: ${{ inputs.state }}"
+            exit 1
+            ;;
+        esac
+
+        gh api \
+          --method POST \
+          -H "Accept: application/vnd.github+json" \
+          /repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments \
+          -f body="$message"

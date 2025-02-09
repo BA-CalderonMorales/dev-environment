@@ -1,0 +1,83 @@
+name: 'Manage Release Queue'
+description: 'Manages release queue operations (list/clear/prioritize)'
+
+inputs:
+  action:
+    description: 'Queue action to perform'
+    required: true
+    type: string
+  github_token:
+    description: 'GitHub token for API operations'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Load Queue
+      id: load
+      shell: bash
+      run: |
+        # Queue is stored in issue labeled 'release-queue'
+        QUEUE_ISSUE=$(gh issue list \
+          --label release-queue \
+          --json number,title \
+          --limit 1 \
+          --jq '.[0].number')
+        
+        if [[ -z "$QUEUE_ISSUE" ]]; then
+          # Create queue issue if it doesn't exist
+          QUEUE_ISSUE=$(gh issue create \
+            --title "Release Queue" \
+            --label release-queue \
+            --body "Release queue management issue. Do not close manually." \
+            --json number \
+            --jq '.number')
+        fi
+        echo "queue_issue=$QUEUE_ISSUE" >> $GITHUB_OUTPUT
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+
+    - name: Process Action
+      id: process
+      shell: bash
+      run: |
+        case "${{ inputs.action }}" in
+          "list")
+            gh issue view ${{ steps.load.outputs.queue_issue }} \
+              --json body \
+              --jq '.body' \
+              | grep -v "Release queue management"
+            ;;
+          
+          "clear")
+            gh issue edit ${{ steps.load.outputs.queue_issue }} \
+              --body "Release queue management issue. Do not close manually."
+            echo "Queue cleared"
+            ;;
+          
+          "prioritize")
+            # Get current queue content
+            QUEUE=$(gh issue view ${{ steps.load.outputs.queue_issue }} --json body --jq '.body')
+            
+            # Show queue and prompt for reordering
+            echo "Current queue:"
+            echo "$QUEUE"
+            echo "Create PR to modify queue priority"
+            ;;
+          
+          *)
+            echo "Unknown action: ${{ inputs.action }}"
+            exit 1
+            ;;
+        esac
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+
+    - name: Update Queue
+      if: success()
+      shell: bash
+      run: |
+        gh issue edit ${{ steps.load.outputs.queue_issue }} \
+          --add-label "managed-by-workflow"
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}

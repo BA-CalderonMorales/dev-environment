@@ -1,0 +1,66 @@
+name: 'Validate Branch'
+description: 'Validates branch name and sets environment variables'
+
+outputs:
+  environment:
+    description: 'Target environment'
+    value: ${{ steps.validate.outputs.environment }}
+  base_tag:
+    description: 'Base Docker tag'
+    value: ${{ steps.validate.outputs.base_tag }}
+  docker_tag:
+    description: 'Docker tag to use'
+    value: ${{ steps.validate.outputs.docker_tag }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate Branch
+      id: validate
+      shell: bash
+      run: |
+        BRANCH="${{ github.ref_name }}"
+        
+        # Enhanced quantum branch state detector
+        case "$BRANCH" in
+          main)
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "base_tag=latest" >> $GITHUB_OUTPUT
+            echo "docker_tag=latest" >> $GITHUB_OUTPUT
+            ;;
+          beta)
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "base_tag=beta" >> $GITHUB_OUTPUT
+            echo "docker_tag=beta" >> $GITHUB_OUTPUT
+            ;;
+          develop)
+            echo "environment=development" >> $GITHUB_OUTPUT
+            echo "base_tag=dev" >> $GITHUB_OUTPUT
+            echo "docker_tag=dev" >> $GITHUB_OUTPUT
+            ;;
+          pipeline/*)
+            echo "environment=pipeline" >> $GITHUB_OUTPUT
+            echo "base_tag=pipeline" >> $GITHUB_OUTPUT
+            echo "docker_tag=pipeline" >> $GITHUB_OUTPUT
+            ;;
+          *)
+            # Enhanced pattern matching for branch types
+            if [[ "$BRANCH" =~ ^(feature|bugfix|hotfix|merge)/ || "$BRANCH" =~ ^[0-9]+/(merge|rebase|feature|bugfix|hotfix) ]]; then
+              echo "environment=development" >> $GITHUB_OUTPUT
+              echo "base_tag=dev" >> $GITHUB_OUTPUT
+              echo "docker_tag=dev" >> $GITHUB_OUTPUT
+            else
+              echo "::error::Branch '$BRANCH' does not conform to quantum naming conventions. Allowed patterns: main, beta, develop, pipeline/*, feature/*, bugfix/*, hotfix/*, merge/*, NUM/merge"
+              exit 1
+            fi
+            ;;
+        esac
+
+    - name: Report Branch Status
+      shell: bash
+      run: |
+        echo "## 🌿 Branch Validation Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: \`${{ steps.validate.outputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Docker Tag: \`${{ steps.validate.outputs.docker_tag }}\`" >> $GITHUB_STEP_SUMMARY

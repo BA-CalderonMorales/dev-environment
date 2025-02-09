@@ -1,0 +1,24 @@
+name: 'Check PR Status'
+description: 'Checks if there is an active PR for the current branch'
+
+outputs:
+  should_run:
+    description: 'Whether the workflow should continue running'
+    value: ${{ steps.check.outputs.should_run }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: check
+      if: github.event_name == 'push'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        PR_COUNT=$(gh pr list --json number --head ${{ github.ref_name }} --state open | jq length)
+        if [ $PR_COUNT -eq 0 ]; then
+          echo "should_run=true" >> $GITHUB_OUTPUT
+        else
+          echo "should_run=false" >> $GITHUB_OUTPUT
+          echo "Skipping workflow as PR exists for branch ${{ github.ref_name }}"
+        fi

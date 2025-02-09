@@ -1,0 +1,92 @@
+name: 'Create Release'
+description: 'Creates a new release with packaged application state'
+
+inputs:
+  version:
+    description: 'Version to release'
+    required: true
+  prerelease:
+    description: 'Whether this is a prerelease'
+    required: true
+  github_token:
+    description: 'GitHub token for creating release'
+    required: true
+  bot_gpg_private_key:
+    description: 'Bot GPG private key for signing'
+    required: true
+  bot_gpg_passphrase:
+    description: 'Bot GPG passphrase'
+    required: true
+  bot_github_token:
+    description: 'Bot GitHub token'
+    required: true
+  bot_email:
+    description: 'Bot email for git config'
+    required: true
+  bot_name:
+    description: 'Bot name for git config'
+    required: true
+  bot_domain:
+    description: 'Bot domain for config'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Debug Inputs
+      shell: bash
+      run: cargo run --bin step_debug_inputs
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        GITHUB_REF: ${{ github.ref }}
+        GITHUB_SHA: ${{ github.sha }}
+        RUST_LOG: info
+
+    - name: Validate Version
+      shell: bash
+      run: cargo run --bin step_validate_version
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        RUST_LOG: info
+
+    - name: Package Release Assets
+      shell: bash
+      run: cargo run --bin step_package_assets
+      env:
+        RUST_LOG: info
+
+    - name: Setup GPG
+      shell: bash
+      run: cargo run --bin step_setup_gpg
+      env:
+        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
+        INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        RUST_LOG: info
+
+    - name: Configure Git
+      shell: bash
+      run: cargo run --bin step_configure_git
+      env:
+        INPUT_BOT_NAME: ${{ inputs.bot_name }}
+        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
+        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
+        RUST_LOG: info
+
+    - name: Create GitHub Release
+      shell: bash
+      run: cargo run --bin step_create_release
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        RUST_LOG: info
+
+    - name: Update Documentation
+      shell: bash
+      run: cargo run --bin step_update_docs
+      env:
+        GH_TOKEN: ${{ inputs.bot_github_token }}
+        BOT_EMAIL: ${{ inputs.bot_email }}
+        BOT_NAME: ${{ inputs.bot_name }}
+        BOT_DOMAIN: ${{ inputs.bot_domain }}
+        RUST_LOG: info

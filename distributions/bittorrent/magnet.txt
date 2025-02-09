@@ -1,1 +1,0 @@
-magnet:?xt=urn:btih:48706bacf5e024346e36acb4f88c4fd83236f6a4&dn=dev-environment.tar&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969&tr=udp%3A%2F%2Ftracker.internetwarriors.net%3A1337

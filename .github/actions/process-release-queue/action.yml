@@ -1,0 +1,74 @@
+name: 'Process Release Queue'
+description: 'Processes the release queue in chronological order'
+
+inputs:
+  github_token:
+    description: 'GitHub token for operations'
+    required: true
+  is_scheduled:
+    description: 'Whether this is a scheduled run'
+    required: true
+
+outputs:
+  sha:
+    description: 'SHA to release'
+    value: ${{ steps.process.outputs.sha }}
+  branch:
+    description: 'Branch to release from'
+    value: ${{ steps.process.outputs.branch }}
+  can_proceed:
+    description: 'Whether release can proceed'
+    value: ${{ steps.process.outputs.can_proceed }}
+  release_notes:
+    description: 'Aggregated release notes'
+    value: ${{ steps.process.outputs.notes }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: process
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        # Find queue issue
+        QUEUE_ISSUE_NUMBER=$(gh issue list --search "🔄 Release Queue in:title" --json number --jq '.[0].number')
+        
+        if [[ -z "$QUEUE_ISSUE_NUMBER" ]]; then
+          echo "No release queue found"
+          echo "can_proceed=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Get oldest unprocessed item
+        COMMENTS=$(gh issue view $QUEUE_ISSUE_NUMBER --json comments --jq '.comments[].body')
+        QUEUE_ITEMS=$(echo "$COMMENTS" | grep "^QUEUED:" | sort -t'|' -k3)
+        
+        if [[ -z "$QUEUE_ITEMS" ]]; then
+          echo "Queue is empty"
+          echo "can_proceed=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Process oldest item
+        NEXT_ITEM=$(echo "$QUEUE_ITEMS" | head -n 1)
+        SHA=$(echo "$NEXT_ITEM" | grep -oP "SHA:\K[a-f0-9]+")
+        BRANCH=$(echo "$NEXT_ITEM" | grep -oP "BRANCH:\K[^|]+")
+        
+        # Gather release notes from associated PRs
+        NOTES=$(gh pr list --search "$SHA" --json title,body,labels --jq '.[] | "- " + .title + "\n\n  " + (.body | split("\n")[0] // "")' || echo "")
+        if [[ -z "$NOTES" ]]; then
+          # Fall back to commit message if no PR found
+          NOTES=$(git log -1 --pretty=format:"- %s%n%n  %b" $SHA)
+        fi
+        
+        # Mark as processing
+        gh issue comment $QUEUE_ISSUE_NUMBER --body "PROCESSING:$NEXT_ITEM at $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+        
+        # Set outputs
+        echo "sha=$SHA" >> $GITHUB_OUTPUT
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        echo "can_proceed=true" >> $GITHUB_OUTPUT
+        echo "notes<<EOF" >> $GITHUB_OUTPUT
+        echo "$NOTES" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT

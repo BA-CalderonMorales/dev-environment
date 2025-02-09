@@ -1,0 +1,98 @@
+name: 'Check Distribution Status'
+description: 'Verifies distribution workflow success with merge queue management'
+
+inputs:
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+  maintainer:
+    description: 'GitHub username of maintainer to notify'
+    required: true
+  event_sha:
+    description: 'SHA of the triggering event'
+    required: true
+
+outputs:
+  status:
+    description: 'Status of the distribution workflow'
+    value: ${{ steps.check.outputs.status }}
+  can_proceed:
+    description: 'Whether this release can proceed'
+    value: ${{ steps.queue_check.outputs.can_proceed }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      run: |
+        # Get the PR number that triggered this workflow
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        else
+          PR_NUMBER=$(gh pr list --base ${{ github.ref_name }} --state merged \
+            --search "${{ inputs.event_sha }}" --json number --jq '.[0].number')
+        fi
+        echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+        
+        # Check the distribution workflow status for this specific PR
+        STATUS=$(gh api repos/${{ github.repository }}/actions/workflows/workflow_distribution.yml/runs \
+          --jq ".workflow_runs[] | select(.head_sha==\"${{ inputs.event_sha }}\") | .conclusion")
+        echo "status=$STATUS" >> $GITHUB_OUTPUT
+        
+        if [[ "$STATUS" != "success" ]]; then
+          gh issue create \
+            --title "⚠️ Distribution Workflow Failed - Release Blocked (PR #${PR_NUMBER})" \
+            --body "Distribution workflow failed for PR #${PR_NUMBER}, blocking release creation. CC: ${{ inputs.maintainer }}" \
+            --label "bug,release-blocked"
+          exit 1
+        fi
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+
+    - id: queue_check
+      shell: bash
+      run: |
+        # Create or get the release queue issue
+        QUEUE_ISSUE=$(gh issue list --label "release-queue" | awk 'NR==1{print $1}')
+        
+        if [[ -z "$QUEUE_ISSUE" ]]; then
+          # Create queue issue and extract number from URL
+          QUEUE_ISSUE=$(gh issue create \
+            --title "🔄 Release Queue Manager" \
+            --body "Manages the order of releases to prevent race conditions." \
+            --label "release-queue" | grep -o '[0-9]*$')
+        fi
+        
+        # Get PR number from previous step
+        PR_NUMBER="${{ steps.check.outputs.pr_number }}"
+        
+        # Get current queue content
+        QUEUE_CONTENT=$(gh issue view "$QUEUE_ISSUE" --json body --jq .body)
+        
+        # Check if there are any pending PRs before this one
+        PENDING_PRS=$(echo "$QUEUE_CONTENT" | grep -B 999 "PR #${PR_NUMBER}" || echo "")
+        
+        if [[ -z "$PENDING_PRS" ]]; then
+          # This PR is next in line
+          echo "can_proceed=true" >> $GITHUB_OUTPUT
+          
+          # Update queue by removing this PR using GitHub API directly
+          NEW_CONTENT=$(echo "$QUEUE_CONTENT" | sed "/${PR_NUMBER}/d")
+          gh api --method PATCH "/repos/${{ github.repository }}/issues/${QUEUE_ISSUE}" \
+            -f body="$NEW_CONTENT"
+        else
+          # There are PRs ahead in the queue
+          echo "can_proceed=false" >> $GITHUB_OUTPUT
+          
+          # Add to queue if not already present
+          if ! echo "$QUEUE_CONTENT" | grep -q "PR #${PR_NUMBER}"; then
+            NEW_CONTENT="${QUEUE_CONTENT}${QUEUE_CONTENT:+$'\n'}PR #${PR_NUMBER}"
+            gh api --method PATCH "/repos/${{ github.repository }}/issues/${QUEUE_ISSUE}" \
+              -f body="$NEW_CONTENT"
+          fi
+          
+          echo "::warning::PR #${PR_NUMBER} is waiting for previous PRs to be processed: ${PENDING_PRS}"
+        fi
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}

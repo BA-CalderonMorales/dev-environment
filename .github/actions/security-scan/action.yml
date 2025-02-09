@@ -1,0 +1,42 @@
+name: 'Security Scan'
+description: 'Runs security scans on codebase'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+        toolchain: stable
+
+    - name: Install SARIF tools
+      shell: bash
+      run: |
+        cargo install clippy-sarif sarif-fmt
+
+    - name: Run Clippy Analysis
+      shell: bash
+      run: |
+        cd e2e
+        cargo clippy --all-features --message-format=json | clippy-sarif | tee ../rust-clippy-results.sarif | sarif-fmt
+      continue-on-error: true
+
+    - name: Upload analysis results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: rust-clippy-results.sarif
+        wait-for-processing: true
+        category: "/language:rust"
+
+    - name: Create Analysis Summary
+      shell: bash
+      run: |
+        echo "## 🦀 Rust Code Analysis Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Clippy analysis has completed. Results are available at:" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📝 Analysis Details" >> $GITHUB_STEP_SUMMARY
+        echo "- Tool: Clippy (Rust's built-in linter)" >> $GITHUB_STEP_SUMMARY
+        echo "- Scope: All Rust code in e2e directory" >> $GITHUB_STEP_SUMMARY
+        echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY

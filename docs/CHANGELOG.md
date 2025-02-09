@@ -11,12 +11,12 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Initial stable release
 - DockerHub distribution
-- BitTorrent distribution
 - Basic development environment
 
 ## [Development] v0.9.0 - YYYY-MM-DD
 ### Added
 - Documentation restructure
+- Direct download distribution method
 - Improved navigation
 - New documentation files:
   - REQUIREMENTS.md
@@ -34,5 +34,6 @@ All notable changes to this project will be documented in this file.
 - Improved file organization
 
 ### Removed
+- BitTorrent distribution support
 - Redundant documentation
-- Duplicate quick start instructions 
+- Duplicate quick start instructions

@@ -1,0 +1,41 @@
+name: 'Set Release Info'
+description: 'Determines release SHA and branch based on event type'
+
+inputs:
+  event_name:
+    description: 'GitHub event name'
+    required: true
+  event_sha:
+    description: 'Event SHA'
+    required: true
+  pr_head_sha:
+    description: 'PR head SHA'
+    required: false
+  pr_base_ref:
+    description: 'PR base ref'
+    required: false
+  ref_name:
+    description: 'Branch ref name'
+    required: true
+
+outputs:
+  sha:
+    description: 'Determined SHA'
+    value: ${{ steps.set_info.outputs.sha }}
+  branch:
+    description: 'Determined branch'
+    value: ${{ steps.set_info.outputs.branch }}
+
+runs:
+  using: composite
+  steps:
+    - id: set_info
+      shell: bash
+      run: |
+        if [[ "${{ inputs.event_name }}" == "pull_request" ]]; then
+          echo "sha=${{ inputs.pr_head_sha }}" >> $GITHUB_OUTPUT
+          echo "branch=${{ inputs.pr_base_ref }}" >> $GITHUB_OUTPUT
+        else
+          echo "sha=${{ inputs.event_sha }}" >> $GITHUB_OUTPUT
+          echo "branch=${{ inputs.ref_name }}" >> $GITHUB_OUTPUT
+        fi

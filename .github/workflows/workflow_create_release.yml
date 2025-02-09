@@ -1,0 +1,267 @@
+name: Create Release
+
+on:
+  # Manual trigger with branch protection
+  workflow_dispatch:
+    inputs:
+      trigger_sha:
+        description: 'SHA to release (optional)'
+        required: false
+        type: string
+      source_branch:
+        description: 'Branch (must be beta or main)'
+        required: false
+        type: string
+        default: 'beta'
+      force_process:
+        description: 'Force queue processing'
+        required: false
+        type: boolean
+        default: false
+  # Weekly scheduled release processing - only on beta/main
+  schedule:
+    # Run every Saturday at 10:00 AM CST (16:00 UTC)
+    - cron: '0 16 * * SAT'
+
+# Add concurrency to prevent multiple releases running simultaneously
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  MAINTAINER_GITHUB: '@BA-CalderonMorales'
+  INITIAL_VERSION: 'v0.0.1'
+  DOCKER_IMAGE: 'cmo640/dev-environment'
+
+jobs:
+  #####################################################################
+  # Branch Protection Check
+  # ---------------------
+  # Purpose: Ensures releases only run on beta/main branches
+  #
+  # Flow:
+  # 1. Validates branch name
+  # 2. Blocks unauthorized release attempts
+  # 3. Sets release type for downstream jobs
+  #####################################################################
+  branch_check:
+    runs-on: ubuntu-22.04
+    outputs:
+      branch: ${{ steps.check.outputs.branch }}
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - id: check
+        shell: bash
+        run: |
+          # Use the source_branch input if available; otherwise, default to github.ref
+          BRANCH="${{ github.event.inputs.source_branch }}"
+          if [[ -z "$BRANCH" ]]; then
+            # Strip refs/heads/ prefix if present
+            BRANCH="${{ github.ref }}"
+            BRANCH=${BRANCH#refs/heads/}
+          fi
+          echo "Using branch: $BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          
+          if [[ "$BRANCH" == "beta" || "$BRANCH" == "main" ]]; then
+            echo "✅ Branch '$BRANCH' is allowed for releases" >> $GITHUB_STEP_SUMMARY
+            echo "allowed=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Releases are only allowed on beta and main branches" >> $GITHUB_STEP_SUMMARY
+            echo "Branch attempted: $BRANCH" >> $GITHUB_STEP_SUMMARY
+            echo "allowed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+  #####################################################################
+  # Process Release Queue
+  # -------------------
+  # Purpose: Processes the release queue and prepares for release creation
+  #
+  # Flow:
+  # 1. Gets next item from queue
+  # 2. Verifies all prerequisites
+  # 3. Sets up release parameters
+  #####################################################################
+  process_queue:
+    needs: branch_check
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'schedule' && 
+      needs.branch_check.outputs.allowed == 'true'
+    runs-on: ubuntu-22.04
+    outputs:
+      sha: ${{ steps.queue.outputs.sha }}
+      branch: ${{ steps.queue.outputs.branch }}
+      can_proceed: ${{ steps.queue.outputs.can_proceed }}
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/initialize-labels
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Check if this is a manual trigger with specific SHA/branch
+      - id: check_inputs
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
+            echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
+          else
+            echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
+          fi
+
+      - id: queue
+        uses: ./.github/actions/process-release-queue
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          trigger_sha: ${{ inputs.trigger_sha }}
+          source_branch: ${{ inputs.source_branch }}
+          force_process: ${{ inputs.force_process }}
+          is_scheduled: ${{ github.event_name == 'schedule' }}
+
+      - id: version
+        if: steps.queue.outputs.can_proceed == 'true'
+        uses: ./.github/actions/determine-version
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ steps.queue.outputs.branch }}
+          initial_version: ${{ env.INITIAL_VERSION }}
+
+      - name: Debug Version Output
+        if: steps.version.outputs.version
+        run: |
+          echo "Version determined: ${{ steps.version.outputs.version }}"
+          echo "Is prerelease: ${{ steps.version.outputs.prerelease }}"
+
+  #####################################################################
+  # Create Release
+  # -------------
+  # Purpose: Creates the actual release if queue processing succeeded
+  #
+  # Flow:
+  # 1. Creates GitHub release
+  # 2. Updates Docker tags
+  # 3. Updates documentation
+  #####################################################################
+  create_release:
+    needs: [branch_check, process_queue]
+    if: |
+      github.event_name == 'workflow_dispatch' && needs.process_queue.outputs.can_proceed == 'true' ||
+      needs.branch_check.outputs.allowed == 'true' &&
+      needs.process_queue.outputs.can_proceed == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      # Add debug step
+      - name: Debug Version Info
+        run: |
+          echo "Version from process_queue: ${{ needs.process_queue.outputs.version }}"
+          echo "Is prerelease: ${{ needs.process_queue.outputs.prerelease }}"
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+          clean: false
+
+      - name: Create Release
+        uses: ./.github/actions/create-release
+        with:
+          version: ${{ needs.process_queue.outputs.version }}
+          prerelease: ${{ needs.process_queue.outputs.prerelease }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
+          bot_github_token: ${{ secrets.BOT_GITHUB_TOKEN }}
+          bot_email: ${{ secrets.BOT_EMAIL }}
+          bot_name: ${{ secrets.BOT_NAME }}
+          bot_domain: ${{ secrets.BOT_DOMAIN }}
+
+      - name: Update Docker Tags  # Re-add this step
+        if: success()  # Only run if release creation succeeded
+        uses: ./.github/actions/update-docker-tags
+        with:
+          version: ${{ needs.process_queue.outputs.version }}
+          prerelease: ${{ needs.process_queue.outputs.prerelease }}
+          registry_token: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry_username: ${{ secrets.DOCKERHUB_USERNAME }}
+
+  #####################################################################
+  # Handle Failure
+  # -------------
+  # Purpose: Handles any failures in the release process
+  #####################################################################
+  handle_failure:
+    needs: [branch_check, process_queue, create_release]
+    if: |
+      always() &&
+      (needs.branch_check.outputs.allowed == 'true' && failure())
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/handle-release-failure
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          maintainer: ${{ env.MAINTAINER_GITHUB }}
+          sha: ${{ needs.process_queue.outputs.sha }}
+          branch: ${{ needs.process_queue.outputs.branch }}
+
+  #####################################################################
+  # Notify Queue
+  # -------------
+  # Purpose: Notifies the status of the release queue
+  #####################################################################
+  notify_queue:
+    needs: [process_queue, create_release]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Notify Queue Status
+        if: needs.process_queue.outputs.can_proceed == 'false'
+        run: |
+          echo "No items in release queue to process"
+          echo "Next scheduled release window: Saturday at 10:00 AM CST"
+
+      - name: Update Issue Status
+        if: needs.process_queue.outputs.sha
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const sha = '${{ needs.process_queue.outputs.sha }}';
+            const success = '${{ needs.create_release.result }}' === 'success';
+            
+            const query = `is:issue is:open label:pending-release sha:${sha}`;
+            const issues = await github.rest.search.issuesAndPullRequests({q: query});
+            
+            for (const issue of issues.data.items) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: success 
+                  : `❌ Release processing failed`
+                  : `❌ Release processing failed`
+              });
+              
+              if (success) {
+                  ...context.repo,
+                  ...context.repo,
+                  state: 'closed',
+                  issue_number: issue.number,
+                  state: 'closed',
+                  labels: ['released']
+                });
+              }
+            }
+              }
+            }
+                  labels: ['released']
+                });

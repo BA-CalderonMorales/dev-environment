@@ -1,57 +1,48 @@
 # Usage Guide
 
-## Overview
-This development environment provides a consistent, tested workspace using either DockerHub or BitTorrent distribution methods.
+## Quick Start
 
-## Getting Started
-
-### Prerequisites
-- Docker Engine v20.10.0 or higher
-- Git
-- (Optional) BitTorrent client for alternative distribution
-
-### Installation Methods
-
-#### 1. DockerHub (Recommended)
+### DockerHub Installation
 ```bash
-# Pull the latest release
+# Pull stable version
 docker pull cmoe640/dev-environment:latest
 
-# Or pull a specific version
-docker pull cmoe640/dev-environment:v0.1.0
+# Or development version
+docker pull cmoe640/dev-environment:dev
 ```
 
-#### 2. BitTorrent Distribution
-1. Download the .torrent file from the latest release
-2. Use your preferred torrent client
-3. Verify the checksum:
-```bash
-sha256sum -c checksum.txt
-```
+### Tag Selection
+- `:latest` - Stable release (recommended)
+- `:beta` - Pre-release testing
+- `:dev` - Latest features
+- `:pipeline` - CI/CD builds (avoid)
 
-## Using the Environment
+## Basic Usage
 
 ### Starting the Environment
 ```bash
-# Start with default settings
-./startup/start-dev.sh
-
-# Start with BitTorrent distribution
-PREFER_BITTORRENT=true ./startup/start-dev.sh
+docker run -it cmoe640/dev-environment:latest
 ```
 
 ### Development Workflow
-1. Start the environment
-2. Access your workspace
-3. Use integrated development tools
-4. Commit and push changes
+1. Pull latest version
+2. Start container
+3. Begin development
+4. Commit changes
+5. Push to repository
 
-### Common Tasks
-- Access container shell: `docker exec -it dev-environment bash`
-- Update environment: `./startup/update.sh`
-- Check status: `./startup/status.sh`
+## Advanced Usage
+
+### Custom Configuration
+```bash
+# Mount custom config
+docker run -v ~/.myconfig:/config -it cmoe640/dev-environment:latest
+```
+
+### Troubleshooting
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues and solutions.
 
 ## Next Steps
 - Read the [Contributing Guide](CONTRIBUTING.md) to help improve the project
 - Check [Troubleshooting](TROUBLESHOOTING.md) for common issues
-- Explore [E2E Tests](E2E_TESTS.md) for testing details 
+- Explore [E2E Tests](E2E_TESTS.md) for testing details

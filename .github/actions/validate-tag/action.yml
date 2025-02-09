@@ -1,0 +1,67 @@
+name: 'Validate Docker Tag'
+description: 'Ensures Docker tag meets allowed format'
+
+inputs:
+  tag:
+    description: 'Docker tag to validate'
+    required: true
+
+outputs:
+  is_valid:
+    description: 'Whether tag is valid'
+    value: ${{ steps.validate.outputs.valid }}
+  message:
+    description: 'Validation message'
+    value: ${{ steps.validate.outputs.message }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate Tag
+      id: validate
+      shell: bash
+      run: |
+        # Define valid tags and their branch patterns
+        declare -A TAG_MAPPING=(
+          ["pipeline"]="^(pipeline|pipeline/.+)$"
+          ["dev"]="^(develop|feature/|bugfix/|hotfix/)"
+          ["beta"]="^beta$"
+          ["latest"]="^main$"
+        )
+        
+        BRANCH="${{ inputs.tag }}"
+        DETERMINED_TAG=""
+        
+        # Determine correct tag based on branch pattern
+        for tag in "${!TAG_MAPPING[@]}"; do
+          pattern=${TAG_MAPPING[$tag]}
+          if [[ $BRANCH =~ $pattern ]]; then
+            DETERMINED_TAG=$tag
+            break
+          fi
+        done
+        
+        if [ -n "$DETERMINED_TAG" ]; then
+          echo "valid=true" >> $GITHUB_OUTPUT
+          echo "message=✅ Branch '$BRANCH' maps to tag '$DETERMINED_TAG'" >> $GITHUB_OUTPUT
+          echo "tag=$DETERMINED_TAG" >> $GITHUB_OUTPUT
+        else
+          echo "valid=false" >> $GITHUB_OUTPUT
+          echo "message=❌ Error: Branch '$BRANCH' does not map to any valid tag. Valid patterns are: pipeline, pipeline/*, develop, feature/*, bugfix/*, beta, main" >> $GITHUB_OUTPUT
+          echo "::error::Invalid branch pattern. See workflow summary for details."
+          exit 1
+        fi
+
+    - name: Report Validation
+      if: always()
+      shell: bash
+      run: |
+        echo "## 🏷️ Tag Validation Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.validate.outputs.message }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Tag Mapping Rules" >> $GITHUB_STEP_SUMMARY
+        echo "- \`pipeline, pipeline/*\` → :pipeline" >> $GITHUB_STEP_SUMMARY
+        echo "- \`develop, feature/*, bugfix/*\` → :dev" >> $GITHUB_STEP_SUMMARY
+        echo "- \`beta\` → :beta" >> $GITHUB_STEP_SUMMARY
+        echo "- \`main\` → :latest" >> $GITHUB_STEP_SUMMARY

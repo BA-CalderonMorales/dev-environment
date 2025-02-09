@@ -7,8 +7,8 @@ This project provides a flexible development environment with multiple distribut
 ```
 dev-environment/
 ├── distributions/          # Distribution Methods
-│   ├── dockerhub/         # Standard Distribution
-│   └── bittorrent/        # P2P Distribution
+│   ├── dockerhub/         # Container Distribution
+│   └── direct_download/   # Direct Download Distribution
 ├── e2e/                   # End-to-End Tests
 │   ├── src/              # Test Implementation
 │   └── tests/            # Test Modules
@@ -27,8 +27,8 @@ Each distribution method is designed to be:
 ### DockerHub Distribution
 Primary distribution method using standard Docker practices.
 
-### BitTorrent Distribution
-Experimental P2P distribution to bypass rate limits and improve availability.
+### Direct Download Distribution
+Secondary distribution method providing direct downloads from our secured endpoints.
 
 ## Distribution Method Requirements
 New distribution methods must implement:
@@ -39,15 +39,34 @@ New distribution methods must implement:
 5. Version tracking
 
 ## CI/CD Infrastructure
-Our pipeline runs on GitHub Actions and requires ongoing maintenance:
+Our pipeline runs on GitHub Actions using the following workflows:
+
+### Primary Workflow (`workflow_distribution.yml`)
+- Manages all distribution-related tasks
+- Validates branches and tags
+- Builds and pushes Docker images
+- Runs E2E tests
+- Performs security scans
+- Creates releases
+
+### Support Workflows
+1. `workflow_create_release.yml`
+   - Handles versioned releases
+   - Updates changelog
+   - Creates GitHub releases
+
+2. `workflow_cleanup_dockerhub.yml`
+   - Manages DockerHub tag cleanup
+   - Supports dry-run testing
+
+3. `workflow_cache_cleanup.yml`
+   - Daily cache maintenance
+   - Optimizes CI/CD performance
 
 ### Runner Specifications
-- We explicitly use `ubuntu-22.04` runners instead of `ubuntu-latest`
-- This choice requires periodic review and updates
-- Major Ubuntu version migrations (e.g., 22.04 → 24.04) should be:
-  1. Tested in develop branch (beta releases)
-  2. Verified with all distribution methods
-  3. Rolled out to main branch (stable releases)
+- Uses `ubuntu-22.04` runners exclusively
+- Requires periodic review for runner updates
+- Major Ubuntu version migrations follow beta testing process
 
 ### Version Migration Process
 1. Monitor GitHub Actions announcements for runner updates
@@ -65,4 +84,4 @@ Each distribution method includes:
 - Performance benchmarks
 
 ## Adding New Distributions
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on implementing new distribution methods. 
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on implementing new distribution methods.

@@ -1,0 +1,60 @@
+name: 'Cleanup on Failure'
+description: 'Reverts changes when pipeline fails'
+
+inputs:
+  commit_sha:
+    description: 'SHA of commit to revert'
+    required: true
+    default: ${{ github.sha }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ env.BOT_GITHUB_TOKEN }}
+
+    - name: Import GPG key
+      uses: crazy-max/ghaction-import-gpg@v6
+      with:
+        gpg_private_key: ${{ env.BOT_GPG_PRIVATE_KEY }}
+        passphrase: ${{ env.BOT_GPG_PASSPHRASE }}
+        git_config_global: true
+        git_user_signingkey: true
+        git_commit_gpgsign: true
+        git_tag_gpgsign: true
+
+    - name: Revert commit
+      shell: bash
+      env:
+        GH_TOKEN: ${{ env.BOT_GITHUB_TOKEN }}
+        BOT_EMAIL: ${{ env.BOT_EMAIL }}
+        BOT_NAME: ${{ env.BOT_NAME }}
+        BOT_DOMAIN: ${{ env.BOT_DOMAIN }}
+      run: |
+        git config user.name "${BOT_NAME}"
+        git config user.email "${BOT_EMAIL}@${BOT_DOMAIN}"
+        git revert --signoff -S ${{ inputs.commit_sha }} --no-edit
+        git push
+
+    - name: Create failure report
+      shell: bash
+      run: |
+        echo "## 🚨 Pipeline Failure Report" >> $GITHUB_STEP_SUMMARY
+        echo "Automatic revert was triggered due to pipeline failure" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Details" >> $GITHUB_STEP_SUMMARY
+        echo "- Failed commit: \`${{ inputs.commit_sha }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Triggered by: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "1. Review pipeline logs for error details" >> $GITHUB_STEP_SUMMARY
+        echo "2. Fix identified issues" >> $GITHUB_STEP_SUMMARY
+        echo "3. Re-submit changes in a new commit" >> $GITHUB_STEP_SUMMARY
+
+    - name: Notify about revert
+      shell: bash
+      run: |
+        echo "::notice title=Pipeline Failure::Changes were automatically reverted due to pipeline failure. See summary for details."

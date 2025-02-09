@@ -1,0 +1,32 @@
+name: 'Initialize Required Labels'
+description: 'Creates required GitHub labels if they do not exist'
+
+inputs:
+  github_token:
+    description: 'GitHub token for label management'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        # Define labels with their properties
+        declare -A LABELS=(
+          ["release-queue"]="0E8A16:Manages release queue"
+          ["release-blocked"]="B60205:Release is blocked"
+          ["release-failed"]="D93F0B:Release failed"
+          ["bug"]="d73a4a:Something isn't working"
+          ["beta-blocked"]="1d76db:Beta release is blocked"
+        )
+        
+        # Create each label if it doesn't exist
+        for label in "${!LABELS[@]}"; do
+          IFS=: read color description <<< "${LABELS[$label]}"
+          gh label create "$label" \
+            --color "$color" \
+            --description "$description" \
+            || true  # Continue if label exists
+        done
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
