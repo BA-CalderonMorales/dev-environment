@@ -86,14 +86,22 @@ cd {repository}
 
     async fn create_release(&self) -> Result<()> {
         let token = env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
+        let repository = env::var("GITHUB_REPOSITORY")
+            .context("GITHUB_REPOSITORY not set")?;
+        
+        // Parse owner/repo from GITHUB_REPOSITORY
+        let (owner, repo) = repository
+            .split_once('/')
+            .context("Invalid repository format")?;
+
         let octocrab = Octocrab::builder()
             .personal_token(token)
             .build()
             .context("Failed to create GitHub client")?;
 
-        // In GitHub Actions, we can use the current repository context
+        // Create the release using parsed owner/repo
         let release = octocrab
-            .repos(env::var("GITHUB_REPOSITORY_OWNER")?, env::var("GITHUB_REPOSITORY")?)
+            .repos(owner, repo)
             .releases()
             .create(&self.tag_name)
             .name(&self.name)
@@ -105,9 +113,6 @@ cd {repository}
             .context("Failed to create release")?;
 
         println!("Created release {} ({})", self.name, release.id);
-
-        // Note: For uploading assets in GitHub Actions, it's better to use
-        // the actions/upload-release-asset action instead of doing it here
         Ok(())
     }
 }
