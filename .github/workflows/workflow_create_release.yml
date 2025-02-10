@@ -161,7 +161,6 @@ jobs:
       needs.process_queue.outputs.can_proceed == 'true'
     runs-on: ubuntu-22.04
     steps:
-      # Add debug step
       - name: Debug Version Info
         run: |
           echo "Version from process_queue: ${{ needs.process_queue.outputs.version }}"
@@ -173,27 +172,56 @@ jobs:
           ref: ${{ github.ref }}
           clean: false
 
-      - name: Create Release
-        uses: ./.github/actions/create-release
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
         with:
-          version: ${{ needs.process_queue.outputs.version }}
-          prerelease: ${{ needs.process_queue.outputs.prerelease }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
-          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
-          bot_github_token: ${{ secrets.BOT_GITHUB_TOKEN }}
-          bot_email: ${{ secrets.BOT_EMAIL }}
-          bot_name: ${{ secrets.BOT_NAME }}
-          bot_domain: ${{ secrets.BOT_DOMAIN }}
+          toolchain: stable
+          override: true
 
-      - name: Update Docker Tags  # Re-add this step
-        if: success()  # Only run if release creation succeeded
-        uses: ./.github/actions/update-docker-tags
-        with:
-          version: ${{ needs.process_queue.outputs.version }}
-          prerelease: ${{ needs.process_queue.outputs.prerelease }}
-          registry_token: ${{ secrets.DOCKERHUB_TOKEN }}
-          registry_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      - name: Verify Scripts Directory
+        run: |
+          SCRIPTS_DIR=".github/scripts"
+          if [ ! -d "$SCRIPTS_DIR" ]; then
+            echo "❌ Scripts directory not found at: $SCRIPTS_DIR"
+            exit 1
+          fi
+          echo "📁 Found scripts directory at: $SCRIPTS_DIR"
+          ls -la "$SCRIPTS_DIR"
+
+      - name: Create Release
+        working-directory: .github/scripts
+        run: |
+          if [ ! -f "Cargo.toml" ]; then
+            echo "❌ Cargo.toml not found in current directory"
+            pwd
+            ls -la
+            exit 1
+          fi
+          
+          cargo run --bin create_release -- \
+            --version ${{ needs.process_queue.outputs.version }} \
+            --prerelease ${{ needs.process_queue.outputs.prerelease }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BOT_GPG_PRIVATE_KEY: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          BOT_GPG_PASSPHRASE: ${{ secrets.BOT_GPG_PASSPHRASE }}
+          BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+          BOT_NAME: ${{ secrets.BOT_NAME }}
+          BOT_DOMAIN: ${{ secrets.BOT_DOMAIN }}
+          RUST_LOG: info
+
+      - name: Update Docker Tags
+        if: success()
+        working-directory: .github/scripts
+        run: |
+          cargo run --bin update_docker_tags -- \
+            --version ${{ needs.process_queue.outputs.version }} \
+            --prerelease ${{ needs.process_queue.outputs.prerelease }}
+        env:
+          REGISTRY_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          RUST_LOG: info
 
   #####################################################################
   # Handle Failure
