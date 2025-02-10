@@ -3,7 +3,7 @@
 //! Purpose: Validates and normalizes version strings for releases
 
 use anyhow::{Context, Result};
-use github_workflow_scripts::{get_logger, init_logging};
+use github_workflow_scripts::get_logger;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -66,24 +66,29 @@ impl VersionInfo {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    github_workflow_scripts::init();  // Changed from init_logging() to init()
     let logger = get_logger(false);
 
     logger.info("🔍 Starting version validation...");
 
-    // Get version from environment
-    let version = env::var("INPUT_VERSION")
-        .context("INPUT_VERSION environment variable not set")?;
+    // Get version and initial version from environment
+    let version = env::var("INPUT_VERSION").unwrap_or_default();
+    let initial_version = env::var("INITIAL_VERSION")
+        .context("INITIAL_VERSION environment variable not set")?;
 
     logger.debug(&format!("Raw version input: {}", version));
+    logger.debug(&format!("Initial version: {}", initial_version));
 
-    if version.is_empty() {
-        logger.warn("❌ No version provided");
-        anyhow::bail!("Version input is empty");
-    }
+    // If version is empty, use initial version
+    let version_to_use = if version.is_empty() {
+        logger.info(&format!("ℹ️ No version provided, using initial version: {}", initial_version));
+        initial_version
+    } else {
+        version
+    };
 
     // Validate version
-    let mut version_info = VersionInfo::new(version);
+    let mut version_info = VersionInfo::new(version_to_use);
     version_info.validate()?;
 
     if !version_info.is_valid {

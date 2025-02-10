@@ -3,13 +3,13 @@
 //! Purpose: Creates distribution archive and checksums
 
 use anyhow::{Context, Result};
-use github_workflow_scripts::{get_logger, init_logging};
+use github_workflow_scripts::{get_logger, init};
 use sha2::{Sha256, Digest};
 use std::{fs, path::Path, process::Command};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let logger = get_logger(false);
 
     logger.info("📦 Starting asset packaging...");

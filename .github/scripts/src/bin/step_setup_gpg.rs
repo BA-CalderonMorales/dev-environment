@@ -3,12 +3,12 @@
 //! Purpose: Imports and configures GPG keys for signing
 
 use anyhow::{Context, Result};
-use github_workflow_scripts::{get_logger, init_logging};
+use github_workflow_scripts::{get_logger, init};
 use std::{env, fs, path::PathBuf, process::Command};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let logger = get_logger(false);
 
     logger.info("🔑 Setting up GPG keys...");
