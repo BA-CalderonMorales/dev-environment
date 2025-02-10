@@ -1,0 +1,44 @@
+name: 'Branch Check'
+description: 'Validates branch for release processing'
+
+inputs:
+  source_branch:
+    description: 'Branch to check'
+    required: false
+  github_ref:
+    description: 'GitHub ref'
+    required: true
+
+outputs:
+  branch:
+    description: 'Validated branch name'
+    value: ${{ steps.check.outputs.branch }}
+  allowed:
+    description: 'Whether branch is allowed'
+    value: ${{ steps.check.outputs.allowed }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      run: |
+        # Use the source_branch input if available; otherwise, default to github.ref
+        BRANCH="${{ inputs.source_branch }}"
+        if [[ -z "$BRANCH" ]]; then
+          # Strip refs/heads/ prefix if present
+          BRANCH="${{ inputs.github_ref }}"
+          BRANCH=${BRANCH#refs/heads/}
+        fi
+        echo "Using branch: $BRANCH"
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+        
+        if [[ "$BRANCH" == "beta" || "$BRANCH" == "main" ]]; then
+          echo "✅ Branch '$BRANCH' is allowed for releases" >> $GITHUB_STEP_SUMMARY
+          echo "allowed=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Releases are only allowed on beta and main branches" >> $GITHUB_STEP_SUMMARY
+          echo "Branch attempted: $BRANCH" >> $GITHUB_STEP_SUMMARY
+          echo "allowed=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
