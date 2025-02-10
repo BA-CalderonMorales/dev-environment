@@ -1,0 +1,51 @@
+name: 'Handle Release Failure'
+description: 'Handles failures in the release process'
+
+inputs:
+  github_token:
+    description: 'GitHub token for creating issues'
+    required: true
+  maintainer:
+    description: 'GitHub username of maintainer to notify'
+    required: true
+  sha:
+    description: 'Commit SHA that failed'
+    required: false
+  branch:
+    description: 'Branch where failure occurred'
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Create Failure Issue
+      shell: bash
+      run: |
+        ISSUE_TITLE="🚨 Release Process Failed"
+        ISSUE_BODY="## Release Process Failed
+
+        **Details:**
+        - Branch: ${BRANCH:-Unknown}
+        - Commit: ${SHA:-Unknown}
+        - Workflow Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+
+        cc ${MAINTAINER}
+
+        Please investigate the workflow logs for more details."
+
+        gh issue create \
+          --title "$ISSUE_TITLE" \
+          --body "$ISSUE_BODY" \
+          --label "bug,release-failure" \
+          --assignee "$MAINTAINER"
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        MAINTAINER: ${{ inputs.maintainer }}
+        SHA: ${{ inputs.sha }}
+        BRANCH: ${{ inputs.branch }}
