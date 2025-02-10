@@ -3,12 +3,12 @@
 //! Purpose: Validates and displays input parameters
 
 use anyhow::Result;
-use github_workflow_scripts::{get_logger, init_logging};
+use github_workflow_scripts::{get_logger, init};
 use std::env;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let logger = get_logger(false);
 
     logger.info("=== Input Validation ===");

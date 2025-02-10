@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
-use github_workflow_scripts::{get_logger, init_logging};
+use github_workflow_scripts::{get_logger, init};
 use std::process::Command;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let logger = get_logger(false);
 
     // Get image tag from environment

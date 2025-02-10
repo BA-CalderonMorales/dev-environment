@@ -3,12 +3,12 @@
 //! Purpose: Sets up git config for bot commits
 
 use anyhow::{Context, Result};
-use github_workflow_scripts::{get_logger, init_logging};
+use github_workflow_scripts::{get_logger, init};
 use std::{env, process::Command};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let logger = get_logger(false);
 
     logger.info("🔧 Configuring Git...");

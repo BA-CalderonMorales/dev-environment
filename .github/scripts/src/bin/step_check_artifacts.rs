@@ -2,7 +2,7 @@ use anyhow::Result;
 use octocrab::Octocrab;
 use octocrab::models::RunId;
 use std::env;
-use github_workflow_scripts::{Logger, init_logging, get_logger};
+use github_workflow_scripts::{Logger, init, get_logger};
 
 struct ArtifactCheck<'a> {
     docker: bool,
@@ -90,7 +90,7 @@ impl<'a> ArtifactCheck<'a> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let is_local = env::var("GITHUB_ACTIONS").is_err();
     let logger = get_logger(is_local);
 
