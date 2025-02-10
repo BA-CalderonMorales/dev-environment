@@ -17,11 +17,21 @@ struct ReleaseInfo {
 
 impl ReleaseInfo {
     async fn new() -> Result<Self> {
+        // Try multiple sources for version info
         let version = env::var("VALIDATED_VERSION")
-            .context("VALIDATED_VERSION not set")?;
+            .or_else(|_| env::var("INPUT_VERSION"))
+            .or_else(|_| env::var("INITIAL_VERSION"))
+            .context("No version information found")?;
+
+        // Default to true for prerelease if on beta branch
         let prerelease = env::var("INPUT_PRERELEASE")
-            .context("INPUT_PRERELEASE not set")?
-            .parse::<bool>()?;
+            .map(|v| v.parse::<bool>().unwrap_or(false))
+            .unwrap_or_else(|_| {
+                env::var("GITHUB_REF")
+                    .map(|r| r.contains("/beta"))
+                    .unwrap_or(false)
+            });
+
         let release_type = if prerelease { "Beta" } else { "Stable" };
         
         // Read checksum file
