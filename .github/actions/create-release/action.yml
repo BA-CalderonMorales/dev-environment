@@ -33,9 +33,28 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Verify Scripts Directory
+      shell: bash
+      run: |
+        SCRIPTS_DIR="${{ github.workspace }}/.github/scripts"
+        if [ ! -d "$SCRIPTS_DIR" ]; then
+          echo "❌ Scripts directory not found at: $SCRIPTS_DIR"
+          exit 1
+        fi
+        echo "📁 Found scripts directory at: $SCRIPTS_DIR"
+        ls -la "$SCRIPTS_DIR"
+
     - name: Debug Inputs
       shell: bash
-      run: cargo run --bin step_debug_inputs
+      working-directory: .github/scripts
+      run: |
+        cargo run --bin step-debug-inputs
       env:
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_PRERELEASE: ${{ inputs.prerelease }}
@@ -45,20 +64,26 @@ runs:
 
     - name: Validate Version
       shell: bash
-      run: cargo run --bin step_validate_version
+      working-directory: .github/scripts
+      run: |
+        cargo run --bin step-validate-version
       env:
         INPUT_VERSION: ${{ inputs.version }}
         RUST_LOG: info
 
     - name: Package Release Assets
       shell: bash
-      run: cargo run --bin step_package_assets
+      working-directory: .github/scripts
+      run: |
+        cargo run --bin step-package-assets
       env:
         RUST_LOG: info
 
     - name: Setup GPG
       shell: bash
-      run: cargo run --bin step_setup_gpg
+      working-directory: .github/scripts
+      run: |
+        cargo run --bin step-setup-gpg
       env:
         INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
         INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
@@ -66,7 +91,9 @@ runs:
 
     - name: Configure Git
       shell: bash
-      run: cargo run --bin step_configure_git
+      working-directory: .github/scripts
+      run: |
+        cargo run --bin step-configure-git
       env:
         INPUT_BOT_NAME: ${{ inputs.bot_name }}
         INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
@@ -75,7 +102,9 @@ runs:
 
     - name: Create GitHub Release
       shell: bash
-      run: cargo run --bin step_create_release
+      working-directory: .github/scripts
+      run: |
+        cargo run --bin step-create-release
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_PRERELEASE: ${{ inputs.prerelease }}
@@ -83,7 +112,9 @@ runs:
 
     - name: Update Documentation
       shell: bash
-      run: cargo run --bin step_update_docs
+      working-directory: .github/scripts
+      run: |
+        cargo run --bin step-update-docs
       env:
         GH_TOKEN: ${{ inputs.bot_github_token }}
         BOT_EMAIL: ${{ inputs.bot_email }}

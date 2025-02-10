@@ -1,0 +1,84 @@
+name: 'Process Release Queue Job'
+description: 'Processes the release queue and prepares for release creation'
+
+inputs:
+  github_token:
+    description: 'GitHub token'
+    required: true
+  trigger_sha:
+    description: 'SHA to release'
+    required: false
+  source_branch:
+    description: 'Source branch'
+    required: false
+  force_process:
+    description: 'Force queue processing'
+    required: false
+  is_scheduled:
+    description: 'Whether this is a scheduled run'
+    required: true
+  initial_version:
+    description: 'Initial version to use'
+    required: true
+
+outputs:
+  sha:
+    description: 'Commit SHA'
+    value: ${{ steps.queue.outputs.sha }}
+  branch:
+    description: 'Branch name'
+    value: ${{ steps.queue.outputs.branch }}
+  can_proceed:
+    description: 'Whether release can proceed'
+    value: ${{ steps.queue.outputs.can_proceed }}
+  version:
+    description: 'Release version'
+    value: ${{ steps.version.outputs.version }}
+  prerelease:
+    description: 'Whether this is a prerelease'
+    value: ${{ steps.version.outputs.prerelease }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - uses: ./.github/actions/initialize-labels
+      with:
+        github_token: ${{ inputs.github_token }}
+
+    # Check if this is a manual trigger with specific SHA/branch
+    - id: check_inputs
+      shell: bash
+      run: |
+        if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
+          echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
+        else
+          echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
+        fi
+
+    - id: queue
+      uses: ./.github/actions/process-release-queue
+      with:
+        github_token: ${{ inputs.github_token }}
+        trigger_sha: ${{ inputs.trigger_sha }}
+        source_branch: ${{ inputs.source_branch }}
+        force_process: ${{ inputs.force_process }}
+        is_scheduled: ${{ inputs.is_scheduled }}
+
+    - id: version
+      if: steps.queue.outputs.can_proceed == 'true'
+      uses: ./.github/actions/determine-version
+      with:
+        github_token: ${{ inputs.github_token }}
+        ref: ${{ steps.queue.outputs.branch }}
+        initial_version: ${{ inputs.initial_version }}
+
+    - name: Debug Version Output
+      if: steps.version.outputs.version
+      shell: bash
+      run: |
+        echo "Version determined: ${{ steps.version.outputs.version }}"
+        echo "Is prerelease: ${{ steps.version.outputs.prerelease }}"

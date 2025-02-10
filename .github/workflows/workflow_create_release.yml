@@ -52,31 +52,15 @@ jobs:
   branch_check:
     runs-on: ubuntu-22.04
     outputs:
-      branch: ${{ steps.check.outputs.branch }}
-      allowed: ${{ steps.check.outputs.allowed }}
+      branch: ${{ steps.action.outputs.branch }}
+      allowed: ${{ steps.action.outputs.allowed }}
     steps:
-      - id: check
-        shell: bash
-        run: |
-          # Use the source_branch input if available; otherwise, default to github.ref
-          BRANCH="${{ github.event.inputs.source_branch }}"
-          if [[ -z "$BRANCH" ]]; then
-            # Strip refs/heads/ prefix if present
-            BRANCH="${{ github.ref }}"
-            BRANCH=${BRANCH#refs/heads/}
-          fi
-          echo "Using branch: $BRANCH"
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-          
-          if [[ "$BRANCH" == "beta" || "$BRANCH" == "main" ]]; then
-            echo "✅ Branch '$BRANCH' is allowed for releases" >> $GITHUB_STEP_SUMMARY
-            echo "allowed=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Releases are only allowed on beta and main branches" >> $GITHUB_STEP_SUMMARY
-            echo "Branch attempted: $BRANCH" >> $GITHUB_STEP_SUMMARY
-            echo "allowed=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+      - uses: actions/checkout@v4
+      - id: action
+        uses: ./.github/actions/branch-check
+        with:
+          source_branch: ${{ github.event.inputs.source_branch }}
+          github_ref: ${{ github.ref }}
 
   #####################################################################
   # Process Release Queue
@@ -96,52 +80,22 @@ jobs:
       needs.branch_check.outputs.allowed == 'true'
     runs-on: ubuntu-22.04
     outputs:
-      sha: ${{ steps.queue.outputs.sha }}
-      branch: ${{ steps.queue.outputs.branch }}
-      can_proceed: ${{ steps.queue.outputs.can_proceed }}
-      version: ${{ steps.version.outputs.version }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
+      sha: ${{ steps.action.outputs.sha }}
+      branch: ${{ steps.action.outputs.branch }}
+      can_proceed: ${{ steps.action.outputs.can_proceed }}
+      version: ${{ steps.action.outputs.version }}
+      prerelease: ${{ steps.action.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/initialize-labels
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Check if this is a manual trigger with specific SHA/branch
-      - id: check_inputs
-        shell: bash
-        run: |
-          if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
-            echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
-          else
-            echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
-          fi
-
-      - id: queue
-        uses: ./.github/actions/process-release-queue
+      - id: action
+        uses: ./.github/actions/process-release-queue-job
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_sha: ${{ inputs.trigger_sha }}
           source_branch: ${{ inputs.source_branch }}
           force_process: ${{ inputs.force_process }}
           is_scheduled: ${{ github.event_name == 'schedule' }}
-
-      - id: version
-        if: steps.queue.outputs.can_proceed == 'true'
-        uses: ./.github/actions/determine-version
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ steps.queue.outputs.branch }}
           initial_version: ${{ env.INITIAL_VERSION }}
-
-      - name: Debug Version Output
-        if: steps.version.outputs.version
-        run: |
-          echo "Version determined: ${{ steps.version.outputs.version }}"
-          echo "Is prerelease: ${{ steps.version.outputs.prerelease }}"
 
   #####################################################################
   # Create Release
@@ -161,67 +115,24 @@ jobs:
       needs.process_queue.outputs.can_proceed == 'true'
     runs-on: ubuntu-22.04
     steps:
-      - name: Debug Version Info
-        run: |
-          echo "Version from process_queue: ${{ needs.process_queue.outputs.version }}"
-          echo "Is prerelease: ${{ needs.process_queue.outputs.prerelease }}"
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.ref }}
           clean: false
 
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-      - name: Verify Scripts Directory
-        run: |
-          SCRIPTS_DIR=".github/scripts"
-          if [ ! -d "$SCRIPTS_DIR" ]; then
-            echo "❌ Scripts directory not found at: $SCRIPTS_DIR"
-            exit 1
-          fi
-          echo "📁 Found scripts directory at: $SCRIPTS_DIR"
-          ls -la "$SCRIPTS_DIR"
-
       - name: Create Release
-        working-directory: .github/scripts
-        run: |
-          if [ ! -f "Cargo.toml" ]; then
-            echo "❌ Cargo.toml not found in current directory"
-            pwd
-            ls -la
-            exit 1
-          fi
-          
-          cargo run --bin create_release -- \
-            --version ${{ needs.process_queue.outputs.version }} \
-            --prerelease ${{ needs.process_queue.outputs.prerelease }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BOT_GPG_PRIVATE_KEY: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
-          BOT_GPG_PASSPHRASE: ${{ secrets.BOT_GPG_PASSPHRASE }}
-          BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
-          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
-          BOT_NAME: ${{ secrets.BOT_NAME }}
-          BOT_DOMAIN: ${{ secrets.BOT_DOMAIN }}
-          RUST_LOG: info
-
-      - name: Update Docker Tags
-        if: success()
-        working-directory: .github/scripts
-        run: |
-          cargo run --bin update_docker_tags -- \
-            --version ${{ needs.process_queue.outputs.version }} \
-            --prerelease ${{ needs.process_queue.outputs.prerelease }}
-        env:
-          REGISTRY_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          REGISTRY_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          RUST_LOG: info
+        uses: ./.github/actions/create-release
+        with:
+          version: ${{ needs.process_queue.outputs.version }}
+          prerelease: ${{ needs.process_queue.outputs.prerelease }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
+          bot_github_token: ${{ secrets.BOT_GITHUB_TOKEN }}
+          bot_email: ${{ secrets.BOT_EMAIL }}
+          bot_name: ${{ secrets.BOT_NAME }}
+          bot_domain: ${{ secrets.BOT_DOMAIN }}
 
   #####################################################################
   # Handle Failure
@@ -253,43 +164,10 @@ jobs:
     if: always()
     runs-on: ubuntu-22.04
     steps:
-      - name: Notify Queue Status
-        if: needs.process_queue.outputs.can_proceed == 'false'
-        run: |
-          echo "No items in release queue to process"
-          echo "Next scheduled release window: Saturday at 10:00 AM CST"
-
-      - name: Update Issue Status
-        if: needs.process_queue.outputs.sha
-        uses: actions/github-script@v6
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/notify-queue
         with:
-          script: |
-            const sha = '${{ needs.process_queue.outputs.sha }}';
-            const success = '${{ needs.create_release.result }}' === 'success';
-            
-            const query = `is:issue is:open label:pending-release sha:${sha}`;
-            const issues = await github.rest.search.issuesAndPullRequests({q: query});
-            
-            for (const issue of issues.data.items) {
-              await github.rest.issues.createComment({
-                ...context.repo,
-                issue_number: issue.number,
-                body: success 
-                  : `❌ Release processing failed`
-                  : `❌ Release processing failed`
-              });
-              
-              if (success) {
-                  ...context.repo,
-                  ...context.repo,
-                  state: 'closed',
-                  issue_number: issue.number,
-                  state: 'closed',
-                  labels: ['released']
-                });
-              }
-            }
-              }
-            }
-                  labels: ['released']
-                });
+          can_proceed: ${{ needs.process_queue.outputs.can_proceed }}
+          commit_sha: ${{ needs.process_queue.outputs.sha }}
+          release_result: ${{ needs.create_release.result }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
