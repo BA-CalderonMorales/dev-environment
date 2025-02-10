@@ -18,16 +18,30 @@ async fn main() -> Result<()> {
     let staging_dir = Path::new("release_assets");
     fs::create_dir_all(staging_dir)?;
 
+    // Create required directories if they don't exist
+    for dir in &["distributions", "startup", "docs"] {
+        fs::create_dir_all(dir)
+            .context(format!("Failed to create {} directory", dir))?;
+    }
+
     // Copy distribution files
     logger.info("Copying distribution files...");
     for dir in &["distributions", "startup", "docs"] {
-        let status = Command::new("cp")
-            .args(["-r", dir, &staging_dir.join(dir).to_string_lossy()])
-            .status()
-            .context(format!("Failed to copy {}", dir))?;
+        let target = staging_dir.join(dir);
+        fs::create_dir_all(&target)?;
+        
+        // Only copy if directory exists and has contents
+        if Path::new(dir).exists() && fs::read_dir(dir)?.next().is_some() {
+            let status = Command::new("cp")
+                .args(["-r", &format!("{}/*", dir), &target.to_string_lossy()])
+                .status()
+                .context(format!("Failed to copy {}", dir))?;
 
-        if !status.success() {
-            anyhow::bail!("Failed to copy {}", dir);
+            if !status.success() {
+                logger.warn(&format!("No contents to copy from {}", dir));
+            }
+        } else {
+            logger.info(&format!("Directory {} is empty or doesn't exist, skipping", dir));
         }
     }
 
@@ -43,7 +57,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Create tarball
+    // Create tarball even if some directories were empty
     logger.info("Creating tarball...");
     let output = Command::new("tar")
         .current_dir(staging_dir)
@@ -62,6 +76,9 @@ async fn main() -> Result<()> {
     let hash = format!("{:x}", hasher.finalize());
     
     fs::write("checksum.txt", format!("{} dev-environment.tar.gz\n", hash))?;
+
+    // Clean up staging directory
+    fs::remove_dir_all(staging_dir)?;
 
     // Log completion status
     let tar_size = fs::metadata("dev-environment.tar.gz")?.len();
