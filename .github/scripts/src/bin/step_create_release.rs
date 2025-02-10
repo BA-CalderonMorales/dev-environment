@@ -4,6 +4,7 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use github_workflow_scripts::{get_logger, init};
 use octocrab::Octocrab;
 use std::{env, fs};
 
@@ -17,11 +18,17 @@ struct ReleaseInfo {
 
 impl ReleaseInfo {
     async fn new() -> Result<Self> {
-        // Try multiple sources for version info
+        // Try multiple sources for version info (without adding extra v prefix)
         let version = env::var("VALIDATED_VERSION")
             .or_else(|_| env::var("INPUT_VERSION"))
             .or_else(|_| env::var("INITIAL_VERSION"))
-            .context("No version information found")?;
+            .context("No version information found")?
+            .trim_start_matches('v')
+            .to_string();
+
+        // Get repository info for correct URLs
+        let repository = env::var("GITHUB_REPOSITORY")
+            .context("GITHUB_REPOSITORY not set")?;
 
         // Default to true for prerelease if on beta branch
         let prerelease = env::var("INPUT_PRERELEASE")
@@ -50,8 +57,8 @@ This release includes:
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/user/dev-environment
-cd dev-environment
+git clone https://github.com/{repository}
+cd {repository}
 
 # Run setup script
 ./setup.sh
@@ -107,8 +114,13 @@ cd dev-environment
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    init();
+    let logger = get_logger(false);
+    
+    logger.info("🎉 Starting release creation...");
     let release_info = ReleaseInfo::new().await?;
-    println!("Creating release with info: {:?}", release_info);
+    logger.info(&format!("Creating release with info: {:?}", release_info));
     release_info.create_release().await?;
+    logger.info("✨ Release created successfully!");
     Ok(())
 }
