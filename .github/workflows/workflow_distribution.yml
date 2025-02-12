@@ -228,7 +228,7 @@ jobs:
   # Used by: dockerhub_build
   #####################################################################
   determine_version:
-    needs: [validate_tags]
+    needs: [validate_tags, validate_branch, detect_changes]
     runs-on: ubuntu-latest
     outputs:
       new_version: ${{ steps.version_action.outputs.new_version }}
@@ -256,7 +256,7 @@ jobs:
   #####################################################################
   dockerhub_build:
     runs-on: ubuntu-22.04
-    needs: [validate_branch, detect_changes, setup_docker, determine_version]
+    needs: [validate_tags, validate_branch, detect_changes, setup_docker, determine_version]
     if: |
       needs.detect_changes.outputs.docker_changed == 'true' || 
       needs.setup_docker.outputs.base_image_ready != 'true' ||
