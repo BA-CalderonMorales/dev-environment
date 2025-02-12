@@ -171,49 +171,6 @@ jobs:
         id: changes
 
   #####################################################################
-  # Docker Setup
-  # ----------- 
-  # Purpose: Prepares Docker build environment and base images
-  #
-  # Flow:
-  # 1. Sets up Docker credentials
-  # 2. Pulls base images if they exist
-  # 3. Configures build arguments and tags
-  #
-  # Dependencies: validate_branch, detect_changes
-  # Outputs:
-  #   - image_tag: Final Docker image tag
-  #   - base_image_ready: Whether base image exists
-  #   - test_tag: Tag for test image
-  # Used by: dockerhub_build, e2e_tests
-  #####################################################################
-  setup_docker:
-    runs-on: ubuntu-22.04
-    needs: [validate_branch, detect_changes]
-    outputs:
-      image_tag: ${{ steps.setup.outputs.image_tag }}
-      base_image_ready: ${{ steps.setup.outputs.base_image_ready }}
-      test_tag: ${{ steps.setup.outputs.test_tag }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Debug Inputs
-        shell: bash
-        run: |
-          echo "Environment: ${{ needs.validate_branch.outputs.environment }}"
-          echo "Base Tag: ${{ needs.validate_branch.outputs.base_tag }}"
-          echo "Docker Tag: ${{ needs.validate_branch.outputs.docker_tag }}"
-      - uses: ./.github/actions/setup-docker
-        id: setup
-        with:
-          environment: ${{ needs.validate_branch.outputs.environment }}
-          base_tag: ${{ needs.validate_branch.outputs.base_tag }}
-          docker_tag: ${{ needs.validate_branch.outputs.docker_tag }}
-          dockerfile_changed: ${{ needs.detect_changes.outputs.dockerfile_changed }}
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  #####################################################################
   # Determine Version
   # ----------------
   # Purpose: Determines version for Docker image tags
@@ -239,6 +196,49 @@ jobs:
       
       - id: version_action
         uses: ./.github/actions/version-determiner
+
+  #####################################################################
+  # Docker Setup
+  # ----------- 
+  # Purpose: Prepares Docker build environment and base images
+  #
+  # Flow:
+  # 1. Sets up Docker credentials
+  # 2. Pulls base images if they exist
+  # 3. Configures build arguments and tags
+  #
+  # Dependencies: validate_branch, detect_changes, determine_version
+  # Outputs:
+  #   - image_tag: Final Docker image tag
+  #   - base_image_ready: Whether base image exists
+  #   - test_tag: Tag for test image
+  # Used by: dockerhub_build, e2e_tests
+  #####################################################################
+  setup_docker:
+    runs-on: ubuntu-22.04
+    needs: [validate_branch, detect_changes, determine_version]
+    outputs:
+      image_tag: ${{ steps.setup.outputs.image_tag }}
+      base_image_ready: ${{ steps.setup.outputs.base_image_ready }}
+      test_tag: ${{ steps.setup.outputs.test_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Debug Inputs
+        shell: bash
+        run: |
+          echo "Environment: ${{ needs.validate_branch.outputs.environment }}"
+          echo "Base Tag: ${{ needs.validate_branch.outputs.base_tag }}"
+          echo "Docker Tag: ${{ needs.validate_branch.outputs.docker_tag }}"
+      - uses: ./.github/actions/setup-docker
+        id: setup
+        with:
+          environment: ${{ needs.validate_branch.outputs.environment }}
+          base_tag: ${{ needs.validate_branch.outputs.base_tag }}
+          docker_tag: ${{ needs.validate_branch.outputs.docker_tag }}
+          dockerfile_changed: ${{ needs.detect_changes.outputs.dockerfile_changed }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   #####################################################################
   # DockerHub Build
