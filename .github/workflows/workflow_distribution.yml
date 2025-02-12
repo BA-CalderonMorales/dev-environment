@@ -171,8 +171,35 @@ jobs:
         id: changes
 
   #####################################################################
+  # Determine Version
+  # ----------------
+  # Purpose: Determines version for Docker image tags
+  #
+  # Flow:
+  # 1. Gets latest Git tag
+  # 2. Parses version components
+  # 3. Sets version for Docker tags
+  #
+  # Dependencies: validate_tags
+  # Outputs: new_version
+  # Used by: dockerhub_build
+  #####################################################################
+  determine_version:
+    needs: [validate_tags, validate_branch, detect_changes]
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.version_action.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - id: version_action
+        uses: ./.github/actions/version-determiner
+
+  #####################################################################
   # Docker Setup
-  # -----------
+  # ----------- 
   # Purpose: Prepares Docker build environment and base images
   #
   # Flow:
@@ -180,7 +207,7 @@ jobs:
   # 2. Pulls base images if they exist
   # 3. Configures build arguments and tags
   #
-  # Dependencies: validate_branch, detect_changes
+  # Dependencies: validate_branch, detect_changes, determine_version
   # Outputs:
   #   - image_tag: Final Docker image tag
   #   - base_image_ready: Whether base image exists
@@ -189,7 +216,7 @@ jobs:
   #####################################################################
   setup_docker:
     runs-on: ubuntu-22.04
-    needs: [validate_branch, detect_changes]
+    needs: [validate_branch, detect_changes, determine_version]
     outputs:
       image_tag: ${{ steps.setup.outputs.image_tag }}
       base_image_ready: ${{ steps.setup.outputs.base_image_ready }}
@@ -215,7 +242,7 @@ jobs:
 
   #####################################################################
   # DockerHub Build
-  # --------------
+  # -------------- 
   # Purpose: Builds and pushes Docker images to registry
   #
   # Flow:
@@ -223,13 +250,13 @@ jobs:
   # 2. Runs vulnerability scans
   # 3. Pushes to DockerHub if tests pass
   #
-  # Dependencies: validate_branch, detect_changes, setup_docker
+  # Dependencies: validate_branch, detect_changes, setup_docker, determine_version
   # Outputs: image_changed (boolean)
   # Used by: direct_download, e2e_tests
   #####################################################################
   dockerhub_build:
     runs-on: ubuntu-22.04
-    needs: [validate_branch, detect_changes, setup_docker]
+    needs: [validate_tags, validate_branch, detect_changes, setup_docker, determine_version]
     if: |
       needs.detect_changes.outputs.docker_changed == 'true' || 
       needs.setup_docker.outputs.base_image_ready != 'true' ||
@@ -243,13 +270,14 @@ jobs:
         with:
           environment: ${{ needs.validate_branch.outputs.environment }}
           base_image: ${{ needs.setup_docker.outputs.image_tag }}
+          version: ${{ needs.determine_version.outputs.new_version }}
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   #####################################################################
   # Direct Download Build
-  # -------------------
+  # ------------------- 
   # Purpose: Creates downloadable artifacts for non-Docker users
   #
   # Flow:
@@ -273,7 +301,7 @@ jobs:
 
   #####################################################################
   # End-to-End Tests
-  # ---------------
+  # --------------- 
   # Purpose: Runs comprehensive integration tests
   #
   # Flow:
@@ -306,7 +334,7 @@ jobs:
 
   #####################################################################
   # Security Scan
-  # ------------
+  # ------------ 
   # Purpose: Performs security analysis on code and containers
   #
   # Flow:
@@ -330,7 +358,7 @@ jobs:
 
   #####################################################################
   # Release Artifacts
-  # ---------------
+  # --------------- 
   # Purpose: Creates and publishes release artifacts
   #
   # Flow:
@@ -361,7 +389,7 @@ jobs:
 
   #####################################################################
   # Cleanup on Failure
-  # -----------------
+  # ----------------- 
   # Purpose: Handles cleanup tasks when workflow fails
   #
   # Flow:
@@ -396,7 +424,7 @@ jobs:
 
   #####################################################################
   # Cleanup Images
-  # -------------
+  # ------------- 
   # Purpose: Removes temporary Docker images after PR closure
   #
   # Flow:
@@ -429,7 +457,7 @@ jobs:
 
   #####################################################################
   # Notify Success
-  # -------------
+  # ------------- 
   # Purpose: Creates deployment summary and notifications
   #
   # Flow:
@@ -474,7 +502,7 @@ jobs:
 
   #####################################################################
   # Queue Release
-  # ------------
+  # ------------ 
   # Purpose: Adds successful merges to release queue
   #
   # Flow:

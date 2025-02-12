@@ -1,15 +1,16 @@
 name: 'Create Release'
-description: 'Creates a new release with packaged application state'
+description: 'Creates a new release with proper versioning'
 
 inputs:
   version:
-    description: 'Version to release'
+    description: 'Version to create release for'
     required: true
   prerelease:
     description: 'Whether this is a prerelease'
     required: true
+    default: 'true'
   github_token:
-    description: 'GitHub token for creating release'
+    description: 'GitHub token'
     required: true
   bot_gpg_private_key:
     description: 'Bot GPG private key for signing'
@@ -31,7 +32,7 @@ inputs:
     required: true
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Set up Rust
       uses: actions-rs/toolchain@v1
@@ -64,12 +65,12 @@ runs:
 
     - name: Validate Version
       shell: bash
-      working-directory: .github/scripts
       run: |
-        cargo run --bin step-validate-version
-      env:
-        INPUT_VERSION: ${{ inputs.version }}
-        RUST_LOG: info
+        if [ -z "${{ inputs.version }}" ]; then
+          echo "Error: Version input is required"
+          exit 1
+        fi
+        echo "Using version: ${{ inputs.version }}"
 
     - name: Package Release Assets
       shell: bash
@@ -100,15 +101,16 @@ runs:
         INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
         RUST_LOG: info
 
-    - name: Create GitHub Release
+    - name: Create Release
       shell: bash
-      working-directory: .github/scripts
       run: |
-        cargo run --bin step-create-release
+        echo "Creating release for version ${{ inputs.version }}"
+        gh release create ${{ inputs.version }} \
+          --title "Release ${{ inputs.version }}" \
+          --notes "Automated release for version ${{ inputs.version }}" \
+          --prerelease=${{ inputs.prerelease }}
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_PRERELEASE: ${{ inputs.prerelease }}
-        RUST_LOG: info
 
     - name: Update Documentation
       shell: bash

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: distributions/dockerhub/generated/Dockerfile.dev
+    volumes:
+      - .:/usr/src/projects
+    command: /bin/bash
+    tty: true
+
+  beta:
+    build:
+      context: .
+      dockerfile: distributions/dockerhub/generated/Dockerfile.beta
+    volumes:
+      - .:/usr/src/projects
+    command: /bin/bash
+    tty: true
