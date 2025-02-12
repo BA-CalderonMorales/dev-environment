@@ -1,5 +1,5 @@
 name: 'Queue Release'
-description: 'Adds a commit to the release queue'
+description: 'Adds a commit to the release queue via PR'
 
 inputs:
   github_token:
@@ -16,10 +16,21 @@ outputs:
   estimated_time:
     description: 'Estimated time until release'
     value: ${{ steps.queue.outputs.estimated_time }}
+  pr_number:
+    description: 'Created PR number'
+    value: ${{ steps.create_pr.outputs.pr_number }}
 
 runs:
   using: 'composite'
   steps:
+    - id: setup
+      shell: bash
+      run: |
+        # Create a new branch for the queue update
+        QUEUE_BRANCH="queue-update-$(date +%s)"
+        git checkout -b $QUEUE_BRANCH
+        echo "branch=$QUEUE_BRANCH" >> $GITHUB_OUTPUT
+
     - id: queue
       shell: bash
       run: |
@@ -45,17 +56,71 @@ runs:
         
         if [[ "${{ inputs.branch }}" == "beta" ]]; then
           EST_DAYS=0
+          MIN_ITEMS=10
         else
-          # For main branch, estimate based on 7-day waiting period
-          EST_DAYS=7
+          EST_DAYS=14
+          MIN_ITEMS=15
         fi
         
         echo "position=$POSITION" >> $GITHUB_OUTPUT
         echo "estimated_time=$EST_DAYS days" >> $GITHUB_OUTPUT
-        
-        # Commit and push queue update
-        git config user.name "GitHub Action"
+        echo "remaining=$((MIN_ITEMS - POSITION))" >> $GITHUB_OUTPUT
+
+    - name: Configure Git
+      shell: bash
+      run: |
+        git config user.name "GitHub Action Bot"
         git config user.email "action@github.com"
-        git add "$QUEUE_FILE"
-        git commit -m "📦 Queue release for ${{ inputs.sha }}"
-        git push
+
+    - name: Sign Commit
+      shell: bash
+      run: |
+        git add .github/release_queue/
+        git commit -S -m "📦 Queue release for ${{ inputs.sha }}
+        
+        Queue Status:
+        - Position: ${{ steps.queue.outputs.position }}
+        - Items needed: ${{ steps.queue.outputs.remaining }} more
+        - Estimated time: ${{ steps.queue.outputs.estimated_time }}"
+
+    - name: Push Changes
+      shell: bash
+      run: |
+        git push origin ${{ steps.setup.outputs.branch }}
+
+    - id: create_pr
+      shell: bash
+      run: |
+        PR_TITLE="📦 Update Release Queue: Position ${{ steps.queue.outputs.position }}"
+        PR_BODY="## Release Queue Update
+        
+        🎯 Adding commit \`${{ inputs.sha }}\` to the release queue.
+        
+        ### Queue Status
+        - Current Position: ${{ steps.queue.outputs.position }}
+        - Items Needed: ${{ steps.queue.outputs.remaining }} more
+        - Estimated Release Time: ${{ steps.queue.outputs.estimated_time }}
+        
+        > This PR was automatically created by the release queue system.
+        > Once merged, this commit will be included in the next release batch."
+        
+        PR_NUMBER=$(gh pr create \
+          --title "$PR_TITLE" \
+          --body "$PR_BODY" \
+          --base "${{ inputs.branch }}" \
+          --head "${{ steps.setup.outputs.branch }}" \
+          --label "release-queue" \
+          --label "automated-pr" \
+          --json number -q .number)
+        
+        echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+
+    - name: Request Review
+      if: steps.create_pr.outputs.pr_number
+      shell: bash
+      run: |
+        gh pr review ${{ steps.create_pr.outputs.pr_number }} --approve
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
