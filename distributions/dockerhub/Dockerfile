@@ -1,12 +1,23 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:latest
+FROM ubuntu:22.04
+
+LABEL maintainer="BA-CalderonMorales"
+LABEL version="0.1.0-beta.1"
+LABEL description="Configurable development environment container"
 
 ARG NODE_VERSION=22.12.0
 ARG GO_VERSION=1.22.4
 
+# Install basic utilities
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install system dependencies first
 RUN apt-get update && \
-    apt-get install -y wget curl git sqlite3 ca-certificates
+    apt-get install -y wget sqlite3 ca-certificates
 
 # Install Node.js directly
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
@@ -26,6 +37,10 @@ RUN useradd -m -s /bin/bash devuser && \
 # Install Go
 RUN curl -sL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
 ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Copy setup scripts
+COPY startup/setup.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/setup.sh
 
 # Copy startup scripts (single copy command)
 COPY startup /usr/src/startup
@@ -75,3 +90,6 @@ RUN chmod -R 755 /usr/src/startup && \
 # Switch back to devuser for final setup
 USER devuser
 WORKDIR /usr/src/projects
+
+# Default command
+CMD ["/bin/bash"]
