@@ -7,6 +7,10 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](docs/CONTRIBUTING.md)
 
 > ⚠️ **EXPERIMENTAL STATUS - USE AT YOUR OWN RISK** ⚠️
+
+</div>
+
+>
 >
 > This project is in very early development (v0.0.1). While we encourage experimentation and feedback, please note:
 > - No production stability guarantees
@@ -16,7 +20,6 @@
 > 
 > **By using this software, you acknowledge these risks and assume full responsibility.**
 
-</div>
 
 ## What is This?
 

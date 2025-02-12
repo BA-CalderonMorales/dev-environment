@@ -1,45 +1,30 @@
-name: 'Process Release Queue Job'
-description: 'Processes the release queue and prepares for release creation'
+name: 'Process Release Queue'
+description: 'Processes release queue items and determines if a release should be created'
 
 inputs:
   github_token:
-    description: 'GitHub token'
     required: true
-  trigger_sha:
-    description: 'SHA to release'
-    required: false
   source_branch:
-    description: 'Source branch'
-    required: false
-  force_process:
-    description: 'Force queue processing'
-    required: false
-  is_scheduled:
-    description: 'Whether this is a scheduled run'
     required: true
+  force_process:
+    required: false
+    default: 'false'
   initial_version:
-    description: 'Initial version to use'
     required: true
 
 outputs:
-  sha:
-    description: 'Commit SHA'
-    value: ${{ steps.queue.outputs.sha }}
-  branch:
-    description: 'Branch name'
-    value: ${{ steps.queue.outputs.branch }}
   can_proceed:
-    description: 'Whether release can proceed'
-    value: ${{ steps.queue.outputs.can_proceed }}
+    description: 'Whether to proceed with release'
+    value: ${{ steps.queue_check.outputs.can_proceed }}
   version:
-    description: 'Release version'
-    value: ${{ steps.version.outputs.version }}
+    description: 'Version to release'
+    value: ${{ steps.queue_check.outputs.version }}
   prerelease:
     description: 'Whether this is a prerelease'
-    value: ${{ steps.version.outputs.prerelease }}
+    value: ${{ steps.queue_check.outputs.is_beta }}
 
 runs:
-  using: composite
+  using: 'composite'
   steps:
     - uses: actions/checkout@v4
       with:
@@ -49,31 +34,70 @@ runs:
       with:
         github_token: ${{ inputs.github_token }}
 
-    # Check if this is a manual trigger with specific SHA/branch
-    - id: check_inputs
+    - id: queue_check
       shell: bash
       run: |
-        if [[ -n "${{ inputs.trigger_sha }}" && -n "${{ inputs.source_branch }}" ]]; then
-          echo "using_manual_inputs=true" >> $GITHUB_OUTPUT
+        # Get queue file path from branch
+        if [[ "${{ inputs.source_branch }}" == "beta" ]]; then
+          QUEUE_FILE=".github/release_queue/beta.json"
+          MIN_QUEUE_SIZE=10  # Increased: Wait for 10 items before beta release
+          MIN_AGE_DAYS=0     # No waiting period for beta
+        elif [[ "${{ inputs.source_branch }}" == "main" ]]; then
+          QUEUE_FILE=".github/release_queue/main.json"
+          MIN_QUEUE_SIZE=15  # Increased: Wait for 15 items before stable release
+          MIN_AGE_DAYS=14    # Increased: Two weeks stability period
         else
-          echo "using_manual_inputs=false" >> $GITHUB_OUTPUT
+          echo "Invalid branch: ${{ inputs.source_branch }}"
+          exit 1
         fi
 
-    - id: queue
-      uses: ./.github/actions/process-release-queue
-      with:
-        github_token: ${{ inputs.github_token }}
-        trigger_sha: ${{ inputs.trigger_sha }}
-        source_branch: ${{ inputs.source_branch }}
-        force_process: ${{ inputs.force_process }}
-        is_scheduled: ${{ inputs.is_scheduled }}
+        # Create queue if it doesn't exist
+        mkdir -p .github/release_queue
+        if [ ! -f "$QUEUE_FILE" ]; then
+          echo '{"items":[]}' > "$QUEUE_FILE"
+        fi
+
+        # Check queue conditions
+        QUEUE_SIZE=$(jq '.items | length' "$QUEUE_FILE")
+        OLDEST_ITEM_DATE=$(jq -r '.items[0].date // empty' "$QUEUE_FILE")
+        
+        if [ ! -z "$OLDEST_ITEM_DATE" ]; then
+          DAYS_OLD=$(( ( $(date +%s) - $(date -d "$OLDEST_ITEM_DATE" +%s) ) / 86400 ))
+        else
+          DAYS_OLD=0
+        fi
+
+        # Determine if release should proceed
+        if [ "${{ inputs.force_process }}" == "true" ]; then
+          CAN_PROCEED="true"
+          echo "Force processing requested"
+        elif [ $QUEUE_SIZE -ge $MIN_QUEUE_SIZE ] && [ $DAYS_OLD -ge $MIN_AGE_DAYS ]; then
+          CAN_PROCEED="true"
+          echo "Queue requirements met: size=$QUEUE_SIZE items, age=$DAYS_OLD days"
+        else
+          CAN_PROCEED="false"
+          echo "Queue requirements not met: $QUEUE_SIZE/$MIN_QUEUE_SIZE items, $DAYS_OLD/$MIN_AGE_DAYS days"
+        fi
+
+        # Set outputs
+        echo "can_proceed=$CAN_PROCEED" >> $GITHUB_OUTPUT
+        echo "is_beta=${{ inputs.source_branch == 'beta' && 'true' || 'false' }}" >> $GITHUB_OUTPUT
+        
+        if [ "$CAN_PROCEED" == "true" ]; then
+          # Get list of commits to include in release
+          COMMITS=$(jq -r '.items[].commit' "$QUEUE_FILE")
+          echo "commits=$COMMITS" >> $GITHUB_OUTPUT
+          
+          # Clear queue if release proceeding
+          echo '{"items":[]}' > "$QUEUE_FILE"
+        fi
 
     - id: version
-      if: steps.queue.outputs.can_proceed == 'true'
+      if: steps.queue_check.outputs.can_proceed == 'true'
       uses: ./.github/actions/determine-version
       with:
         github_token: ${{ inputs.github_token }}
-        ref: ${{ steps.queue.outputs.branch }}
+        ref: ${{ inputs.source_branch }}
         initial_version: ${{ inputs.initial_version }}
 
     - name: Debug Version Output

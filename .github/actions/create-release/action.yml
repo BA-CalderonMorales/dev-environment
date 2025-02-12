@@ -51,6 +51,18 @@ runs:
         echo "📁 Found scripts directory at: $SCRIPTS_DIR"
         ls -la "$SCRIPTS_DIR"
 
+    - name: Verify Docs Directory
+      shell: bash
+      run: |
+        DOCS_DIR="${{ github.workspace }}/docs"
+        if [ ! -d "$DOCS_DIR" ]; then
+          echo "📁 Creating docs directory"
+          mkdir -p "$DOCS_DIR"
+          echo "# Documentation" > "$DOCS_DIR/README.md"
+        fi
+        echo "📁 Found docs directory at: $DOCS_DIR"
+        ls -la "$DOCS_DIR"
+
     - name: Debug Inputs
       shell: bash
       working-directory: .github/scripts
@@ -101,13 +113,44 @@ runs:
         INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
         RUST_LOG: info
 
+    - name: Check Beta Stability
+      if: inputs.prerelease == 'false'
+      shell: bash
+      run: |
+        # Get the latest beta tag
+        latest_beta=$(git describe --tags --match "v*-beta.*" --abbrev=0)
+        
+        # Calculate days since beta release
+        beta_date=$(git log -1 --format=%at $latest_beta)
+        current_date=$(date +%s)
+        days_since_beta=$(( ($current_date - $beta_date) / 86400 ))
+        
+        # Check if beta has been stable for at least 7 days
+        if [ $days_since_beta -lt 7 ]; then
+          echo "❌ Beta version $latest_beta is too recent ($days_since_beta days old)"
+          echo "Wait at least 7 days before promoting to stable"
+          exit 1
+        fi
+        
+        echo "✅ Beta version $latest_beta has been stable for $days_since_beta days"
+
     - name: Create Release
       shell: bash
       run: |
-        echo "Creating release for version ${{ inputs.version }}"
+        RELEASE_NOTES="Release ${{ inputs.version }}"
+        
+        # Add stability notice for stable releases
+        if [ "${{ inputs.prerelease }}" = "false" ]; then
+          RELEASE_NOTES="$RELEASE_NOTES\n\n🔐 Stable Release\n"
+          RELEASE_NOTES="$RELEASE_NOTES\nThis version has been tested in beta for $(( $days_since_beta )) days."
+        else
+          RELEASE_NOTES="$RELEASE_NOTES\n\n🧪 Beta Release\n"
+          RELEASE_NOTES="$RELEASE_NOTES\nThis is a beta release for testing purposes."
+        fi
+        
         gh release create ${{ inputs.version }} \
           --title "Release ${{ inputs.version }}" \
-          --notes "Automated release for version ${{ inputs.version }}" \
+          --notes "$RELEASE_NOTES" \
           --prerelease=${{ inputs.prerelease }}
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
