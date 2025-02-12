@@ -73,3 +73,20 @@ Documentation priorities:
 
 ---
 <sub>Last updated: 2025-02-02 | Documentation Version: 0.0.1</sub>
+
+# Dev Environment
+
+## Overview
+
+This repository contains development environment configuration and tools.
+
+## Releases
+
+Latest release: <!-- VERSION -->v0.1.0-beta.1<!-- /VERSION -->
+
+For a complete list of releases, see our [releases page](https://github.com/BA-CalderonMorales/dev-environment/releases).
+
+## Installation
+
+Details coming soon.
+```

@@ -1,15 +1,12 @@
 name: 'Queue Release'
-description: 'Adds successful builds to release queue'
+description: 'Adds a commit to the release queue'
 
 inputs:
   github_token:
-    description: 'GitHub token for queue operations'
     required: true
   sha:
-    description: 'Commit SHA to queue'
     required: true
   branch:
-    description: 'Branch name'
     required: true
 
 outputs:
@@ -18,62 +15,47 @@ outputs:
     value: ${{ steps.queue.outputs.position }}
   estimated_time:
     description: 'Estimated time until release'
-    value: ${{ steps.queue.outputs.eta }}
+    value: ${{ steps.queue.outputs.estimated_time }}
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - id: queue
       shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
       run: |
-        # Find or create queue issue
-        QUEUE_ISSUE_NUMBER=$(gh issue list --search "🔄 Release Queue in:title" --json number --jq '.[0].number')
+        # Determine queue file based on branch
+        QUEUE_FILE=".github/release_queue/${{ inputs.branch }}.json"
         
-        if [[ -z "$QUEUE_ISSUE_NUMBER" ]]; then
-          echo "Creating release queue issue..."
-          QUEUE_ISSUE_NUMBER=$(gh issue create \
-            --title "🔄 Release Queue" \
-            --body "# Release Queue Management Issue
-            
-            This issue tracks the release queue for automated deployments.
-            
-            ## Queue Statistics
-            Last Updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            
-            Branch: ${{ inputs.branch }}
-            Latest SHA: ${{ inputs.sha }}" \
-            --label "release-queue" \
-            --label "automated" \
-            --json number --jq '.number')
+        # Create queue directory if needed
+        mkdir -p .github/release_queue
+        
+        # Create or read queue file
+        if [ ! -f "$QUEUE_FILE" ]; then
+          echo '{"items":[]}' > "$QUEUE_FILE"
         fi
         
         # Add new item to queue
-        QUEUE_ENTRY="QUEUED:SHA:${{ inputs.sha }}|BRANCH:${{ inputs.branch }}|TIME:$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-        gh issue comment $QUEUE_ISSUE_NUMBER --body "$QUEUE_ENTRY"
+        jq --arg sha "${{ inputs.sha }}" \
+           --arg date "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+           '.items += [{"commit": $sha, "date": $date}]' \
+           "$QUEUE_FILE" > "${QUEUE_FILE}.tmp" && mv "${QUEUE_FILE}.tmp" "$QUEUE_FILE"
         
-        # Get queue position
-        POSITION=$(gh issue view $QUEUE_ISSUE_NUMBER --json comments \
-          --jq '.comments | map(select(.body | startswith("QUEUED:"))) | length')
+        # Calculate queue position and estimated time
+        POSITION=$(jq '.items | length' "$QUEUE_FILE")
         
-        # Calculate ETA
-        DAYS_UNTIL_NEXT_SATURDAY=$(( (6 - $(date +%u) + 7) % 7 ))
-        if [[ $DAYS_UNTIL_NEXT_SATURDAY -eq 0 && $(date +%H) -ge 16 ]]; then
-          DAYS_UNTIL_NEXT_SATURDAY=7
+        if [[ "${{ inputs.branch }}" == "beta" ]]; then
+          EST_DAYS=0
+        else
+          # For main branch, estimate based on 7-day waiting period
+          EST_DAYS=7
         fi
         
-        # Update queue statistics in issue body
-        gh issue edit $QUEUE_ISSUE_NUMBER --body "# Release Queue Management Issue
-
-        This issue tracks the release queue for automated deployments.
-        
-        ## Queue Statistics (Updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ"))
-        
-        Branch: ${{ inputs.branch }}
-        Latest SHA: ${{ inputs.sha }}
-        Total Queued: $POSITION"
-        
-        # Set outputs
         echo "position=$POSITION" >> $GITHUB_OUTPUT
-        echo "eta=$DAYS_UNTIL_NEXT_SATURDAY days" >> $GITHUB_OUTPUT
+        echo "estimated_time=$EST_DAYS days" >> $GITHUB_OUTPUT
+        
+        # Commit and push queue update
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+        git add "$QUEUE_FILE"
+        git commit -m "📦 Queue release for ${{ inputs.sha }}"
+        git push
