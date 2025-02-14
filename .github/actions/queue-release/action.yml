@@ -114,16 +114,23 @@ runs:
     - name: Sign Commit
       shell: bash
       run: |
-        # Create a temporary GPG config
-        echo 'use-agent' > ~/.gnupg/gpg.conf
-        echo 'pinentry-mode loopback' >> ~/.gnupg/gpg.conf
-        echo 'allow-loopback-pinentry' > ~/.gnupg/gpg-agent.conf
+        # Create GPG config for non-interactive signing
+        cat > ~/.gnupg/gpg.conf << EOF
+        use-agent
+        pinentry-mode loopback
+        EOF
+        
+        cat > ~/.gnupg/gpg-agent.conf << EOF
+        allow-loopback-pinentry
+        allow-preset-passphrase
+        EOF
+        
         gpgconf --reload gpg-agent
         
         # Add changes
         git add .github/release_queue/
         
-        # Set the commit message
+        # Set commit message
         COMMIT_MSG="📦 Queue release for ${{ inputs.sha }}
 
         Queue Status:
@@ -131,12 +138,13 @@ runs:
         - Items needed: ${{ steps.queue.outputs.remaining }} more
         - Estimated time: ${{ steps.queue.outputs.estimated_time }}"
         
-        # Create signed commit with batch mode
-        echo "${{ inputs.bot_gpg_passphrase }}" | git -c gpg.program="$(which gpg)" \
-            commit -S --batch -m "$COMMIT_MSG" \
+        # Create signed commit (removed --batch flag as it's not valid for git commit)
+        echo "${{ inputs.bot_gpg_passphrase }}" | GIT_ASKPASS=true git commit -S \
+            -m "$COMMIT_MSG" \
             --allow-empty
       env:
         GNUPGHOME: /home/runner/.gnupg
+        GPG_TTY: /dev/null
         GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
 
     - name: Push Changes
