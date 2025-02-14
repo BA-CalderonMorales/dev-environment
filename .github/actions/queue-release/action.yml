@@ -82,44 +82,60 @@ runs:
         mkdir -p ~/.gnupg
         chmod 700 ~/.gnupg
         
-        # Import the GPG private key
-        echo "${{ inputs.bot_gpg_private_key }}" | gpg --batch --import
+        # Suppress output during key import for security
+        echo "${{ inputs.bot_gpg_private_key }}" | gpg --batch --import 2>/dev/null
         
-        # Get the GPG key ID
-        GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | cut -d'/' -f2)
+        # Get the GPG key ID without showing the full key details
+        GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep sec | awk '{print $2}' | cut -d'/' -f2)
         
-        # Configure Git with GPG
-        git config --global user.signingkey "$GPG_KEY_ID"
-        git config --global commit.gpgsign true
-        git config --global user.name "Development Environment Bot"
-        git config --global user.email "${{ inputs.bot_email }}"
+        # Configure Git with GPG (suppress output)
+        git config --global user.signingkey "$GPG_KEY_ID" >/dev/null 2>&1
+        git config --global commit.gpgsign true >/dev/null 2>&1
+        git config --global user.name "Development Environment Bot" >/dev/null 2>&1
+        git config --global user.email "${{ inputs.bot_email }}" >/dev/null 2>&1
         
-        # Configure GPG agent
+        # Configure GPG agent silently
+        mkdir -p ~/.gnupg
         echo "allow-preset-passphrase" > ~/.gnupg/gpg-agent.conf
-        echo "RELOADAGENT" | gpg-connect-agent
+        gpg-connect-agent RELOADAGENT /bye >/dev/null 2>&1
         
-        # Trust the key ultimately
-        echo -e "5\ny\n" | gpg --command-fd 0 --expert --edit-key "$GPG_KEY_ID" trust
+        # Trust the key ultimately without showing prompts
+        printf "5\ny\n" | gpg --batch --no-tty --command-fd 0 --expert --edit-key "$GPG_KEY_ID" trust >/dev/null 2>&1
+        
+        # Verify setup without showing sensitive data
+        if ! gpg --list-secret-keys --keyid-format LONG "${{ inputs.bot_email }}" >/dev/null 2>&1; then
+          echo "❌ Failed to set up GPG key"
+          exit 1
+        fi
+        echo "✅ GPG setup completed successfully"
       env:
         GNUPGHOME: /home/runner/.gnupg
 
     - name: Sign Commit
       shell: bash
       run: |
+        # Create a temporary GPG config
+        echo 'use-agent' > ~/.gnupg/gpg.conf
+        echo 'pinentry-mode loopback' >> ~/.gnupg/gpg.conf
+        echo 'allow-loopback-pinentry' > ~/.gnupg/gpg-agent.conf
+        gpgconf --reload gpg-agent
+        
         # Add changes
         git add .github/release_queue/
         
-        # Create signed commit
-        git -c gpg.program="$(which gpg)" \
-            -c user.signingkey="$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | cut -d'/' -f2)" \
-            commit -S -m "📦 Queue release for ${{ inputs.sha }}
-        
+        # Set the commit message
+        COMMIT_MSG="📦 Queue release for ${{ inputs.sha }}
+
         Queue Status:
         - Position: ${{ steps.queue.outputs.position }}
         - Items needed: ${{ steps.queue.outputs.remaining }} more
         - Estimated time: ${{ steps.queue.outputs.estimated_time }}"
+        
+        # Create signed commit with batch mode
+        echo "${{ inputs.bot_gpg_passphrase }}" | git -c gpg.program="$(which gpg)" \
+            commit -S --batch -m "$COMMIT_MSG" \
+            --allow-empty
       env:
-        GPG_TTY: $(tty)
         GNUPGHOME: /home/runner/.gnupg
         GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
 
