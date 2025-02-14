@@ -556,9 +556,11 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           sha: ${{ steps.release_info.outputs.sha }}
           branch: ${{ steps.release_info.outputs.branch }}
+          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
+          bot_email: ${{ secrets.BOT_EMAIL }}
 
       - uses: ./.github/actions/trigger-release-workflow
-
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.ref }}
