@@ -517,15 +517,9 @@ jobs:
   queue_release:
     runs-on: ubuntu-22.04
     needs: [setup_docker, e2e_tests, security_scan, notify_success]
+    # Updated condition: execute if branch is beta or main and no failures, regardless of event type.
     if: |
-      always() && (
-        github.ref == 'refs/heads/beta' ||
-        github.ref == 'refs/heads/main'
-      ) &&
-      (
-        github.event_name == 'push' ||
-        github.event_name == 'workflow_dispatch'
-      ) &&
+      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main') &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
     steps:
@@ -539,7 +533,6 @@ jobs:
           echo "Deploy success: ${{ needs.notify_success.outputs.deployment_success }}"
           echo "Optional jobs skipped: ${{ needs.notify_success.outputs.optional_jobs_skipped }}"
           echo "=================="
-
       - uses: actions/checkout@v4
       - uses: ./.github/actions/set-release-info
         id: release_info
@@ -549,7 +542,6 @@ jobs:
           pr_head_sha: ${{ github.event.pull_request.head.sha }}
           pr_base_ref: ${{ github.event.pull_request.base.ref }}
           ref_name: ${{ github.ref_name }}
-
       - uses: ./.github/actions/queue-release
         id: queue_release
         with:
@@ -559,7 +551,6 @@ jobs:
           bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
           bot_email: ${{ secrets.BOT_EMAIL }}
-
       - uses: ./.github/actions/trigger-release-workflow
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
