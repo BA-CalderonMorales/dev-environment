@@ -62,14 +62,30 @@ impl GpgSetup {
     // Process and decode GPG key
     fn decode_gpg_key(&self) -> Result<Vec<u8>> {
         self.logger.info("🔑 Processing GPG key...");
-        let gpg_key = env::var("INPUT_BOT_GPG_PRIVATE_KEY")
-            .context("BOT_GPG_PRIVATE_KEY not set")?
+        let raw_key = env::var("INPUT_BOT_GPG_PRIVATE_KEY")
+            .context("BOT_GPG_PRIVATE_KEY not set")?;
+
+        // Debug key format (safely)
+        self.logger.info(&format!("Key length: {}", raw_key.len()));
+        self.logger.info(&format!("First few chars: {}", raw_key.chars().take(10).collect::<String>()));
+        
+        let gpg_key = raw_key
             .trim()
             .replace("\\n", "\n")
-            .replace("\r", "");
+            .replace("\r", "")
+            .replace("-----BEGIN PGP PRIVATE KEY BLOCK-----", "")
+            .replace("-----END PGP PRIVATE KEY BLOCK-----", "")
+            .replace("\n", "");  // Remove all newlines for base64
 
+        // Debug processed key
+        self.logger.info(&format!("Processed key length: {}", gpg_key.len()));
+        
         STANDARD.decode(&gpg_key).map_err(|e| {
-            self.logger.warn(&format!("Failed to decode GPG key: {}", e));
+            self.logger.warn(&format!(
+                "Failed to decode GPG key: {}. Key starts with: {}",
+                e,
+                gpg_key.chars().take(10).collect::<String>()
+            ));
             anyhow::anyhow!("Invalid GPG key format: {}", e)
         })
     }
