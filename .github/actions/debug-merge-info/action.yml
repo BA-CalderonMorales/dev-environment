@@ -49,14 +49,18 @@ runs:
         echo "Security scan result: ${{ inputs.security_scan_result }}"
         echo "======================="
         
-        # Determine if this is a valid merge for release queueing
-        if [[ "${{ inputs.ref }}" == "refs/heads/beta" && "${{ inputs.head_commit_message }}" == *"Merge pull request"* && "${{ inputs.head_commit_message }}" == *"from develop"* ]] ||
-           [[ "${{ inputs.ref }}" == "refs/heads/main" && "${{ inputs.head_commit_message }}" == *"Merge pull request"* && "${{ inputs.head_commit_message }}" == *"from beta"* ]] ||
-           [[ "${{ inputs.ref }}" == "refs/heads/beta" && "${{ inputs.event_name }}" == "workflow_dispatch" ]] ||
-           [[ "${{ inputs.ref }}" == "refs/heads/main" && "${{ inputs.event_name }}" == "workflow_dispatch" ]]; then
-          echo "is_valid=true" >> $GITHUB_OUTPUT
-          echo "✅ Valid merge for release queueing"
+        # Simplified validation - allow any merge to beta/main
+        if [[ "${{ inputs.ref }}" == "refs/heads/beta" || "${{ inputs.ref }}" == "refs/heads/main" ]]; then
+          if [[ "${{ inputs.event_name }}" == "workflow_dispatch" || 
+                ("${{ inputs.event_name }}" == "push" && 
+                 "${{ inputs.head_commit_message }}" == *"Merge pull request"*) ]]; then
+            echo "is_valid=true" >> $GITHUB_OUTPUT
+            echo "✅ Valid merge for release queueing on ${{ inputs.ref }}"
+          else
+            echo "is_valid=false" >> $GITHUB_OUTPUT
+            echo "❌ Not a merge or workflow_dispatch event"
+          fi
         else
           echo "is_valid=false" >> $GITHUB_OUTPUT
-          echo "❌ Not a valid merge for release queueing"
+          echo "❌ Not a beta or main branch"
         fi
