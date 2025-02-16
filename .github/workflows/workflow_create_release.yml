@@ -38,6 +38,9 @@ env:
   INITIAL_VERSION: 'v0.1.0-beta.1'  # Updated to match Cargo.toml
   DOCKER_IMAGE: 'ba-calderonmorales/dev-environment'
 
+# NOTE: For full details on our release process, please refer to RELEASE_SCHEDULE.md at the repository root.
+# This file uses branch protection (beta/main) to trigger automations based on merges from develop.
+
 jobs:
   #####################################################################
   # Branch Protection Check
