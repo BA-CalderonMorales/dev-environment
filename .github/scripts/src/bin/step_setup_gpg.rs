@@ -1,5 +1,5 @@
 //! GPG key setup for create-release action
-//! Used by: ./.github/actions/create-release/action.yml
+//! Used by: ./.github/actions/queue-release/action.yml
 //! Purpose: Imports and configures GPG keys for signing
 
 use anyhow::{Context, Result};
@@ -59,60 +59,136 @@ impl GpgSetup {
         Ok(())
     }
 
-    // Process and decode GPG key
+    // Process and decode GPG key with improved error handling
     fn decode_gpg_key(&self) -> Result<Vec<u8>> {
         self.logger.info("🔑 Processing GPG key...");
         let raw_key = env::var("INPUT_BOT_GPG_PRIVATE_KEY")
             .context("BOT_GPG_PRIVATE_KEY not set")?;
 
-        // Debug key format (safely)
-        self.logger.info(&format!("Key length: {}", raw_key.len()));
-        self.logger.info(&format!("First few chars: {}", raw_key.chars().take(10).collect::<String>()));
-        
-        let gpg_key = raw_key
+        // Method 1: Try direct import if key appears to be in proper PGP format
+        if raw_key.contains("-----BEGIN PGP PRIVATE KEY BLOCK-----") {
+            self.logger.info("Attempting direct PGP key import...");
+            return Ok(raw_key.into_bytes());
+        }
+
+        // Method 2: Try base64 decode after cleaning
+        self.logger.info("Attempting base64 decode...");
+        let cleaned_key = raw_key
             .trim()
             .replace("\\n", "\n")
-            .replace("\r", "")
-            .replace("-----BEGIN PGP PRIVATE KEY BLOCK-----", "")
-            .replace("-----END PGP PRIVATE KEY BLOCK-----", "")
-            .replace("\n", "");  // Remove all newlines for base64
+            .replace("\r", "");
 
-        // Debug processed key
-        self.logger.info(&format!("Processed key length: {}", gpg_key.len()));
+        // Clone the cleaned key for each closure
+        let key1 = cleaned_key.clone();
+        let key2 = cleaned_key.clone();
+        let key3 = cleaned_key;
+
+        // Define closure type
+        type DecodeAttempt = Box<dyn Fn() -> Result<Vec<u8>, base64::DecodeError>>;
         
-        STANDARD.decode(&gpg_key).map_err(|e| {
-            self.logger.warn(&format!(
-                "Failed to decode GPG key: {}. Key starts with: {}",
-                e,
-                gpg_key.chars().take(10).collect::<String>()
-            ));
-            anyhow::anyhow!("Invalid GPG key format: {}", e)
-        })
+        // Create vector of boxed decode attempts
+        let decode_attempts: Vec<DecodeAttempt> = vec![
+            Box::new(move || STANDARD.decode(key1.as_bytes())),
+            Box::new(move || {
+                let no_headers = key2
+                    .replace("-----BEGIN PGP PRIVATE KEY BLOCK-----", "")
+                    .replace("-----END PGP PRIVATE KEY BLOCK-----", "")
+                    .replace("\n", "");
+                STANDARD.decode(no_headers)
+            }),
+            Box::new(move || {
+                let padded = match key3.len() % 4 {
+                    2 => format!("{}==", key3),
+                    3 => format!("{}=", key3),
+                    _ => key3.clone(),
+                };
+                STANDARD.decode(padded)
+            }),
+        ];
+
+        // Try each decode method
+        for (i, attempt) in decode_attempts.into_iter().enumerate() {
+            match attempt() {
+                Ok(decoded) => {
+                    self.logger.info(&format!("Successfully decoded using method {}", i + 1));
+                    return Ok(decoded);
+                }
+                Err(e) => {
+                    self.logger.warn(&format!("Decode method {} failed: {}", i + 1, e));
+                }
+            }
+        }
+
+        // If all attempts fail, try to use the key as-is
+        self.logger.warn("All decode attempts failed. Trying to use key as-is...");
+        
+        // Ensure the key has proper PGP headers if missing
+        let formatted_key = if !raw_key.contains("-----BEGIN PGP PRIVATE KEY BLOCK-----") {
+            format!(
+                "-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n{}\n-----END PGP PRIVATE KEY BLOCK-----",
+                raw_key.trim()
+            )
+        } else {
+            raw_key
+        };
+
+        Ok(formatted_key.into_bytes())
     }
 
-    // Import GPG key into system
-    fn import_gpg_key(&self, decoded_key: &[u8]) -> Result<()> {
+    // Modified import_gpg_key to own its data
+    fn import_gpg_key(&self, key_data: Vec<u8>) -> Result<()> {
         self.logger.info("🔑 Importing GPG key...");
-        let mut child = Command::new("gpg")
-            .args(["--batch", "--import"])
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .context("Failed to spawn GPG process")?;
+        
+        // Define closure type for owned data
+        type ImportAttempt = Box<dyn Fn() -> std::io::Result<std::process::ExitStatus>>;
+        
+        // Create vector of boxed import attempts
+        let key_data1 = key_data.clone();
+        let key_data2 = key_data;
 
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(decoded_key)
-                .context("Failed to write GPG key to gpg process")?;
+        let import_attempts: Vec<ImportAttempt> = vec![
+            Box::new(move || {
+                Command::new("gpg")
+                    .args(["--batch", "--import"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                    .and_then(|mut child| {
+                        if let Some(mut stdin) = child.stdin.take() {
+                            stdin.write_all(&key_data1)?;
+                        }
+                        child.wait()
+                    })
+            }),
+            Box::new(move || {
+                Command::new("gpg")
+                    .args(["--batch", "--import", "--armor"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                    .and_then(|mut child| {
+                        if let Some(mut stdin) = child.stdin.take() {
+                            stdin.write_all(&key_data2)?;
+                        }
+                        child.wait()
+                    })
+            }),
+        ];
+
+        for (i, attempt) in import_attempts.into_iter().enumerate() {
+            match attempt() {
+                Ok(status) if status.success() => {
+                    self.logger.info(&format!("Successfully imported key using method {}", i + 1));
+                    return Ok(());
+                }
+                Ok(_) => {
+                    self.logger.warn(&format!("Import method {} failed", i + 1));
+                }
+                Err(e) => {
+                    self.logger.warn(&format!("Import method {} error: {}", i + 1, e));
+                }
+            }
         }
 
-        let status = child.wait()
-            .context("Failed to wait for GPG process")?;
-
-        if !status.success() {
-            self.logger.warn("GPG key import failed");
-            anyhow::bail!("GPG import process failed with status: {}", status);
-        }
-
-        Ok(())
+        anyhow::bail!("All GPG key import attempts failed")
     }
 
     // Get GPG key ID from imported key
@@ -161,20 +237,24 @@ impl GpgSetup {
         Ok(())
     }
 
-    // Run the complete setup process
+    // Modified run to continue on non-critical errors
     async fn run(&self) -> Result<()> {
         self.logger.info("🔒 Setting up GPG keys and git signing...");
         
-        self.setup_gpg_directory()
-            .context("Failed to setup GPG directory")?;
+        if let Err(e) = self.setup_gpg_directory() {
+            self.logger.warn(&format!("GPG directory setup failed: {}", e));
+            // Continue anyway
+        }
         
-        self.configure_gpg_agent()
-            .context("Failed to configure GPG agent")?;
+        if let Err(e) = self.configure_gpg_agent() {
+            self.logger.warn(&format!("GPG agent configuration failed: {}", e));
+            // Continue anyway
+        }
         
-        let decoded_key = self.decode_gpg_key()
-            .context("Failed to decode GPG key")?;
+        let key_data = self.decode_gpg_key()
+            .context("Failed to process GPG key")?;
         
-        self.import_gpg_key(&decoded_key)
+        self.import_gpg_key(key_data)
             .context("Failed to import GPG key")?;
         
         let key_id = self.get_gpg_key_id()
