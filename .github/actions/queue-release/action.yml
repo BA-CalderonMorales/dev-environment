@@ -132,13 +132,13 @@ runs:
         
         # Set commit message
         COMMIT_MSG="📦 Queue release for ${{ inputs.sha }}
-
+        
         Queue Status:
         - Position: ${{ steps.queue.outputs.position }}
         - Items needed: ${{ steps.queue.outputs.remaining }} more
         - Estimated time: ${{ steps.queue.outputs.estimated_time }}"
         
-        # Create signed commit (removed --batch flag as it's not valid for git commit)
+        # Create signed commit without the unsupported --batch flag
         echo "${{ inputs.bot_gpg_passphrase }}" | GIT_ASKPASS=true git commit -S \
             -m "$COMMIT_MSG" \
             --allow-empty
