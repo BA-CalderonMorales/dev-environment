@@ -80,7 +80,7 @@ runs:
     - name: Setup GPG
       shell: bash
       working-directory: .github/scripts
-      run: cargo run --bin step_setup_gpg
+      run: cargo run --bin step-setup-gpg  # Fixed hyphen in name
       env:
         INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
         INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
@@ -90,7 +90,7 @@ runs:
     - name: Sign Commit
       shell: bash
       working-directory: .github/scripts
-      run: cargo run --bin step_sign_commit
+      run: cargo run --bin step-sign-commit  # Fixed hyphen in name
       env:
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
@@ -102,7 +102,7 @@ runs:
     - name: Create PR
       shell: bash
       working-directory: .github/scripts
-      run: cargo run --bin step_create_pr
+      run: cargo run --bin step-create-pr  # Fixed hyphen in name
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         QUEUE_BRANCH: ${{ steps.setup_queue.outputs.branch }}
