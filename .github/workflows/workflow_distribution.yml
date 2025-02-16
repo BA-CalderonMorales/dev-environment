@@ -516,25 +516,24 @@ jobs:
   #####################################################################
   queue_release:
     runs-on: ubuntu-22.04
-    needs: [setup_docker, e2e_tests, security_scan, notify_success]
-    # Updated condition: execute if branch is beta or main and no failures, regardless of event type.
-    if: |
-      (github.ref == 'refs/heads/beta' || github.ref == 'refs/heads/main') &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled')
+    needs: [validate_branch, e2e_tests, security_scan]
     steps:
-      - name: Debug Event Info
-        run: |
-          echo "=== Debug Info ==="
-          echo "Event name: ${{ github.event_name }}"
-          echo "Branch (ref): ${{ github.ref }}"
-          echo "PR merged: ${{ github.event.pull_request.merged }}"
-          echo "Base ref: ${{ github.event.pull_request.base.ref }}"
-          echo "Deploy success: ${{ needs.notify_success.outputs.deployment_success }}"
-          echo "Optional jobs skipped: ${{ needs.notify_success.outputs.optional_jobs_skipped }}"
-          echo "=================="
       - uses: actions/checkout@v4
+      
+      - uses: ./.github/actions/debug-merge-info
+        id: debug_info
+        with:
+          event_name: ${{ github.event_name }}
+          ref: ${{ github.ref }}
+          head_commit_message: ${{ github.event.head_commit.message }}
+          base_ref: ${{ github.event.base.ref }}
+          head_ref: ${{ github.event.head.ref }}
+          validate_branch_result: ${{ needs.validate_branch.result }}
+          e2e_tests_result: ${{ needs.e2e_tests.result }}
+          security_scan_result: ${{ needs.security_scan.result }}
+
       - uses: ./.github/actions/set-release-info
+        if: steps.debug_info.outputs.is_valid_merge == 'true'
         id: release_info
         with:
           event_name: ${{ github.event_name }}
@@ -542,7 +541,9 @@ jobs:
           pr_head_sha: ${{ github.event.pull_request.head.sha }}
           pr_base_ref: ${{ github.event.pull_request.base.ref }}
           ref_name: ${{ github.ref_name }}
+
       - uses: ./.github/actions/queue-release
+        if: steps.debug_info.outputs.is_valid_merge == 'true'
         id: queue_release
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -551,6 +552,7 @@ jobs:
           bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
           bot_email: ${{ secrets.BOT_EMAIL }}
+
       - uses: ./.github/actions/trigger-release-workflow
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
