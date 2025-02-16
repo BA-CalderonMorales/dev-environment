@@ -517,7 +517,17 @@ jobs:
   queue_release:
     runs-on: ubuntu-22.04
     # Simplified needs - only require essential validations
-    needs: [validate_branch]
+    needs: [
+        check_pr_status,
+        validate_tags,
+        validate_branch,
+        detect_changes,
+        determine_version,
+        setup_docker,
+        e2e_tests,
+        security_scan,
+        notify_success
+    ]
     # Modified conditions to ensure we catch merge events to beta/main
     if: |
       (
