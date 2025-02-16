@@ -21,10 +21,10 @@ inputs:
 outputs:
   queue_position:
     description: 'Position in queue'
-    value: ${{ steps.queue.outputs.position }}
+    value: ${{ steps.process_queue.outputs.position }}
   estimated_time:
     description: 'Estimated time until release'
-    value: ${{ steps.queue.outputs.estimated_time }}
+    value: ${{ steps.process_queue.outputs.estimated_time }}
   pr_number:
     description: 'Created PR number'
     value: ${{ steps.create_pr.outputs.pr_number }}
@@ -32,159 +32,83 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - id: setup
-      shell: bash
-      run: |
-        # Create a new branch for the queue update
-        QUEUE_BRANCH="queue-update-$(date +%s)"
-        git checkout -b $QUEUE_BRANCH
-        echo "branch=$QUEUE_BRANCH" >> $GITHUB_OUTPUT
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
 
-    - id: queue
+    - name: Verify Scripts Directory
       shell: bash
       run: |
-        # Determine queue file based on branch
-        QUEUE_FILE=".github/release_queue/${{ inputs.branch }}.json"
-        
-        # Create queue directory if needed
-        mkdir -p .github/release_queue
-        
-        # Create or read queue file
-        if [ ! -f "$QUEUE_FILE" ]; then
-          echo '{"items":[]}' > "$QUEUE_FILE"
+        SCRIPTS_DIR="${{ github.workspace }}/.github/scripts"
+        if [ ! -d "$SCRIPTS_DIR" ]; then
+          echo "❌ Scripts directory not found at: $SCRIPTS_DIR"
+          exit 1
         fi
-        
-        # Add new item to queue
-        jq --arg sha "${{ inputs.sha }}" \
-           --arg date "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-           '.items += [{"commit": $sha, "date": $date}]' \
-           "$QUEUE_FILE" > "${QUEUE_FILE}.tmp" && mv "${QUEUE_FILE}.tmp" "$QUEUE_FILE"
-        
-        # Calculate queue position and estimated time
-        POSITION=$(jq '.items | length' "$QUEUE_FILE")
-        
-        if [[ "${{ inputs.branch }}" == "beta" ]]; then
-          EST_DAYS=0
-          MIN_ITEMS=10
-        else
-          EST_DAYS=14
-          MIN_ITEMS=15
-        fi
-        
-        echo "position=$POSITION" >> $GITHUB_OUTPUT
-        echo "estimated_time=$EST_DAYS days" >> $GITHUB_OUTPUT
-        echo "remaining=$((MIN_ITEMS - POSITION))" >> $GITHUB_OUTPUT
+        echo "📁 Found scripts directory at: $SCRIPTS_DIR"
+        ls -la "$SCRIPTS_DIR"
+
+    - name: Debug Inputs
+      shell: bash
+      working-directory: .github/scripts
+      run: |
+        cargo run --bin step-debug-inputs
+      env:
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        GITHUB_REF: ${{ github.ref }}
+        GITHUB_SHA: ${{ github.sha }}
+        RUST_LOG: info
+
+    - id: setup_queue
+      shell: bash
+      working-directory: .github/scripts
+      run: cargo run --bin step_setup_queue
+      env:
+        RUST_LOG: info
+
+    - id: process_queue
+      shell: bash
+      working-directory: .github/scripts
+      run: cargo run --bin step_process_queue
+      env:
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        RUST_LOG: info
 
     - name: Setup GPG
       shell: bash
-      run: |
-        # Create GPG directories with proper permissions
-        mkdir -p ~/.gnupg
-        chmod 700 ~/.gnupg
-        
-        # Suppress output during key import for security
-        echo "${{ inputs.bot_gpg_private_key }}" | gpg --batch --import 2>/dev/null
-        
-        # Get the GPG key ID without showing the full key details
-        GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep sec | awk '{print $2}' | cut -d'/' -f2)
-        
-        # Configure Git with GPG (suppress output)
-        git config --global user.signingkey "$GPG_KEY_ID" >/dev/null 2>&1
-        git config --global commit.gpgsign true >/dev/null 2>&1
-        git config --global user.name "Development Environment Bot" >/dev/null 2>&1
-        git config --global user.email "${{ inputs.bot_email }}" >/dev/null 2>&1
-        
-        # Configure GPG agent silently
-        mkdir -p ~/.gnupg
-        echo "allow-preset-passphrase" > ~/.gnupg/gpg-agent.conf
-        gpg-connect-agent RELOADAGENT /bye >/dev/null 2>&1
-        
-        # Trust the key ultimately without showing prompts
-        printf "5\ny\n" | gpg --batch --no-tty --command-fd 0 --expert --edit-key "$GPG_KEY_ID" trust >/dev/null 2>&1
-        
-        # Verify setup without showing sensitive data
-        if ! gpg --list-secret-keys --keyid-format LONG "${{ inputs.bot_email }}" >/dev/null 2>&1; then
-          echo "❌ Failed to set up GPG key"
-          exit 1
-        fi
-        echo "✅ GPG setup completed successfully"
+      working-directory: .github/scripts
+      run: cargo run --bin step_setup_gpg
       env:
-        GNUPGHOME: /home/runner/.gnupg
+        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
+        INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
+        RUST_LOG: info
 
     - name: Sign Commit
       shell: bash
-      run: |
-        # Create GPG config for non-interactive signing
-        cat > ~/.gnupg/gpg.conf << EOF
-        use-agent
-        pinentry-mode loopback
-        EOF
-        
-        cat > ~/.gnupg/gpg-agent.conf << EOF
-        allow-loopback-pinentry
-        allow-preset-passphrase
-        EOF
-        
-        gpgconf --reload gpg-agent
-        
-        # Add changes
-        git add .github/release_queue/
-        
-        # Set commit message
-        COMMIT_MSG="📦 Queue release for ${{ inputs.sha }}
-        
-        Queue Status:
-        - Position: ${{ steps.queue.outputs.position }}
-        - Items needed: ${{ steps.queue.outputs.remaining }} more
-        - Estimated time: ${{ steps.queue.outputs.estimated_time }}"
-        
-        # Create signed commit without the unsupported --batch flag
-        echo "${{ inputs.bot_gpg_passphrase }}" | GIT_ASKPASS=true git commit -S \
-            -m "$COMMIT_MSG" \
-            --allow-empty
+      working-directory: .github/scripts
+      run: cargo run --bin step_sign_commit
       env:
-        GNUPGHOME: /home/runner/.gnupg
-        GPG_TTY: /dev/null
-        GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        QUEUE_POSITION: ${{ steps.process_queue.outputs.position }}
+        QUEUE_REMAINING: ${{ steps.process_queue.outputs.remaining }}
+        QUEUE_ESTIMATED_TIME: ${{ steps.process_queue.outputs.estimated_time }}
+        RUST_LOG: info
 
-    - name: Push Changes
+    - name: Create PR
       shell: bash
-      run: |
-        git push origin ${{ steps.setup.outputs.branch }}
-
-    - id: create_pr
-      shell: bash
-      run: |
-        PR_TITLE="📦 Update Release Queue: Position ${{ steps.queue.outputs.position }}"
-        PR_BODY="## Release Queue Update
-        
-        🎯 Adding commit \`${{ inputs.sha }}\` to the release queue.
-        
-        ### Queue Status
-        - Current Position: ${{ steps.queue.outputs.position }}
-        - Items Needed: ${{ steps.queue.outputs.remaining }} more
-        - Estimated Release Time: ${{ steps.queue.outputs.estimated_time }}
-        
-        > This PR was automatically created by the release queue system.
-        > Once merged, this commit will be included in the next release batch."
-        
-        PR_NUMBER=$(gh pr create \
-          --title "$PR_TITLE" \
-          --body "$PR_BODY" \
-          --base "${{ inputs.branch }}" \
-          --head "${{ steps.setup.outputs.branch }}" \
-          --label "release-queue" \
-          --label "automated-pr" \
-          --json number -q .number)
-        
-        echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+      working-directory: .github/scripts
+      run: cargo run --bin step_create_pr
       env:
-        GH_TOKEN: ${{ inputs.github_token }}
-
-    - name: Request Review
-      if: steps.create_pr.outputs.pr_number
-      shell: bash
-      run: |
-        gh pr review ${{ steps.create_pr.outputs.pr_number }} --approve
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        QUEUE_BRANCH: ${{ steps.setup_queue.outputs.branch }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        INPUT_SHA: ${{ inputs.sha }}
+        QUEUE_POSITION: ${{ steps.process_queue.outputs.position }}
+        QUEUE_REMAINING: ${{ steps.process_queue.outputs.remaining }}
+        QUEUE_ESTIMATED_TIME: ${{ steps.process_queue.outputs.estimated_time }}
+        RUST_LOG: info
