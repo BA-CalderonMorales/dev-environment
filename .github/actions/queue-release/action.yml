@@ -90,7 +90,7 @@ runs:
     - name: Sign Commit
       shell: bash
       working-directory: .github/scripts
-      run: cargo run --bin step-sign-commit  # Fixed hyphen in name
+      run: cargo run --bin step_sign_commit  # Changed from step-sign-commit
       env:
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
