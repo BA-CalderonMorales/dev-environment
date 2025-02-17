@@ -210,6 +210,39 @@ impl GpgSetup {
         Ok(key_id.to_string())
     }
 
+    // Add a new method to trust the imported key
+    fn trust_gpg_key(&self, key_id: &str) -> Result<()> {
+        self.logger.info("🔐 Setting trust level for GPG key...");
+        
+        // Create trust command input
+        let trust_cmd = format!("5\ny\n");  // 5 = ultimate trust, y = confirm
+        
+        let mut child = Command::new("gpg")
+            .args(["--command-fd", "0", "--edit-key", key_id, "trust"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .context("Failed to spawn gpg trust command")?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(trust_cmd.as_bytes())
+                .context("Failed to write trust command")?;
+        }
+
+        let output = child.wait_with_output()
+            .context("Failed to complete trust command")?;
+
+        if !output.status.success() {
+            let error = String::from_utf8_lossy(&output.stderr);
+            self.logger.warn(&format!("Failed to trust key: {}", error));
+            anyhow::bail!("GPG trust command failed: {}", error);
+        }
+
+        self.logger.info("✅ GPG key trust level set successfully");
+        Ok(())
+    }
+
     // Configure git with GPG settings
     fn configure_git(&self, key_id: &str) -> Result<()> {
         self.logger.info("🔏 Configuring git signing...");
@@ -259,6 +292,10 @@ impl GpgSetup {
         
         let key_id = self.get_gpg_key_id()
             .context("Failed to get GPG key ID")?;
+        
+        // Add trust step before git configuration
+        self.trust_gpg_key(&key_id)
+            .context("Failed to trust GPG key")?;
         
         self.configure_git(&key_id)
             .context("Failed to configure git")?;
