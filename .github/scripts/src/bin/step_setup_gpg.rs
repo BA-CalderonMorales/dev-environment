@@ -191,7 +191,7 @@ impl GpgSetup {
         anyhow::bail!("All GPG key import attempts failed")
     }
 
-    // Get GPG key ID from imported key
+    // Modify get_gpg_key_id to include "0x" prefix
     fn get_gpg_key_id(&self) -> Result<String> {
         self.logger.info("🔏 Getting GPG key ID...");
         let key_id = String::from_utf8(
@@ -204,43 +204,50 @@ impl GpgSetup {
         let key_id = key_id.lines()
             .find(|line| line.starts_with("sec"))
             .and_then(|line| line.split('/').nth(1))
+            .map(|id| format!("0x{}", id))  // Add "0x" prefix
             .context("Could not find GPG key ID")?;
 
         self.logger.info(&format!("Found GPG key: {}", key_id));
         Ok(key_id.to_string())
     }
 
-    // Add a new method to trust the imported key
+    // Modify trust_gpg_key to use full key ID and retry logic
     fn trust_gpg_key(&self, key_id: &str) -> Result<()> {
         self.logger.info("🔐 Setting trust level for GPG key...");
         
         // Create trust command input
-        let trust_cmd = format!("5\ny\n");  // 5 = ultimate trust, y = confirm
+        let trust_cmd = "5\ny\n";  // 5 = ultimate trust, y = confirm
         
-        let mut child = Command::new("gpg")
-            .args(["--command-fd", "0", "--edit-key", key_id, "trust"])
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .context("Failed to spawn gpg trust command")?;
+        // Retry logic
+        for attempt in 1..=3 {
+            self.logger.info(&format!("Attempt {} to trust key...", attempt));
 
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(trust_cmd.as_bytes())
-                .context("Failed to write trust command")?;
+            let mut child = Command::new("gpg")
+                .args(["--command-fd", "0", "--default-key", key_id, "--batch", "--local-user", key_id, "--trust-model", "always", "--edit-key", key_id, "trust"])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to spawn gpg trust command")?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(trust_cmd.as_bytes())
+                    .context("Failed to write trust command")?;
+            }
+
+            let output = child.wait_with_output()
+                .context("Failed to complete trust command")?;
+
+            if output.status.success() {
+                self.logger.info("✅ GPG key trust level set successfully");
+                return Ok(());
+            } else {
+                let error = String::from_utf8_lossy(&output.stderr);
+                self.logger.warn(&format!("Failed to trust key (attempt {}): {}", attempt, error));
+            }
         }
 
-        let output = child.wait_with_output()
-            .context("Failed to complete trust command")?;
-
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            self.logger.warn(&format!("Failed to trust key: {}", error));
-            anyhow::bail!("GPG trust command failed: {}", error);
-        }
-
-        self.logger.info("✅ GPG key trust level set successfully");
-        Ok(())
+        anyhow::bail!("Failed to trust GPG key after multiple attempts");
     }
 
     // Configure git with GPG settings
