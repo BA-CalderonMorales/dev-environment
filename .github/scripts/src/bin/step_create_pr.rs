@@ -9,67 +9,68 @@ async fn main() -> Result<()> {
     init();
     let logger = get_logger(false);
 
-    logger.info("🔄 Creating pull request...");
+    logger.info("Creating pull request...");
 
-    // Get required inputs
-    let token = env::var("GITHUB_TOKEN").context("Missing GitHub token")?;
-    let branch = env::var("QUEUE_BRANCH").context("Missing queue branch")?;
-    let base_branch = env::var("INPUT_BRANCH").context("Missing base branch")?;
-    let position = env::var("QUEUE_POSITION").context("Missing queue position")?;
-    let remaining = env::var("QUEUE_REMAINING").context("Missing remaining items")?;
-    let est_time = env::var("QUEUE_ESTIMATED_TIME").context("Missing estimated time")?;
-    let sha = env::var("INPUT_SHA").context("Missing SHA input")?;
+    // Retrieve inputs
+    let github_token = env::var("GITHUB_TOKEN").context("Missing GITHUB_TOKEN")?;
+    let queue_branch = env::var("QUEUE_BRANCH").context("Missing QUEUE_BRANCH")?;
+    let input_branch = env::var("INPUT_BRANCH").context("Missing INPUT_BRANCH")?;
+    let sha = env::var("INPUT_SHA").context("Missing INPUT_SHA")?;
+    let position = env::var("QUEUE_POSITION").context("Missing QUEUE_POSITION")?;
+    let remaining = env::var("QUEUE_REMAINING").context("Missing QUEUE_REMAINING")?;
+    let est_time = env::var("QUEUE_ESTIMATED_TIME").context("Missing QUEUE_ESTIMATED_TIME")?;
 
+    // Initialize Octocrab
     let octocrab = Octocrab::builder()
-        .personal_token(token)
-        .build()
-        .context("Failed to create GitHub client")?;
+        .personal_token(github_token)
+        .build()?;
 
-    // Create PR
-    logger.info("📦 Creating pull request...");
-    let pr = octocrab
-        .pulls("BA-CalderonMorales", "dev-environment")
-        .create(format!("📦 Update Release Queue: Position {}", position), 
-                branch,
-                base_branch)
-        .body(format!(
-            "## Release Queue Update\n\n\
-            🎯 Adding commit `{}` to the release queue.\n\n\
-            ### Queue Status\n\
-            - Current Position: {}\n\
-            - Items Needed: {} more\n\
-            - Estimated Release Time: {}\n\n\
-            > This PR was automatically created by the release queue system.\n\
-            > Once merged, this commit will be included in the next release batch.",
-            sha, position, remaining, est_time
-        ))
+    // Extract owner and repo from GITHUB_REPOSITORY
+    let github_repo = env::var("GITHUB_REPOSITORY").context("Missing GITHUB_REPOSITORY")?;
+    let parts: Vec<&str> = github_repo.split('/').collect();
+    if parts.len() != 2 {
+        anyhow::bail!("Invalid GITHUB_REPOSITORY format");
+    }
+    let owner = parts[0];
+    let repo = parts[1];
+
+    // Create pull request
+    let title = format!("📦 Queue Update: Release {} (Position: {})", sha, position);
+    let body = format!(
+        "This PR updates the release queue for commit {}.\n\nQueue Status:\n- Position: {}\n- Items needed: {} more\n- Estimated time: {}",
+        sha, position, remaining, est_time
+    );
+
+    let new_pr = octocrab
+        .pulls(owner, repo)
+        .create(queue_branch.as_str(), input_branch.as_str(), title.as_str())
+        .body(body)
         .send()
-        .await
-        .context("Failed to create PR")?;
+        .await?;
 
-    logger.info(&format!("✨ Created PR #{}", pr.number));
-    println!("::set-output name=pr_number::{}", pr.number);
+    logger.info(&format!("✅ Created pull request: {}", new_pr.html_url.unwrap()));
+
+    // Set output for the PR number
+    println!("::set-output name=pr_number::{}", new_pr.number);
 
     // Add labels
     logger.info("🏷️ Adding labels...");
     octocrab
-        .issues("BA-CalderonMorales", "dev-environment")
+        .issues(owner, repo)
         .add_labels(
-            pr.number,
+            new_pr.number,
             &["release-queue".to_string(), "automated-pr".to_string()],
         )
         .await
         .context("Failed to add labels")?;
 
     // Auto-approve
-    
     logger.info("✅ Auto-approving PR...");
-    
     let _: Value = octocrab.post(
         format!("/repos/{}/{}/pulls/{}/reviews",
-            "BA-CalderonMorales",
-            "dev-environment",
-            pr.number),
+            owner,
+            repo,
+            new_pr.number),
         Some(&serde_json::json!({
             "event": "APPROVE",
             "body": "Automatically approved by release queue system"

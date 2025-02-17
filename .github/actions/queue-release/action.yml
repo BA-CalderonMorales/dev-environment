@@ -8,15 +8,6 @@ inputs:
     required: true
   branch:
     required: true
-  bot_gpg_private_key:
-    required: true
-    description: 'Bot GPG private key for signing'
-  bot_gpg_passphrase:
-    required: true
-    description: 'Bot GPG passphrase'
-  bot_email:
-    required: true
-    description: 'Bot email for git config'
 
 outputs:
   queue_position:
@@ -75,28 +66,6 @@ runs:
       env:
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_BRANCH: ${{ inputs.branch }}
-        RUST_LOG: info
-
-    - name: Setup GPG
-      shell: bash
-      working-directory: .github/scripts
-      run: cargo run --bin step-setup-gpg  # Fixed hyphen in name
-      env:
-        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
-        INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
-        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
-        RUST_LOG: info
-
-    - name: Sign Commit
-      shell: bash
-      working-directory: .github/scripts
-      run: cargo run --bin step_sign_commit  # Changed from step-sign-commit
-      env:
-        INPUT_SHA: ${{ inputs.sha }}
-        INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
-        QUEUE_POSITION: ${{ steps.process_queue.outputs.position }}
-        QUEUE_REMAINING: ${{ steps.process_queue.outputs.remaining }}
-        QUEUE_ESTIMATED_TIME: ${{ steps.process_queue.outputs.estimated_time }}
         RUST_LOG: info
 
     - name: Create PR
