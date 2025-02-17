@@ -39,10 +39,6 @@ name = "step-package-assets"
 path = "src/bin/step_package_assets.rs"
 
 [[bin]]
-name = "step-setup-gpg"
-path = "src/bin/step_setup_gpg.rs"
-
-[[bin]]
 name = "step-configure-git"
 path = "src/bin/step_configure_git.rs"
 
