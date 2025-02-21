@@ -47,7 +47,7 @@ runs:
         cargo run --bin step-debug-inputs
       env:
         INPUT_SHA: ${{ inputs.sha }}
-        INPUT_BRANCH: ${{ inputs.inputs.branch }} # Corrected input
+        INPUT_BRANCH: ${{ inputs.branch }} # Corrected input
         GITHUB_REF: ${{ github.ref }}
         GITHUB_SHA: ${{ github.sha }}
         RUST_LOG: info
@@ -65,7 +65,7 @@ runs:
       run: cargo run --bin step_process_queue
       env:
         INPUT_SHA: ${{ inputs.sha }}
-        INPUT_BRANCH: ${{ inputs.inputs.branch }} # Corrected input
+        INPUT_BRANCH: ${{ inputs.branch }} # Corrected input
         RUST_LOG: info
 
     - name: Run Automated Tests
@@ -83,7 +83,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         QUEUE_BRANCH: ${{ steps.setup_queue.outputs.branch }}
-        INPUT_BRANCH: ${{ inputs.inputs.branch }} # Corrected input
+        INPUT_BRANCH: ${{ inputs.branch }} # Corrected input
         INPUT_SHA: ${{ inputs.sha }}
         QUEUE_POSITION: ${{ steps.process_queue.outputs.position }}
         QUEUE_REMAINING: ${{ steps.process_queue.outputs.remaining }}
