@@ -6,20 +6,22 @@
 [![Version](https://img.shields.io/badge/Version-0.0.1-blue.svg)](https://shields.io/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](docs/CONTRIBUTING.md)
 
-> ⚠️ **EXPERIMENTAL STATUS - USE AT YOUR OWN RISK** ⚠️
+⚠️ **EXPERIMENTAL STATUS - USE AT YOUR OWN RISK** ⚠️
 
 </div>
 
->
->
 > This project is in very early development (v0.0.1). While we encourage experimentation and feedback, please note:
 > - No production stability guarantees
 > - Breaking changes may occur without warning
 > - Features may be incomplete or change significantly
 > - Documentation is actively evolving
 > 
-> **By using this software, you acknowledge these risks and assume full responsibility.**
 
+<div align="center">
+  
+**By using this software, you acknowledge these risks and assume full responsibility.**
+
+</div>
 
 ## What is This?
 
