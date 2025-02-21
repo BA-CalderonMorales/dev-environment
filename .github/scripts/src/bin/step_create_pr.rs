@@ -63,9 +63,42 @@ impl PrCreator {
             .context("Failed to build Octocrab instance")
     }
 
+    // Add method to validate branch names
+    fn validate_branches(&self) -> Result<()> {
+        self.logger.info("🔍 Validating branch names...");
+        self.logger.info(&format!("Queue Branch: {}", self.queue_branch));
+        self.logger.info(&format!("Input Branch: {}", self.input_branch));
+
+        if self.queue_branch.is_empty() {
+            anyhow::bail!("Queue branch name is empty");
+        }
+
+        if self.input_branch.is_empty() {
+            anyhow::bail!("Input branch name is empty");
+        }
+
+        // Remove any 'refs/heads/' prefix from input branch
+        if self.input_branch.starts_with("refs/heads/") {
+            self.logger.info("Removing 'refs/heads/' prefix from input branch");
+            let cleaned_branch = self.input_branch.replace("refs/heads/", "");
+            self.logger.info(&format!("Cleaned Input Branch: {}", cleaned_branch));
+        }
+
+        Ok(())
+    }
+
     // Create pull request
     async fn create_pull_request(&self, octocrab: &Octocrab) -> Result<octocrab::models::pulls::PullRequest> {
         self.logger.info("Creating pull request...");
+
+        // Validate branches first
+        self.validate_branches()?;
+
+        // Clean branch names (remove refs/heads/ if present)
+        let base_branch = self.input_branch.replace("refs/heads/", "");
+        let head_branch = self.queue_branch.replace("refs/heads/", "");
+
+        self.logger.info(&format!("Creating PR from '{}' into '{}'", head_branch, base_branch));
 
         // Prepare pull request details
         let title = format!("📦 Queue Update: Release {} (Position: {})", self.sha, self.position);
@@ -77,7 +110,7 @@ impl PrCreator {
         // Create the pull request
         octocrab
             .pulls(&self.owner, &self.repo)
-            .create(self.queue_branch.as_str(), self.input_branch.as_str(), title.as_str())
+            .create(&head_branch, &base_branch, title.as_str())
             .body(body)
             .send()
             .await
