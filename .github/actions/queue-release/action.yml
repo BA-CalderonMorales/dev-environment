@@ -3,12 +3,14 @@ description: 'Adds a commit to the release queue via PR'
 
 inputs:
   github_token:
+    description: 'GitHub token used for authentication'
     required: true
   sha:
+    description: 'Commit SHA to be queued for release'
     required: true
   branch:
+    description: 'Target branch for the release (beta or main)'
     required: true
-
 outputs:
   queue_position:
     description: 'Position in queue'
@@ -80,17 +82,18 @@ runs:
       shell: bash
       working-directory: .github/scripts
       run: |
-        # Extract branch name without refs/heads/ prefix
-        INPUT_BRANCH_NAME=$(echo "${{ inputs.branch }}" | sed 's/refs\/heads\///')
-        echo "Using input branch: $INPUT_BRANCH_NAME"
+        # Extract branch name without refs/heads/ prefix and store in a variable
+        BRANCH_NAME="${{ inputs.branch }}"
+        CLEAN_BRANCH="${BRANCH_NAME#refs/heads/}"  # Remove refs/heads/ if present
+        echo "Using branch: $CLEAN_BRANCH"
         
+        # Run the PR creation with the cleaned branch name
+        RUST_LOG=info \
+        GITHUB_TOKEN="${{ inputs.github_token }}" \
+        QUEUE_BRANCH="${{ steps.setup_queue.outputs.branch }}" \
+        INPUT_BRANCH="$CLEAN_BRANCH" \
+        INPUT_SHA="${{ inputs.sha }}" \
+        QUEUE_POSITION="${{ steps.process_queue.outputs.position }}" \
+        QUEUE_REMAINING="${{ steps.process_queue.outputs.remaining }}" \
+        QUEUE_ESTIMATED_TIME="${{ steps.process_queue.outputs.estimated_time }}" \
         cargo run --bin step_create_pr
-      env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-        QUEUE_BRANCH: ${{ steps.setup_queue.outputs.branch }}
-        INPUT_BRANCH: "$INPUT_BRANCH_NAME"  # Use cleaned branch name
-        INPUT_SHA: ${{ inputs.sha }}
-        QUEUE_POSITION: ${{ steps.process_queue.outputs.position }}
-        QUEUE_REMAINING: ${{ steps.process_queue.outputs.remaining }}
-        QUEUE_ESTIMATED_TIME: ${{ steps.process_queue.outputs.estimated_time }}
-        RUST_LOG: info
