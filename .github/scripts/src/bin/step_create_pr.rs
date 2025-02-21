@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use github_workflow_scripts::{get_logger, init};
 use octocrab::Octocrab;
-use serde_json::Value;
 use std::env;
 
 #[tokio::main]
@@ -63,21 +62,6 @@ async fn main() -> Result<()> {
         )
         .await
         .context("Failed to add labels")?;
-
-    // Auto-approve
-    logger.info("✅ Auto-approving PR...");
-    let _: Value = octocrab.post(
-        format!("/repos/{}/{}/pulls/{}/reviews",
-            owner,
-            repo,
-            new_pr.number),
-        Some(&serde_json::json!({
-            "event": "APPROVE",
-            "body": "Automatically approved by release queue system"
-        })),
-    )
-    .await
-    .context("Failed to approve PR")?;
 
     logger.info("🎉 Pull request workflow completed successfully!");
     Ok(())
