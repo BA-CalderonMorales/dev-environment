@@ -71,7 +71,7 @@ runs:
     - name: Run Automated Tests
       shell: bash
       working-directory: .github/scripts
-      run: |e
+      run: |
         # Add your automated tests here
         # For example: cargo test
         echo "Running automated tests..."
@@ -79,7 +79,7 @@ runs:
     - name: Create PR
       shell: bash
       working-directory: .github/scripts
-      run: cargo run --bin step_create_pr  # Corrected binary name
+      run: cargo run --bin step_create_pr
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         QUEUE_BRANCH: ${{ steps.setup_queue.outputs.branch }}
