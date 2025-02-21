@@ -68,10 +68,18 @@ runs:
         INPUT_BRANCH: ${{ inputs.branch }}
         RUST_LOG: info
 
+    - name: Run Automated Tests
+      shell: bash
+      working-directory: .github/scripts
+      run: |e
+        # Add your automated tests here
+        # For example: cargo test
+        echo "Running automated tests..."
+
     - name: Create PR
       shell: bash
       working-directory: .github/scripts
-      run: cargo run --bin step-create-pr  # Fixed hyphen in name
+      run: cargo run --bin step_create_pr  # Corrected binary name
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         QUEUE_BRANCH: ${{ steps.setup_queue.outputs.branch }}
