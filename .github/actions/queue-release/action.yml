@@ -3,10 +3,13 @@ description: 'Adds a commit to the release queue via PR'
 
 inputs:
   github_token:
+    description: 'GitHub token used for authentication'
     required: true
   sha:
+    description: 'Commit SHA to be queued for release'
     required: true
   branch:
+    description: 'Target branch for the release (beta or main)'
     required: true
 outputs:
   queue_position:
