@@ -98,7 +98,10 @@ impl PrCreator {
         let base_branch = self.input_branch.replace("refs/heads/", "");
         let head_branch = self.queue_branch.replace("refs/heads/", "");
 
-        self.logger.info(&format!("Creating PR from '{}' into '{}'", head_branch, base_branch));
+        // Swap base and head for correct PR creation:
+        // base = target branch (beta)
+        // head = source branch (queue-update-xxx)
+        self.logger.info(&format!("Creating PR: head '{}' into base '{}'", head_branch, base_branch));
 
         // Prepare pull request details
         let title = format!("📦 Queue Update: Release {} (Position: {})", self.sha, self.position);
@@ -107,10 +110,10 @@ impl PrCreator {
             self.sha, self.position, self.remaining, self.est_time
         );
 
-        // Create the pull request
+        // Create the pull request with correct branch order
         octocrab
             .pulls(&self.owner, &self.repo)
-            .create(&head_branch, &base_branch, title.as_str())
+            .create(&base_branch, &head_branch, title.as_str())  // Swapped order
             .body(body)
             .send()
             .await
