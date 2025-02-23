@@ -128,6 +128,69 @@ impl PrCreator {
             }
     }
 
+    // Add method to stage and commit changes
+    fn commit_queue_changes(&self) -> Result<()> {
+        self.logger.info("📝 Committing queue changes...");
+
+        // Create queue directory if it doesn't exist
+        std::fs::create_dir_all(".github/release_queue")
+            .context("Failed to create queue directory")?;
+
+        // Configure git
+        let git_configs = [
+            ("user.name", "GitHub Actions"),
+            ("user.email", "actions@github.com"),
+        ];
+
+        for (key, value) in git_configs {
+            let output = std::process::Command::new("git")
+                .args(["config", key, value])
+                .output()
+                .context("Failed to configure git")?;
+
+            if !output.status.success() {
+                anyhow::bail!("Failed to set git config {}: {}", key, 
+                    String::from_utf8_lossy(&output.stderr));
+            }
+        }
+
+        // Stage changes
+        let output = std::process::Command::new("git")
+            .args(["add", ".github/release_queue/"])
+            .output()
+            .context("Failed to stage changes")?;
+
+        if !output.status.success() {
+            anyhow::bail!("Failed to stage changes: {}", 
+                String::from_utf8_lossy(&output.stderr));
+        }
+
+        // Commit changes
+        let commit_msg = format!("📦 Queue update for {}", self.sha);
+        let output = std::process::Command::new("git")
+            .args(["commit", "-m", &commit_msg])
+            .output()
+            .context("Failed to commit changes")?;
+
+        if !output.status.success() {
+            anyhow::bail!("Failed to commit changes: {}", 
+                String::from_utf8_lossy(&output.stderr));
+        }
+
+        // Push changes
+        let output = std::process::Command::new("git")
+            .args(["push", "origin", &self.queue_branch])
+            .output()
+            .context("Failed to push changes")?;
+
+        if !output.status.success() {
+            anyhow::bail!("Failed to push changes: {}", 
+                String::from_utf8_lossy(&output.stderr));
+        }
+
+        Ok(())
+    }
+
     // Create pull request
     async fn create_pull_request(&self, octocrab: &Octocrab) -> Result<octocrab::models::pulls::PullRequest> {
         self.logger.info("Creating pull request...");
@@ -179,19 +242,20 @@ impl PrCreator {
             .await
             .context("Failed to add labels")?;
 
-        Ok(()) // Return Ok(()) explicitly
+        Ok(())
     }
 
     // Run the complete process
     async fn run(&self) -> Result<()> {
         let octocrab = self.create_octocrab()?;
+        
+        // Commit and push changes before creating PR
+        self.commit_queue_changes()?;
+        
+        // Create PR and add labels
         let new_pr = self.create_pull_request(&octocrab).await?;
-
         self.logger.info(&format!("✅ Created pull request: {}", new_pr.html_url.unwrap()));
-
-        // Set output for the PR number
         println!("::set-output name=pr_number::{}", new_pr.number);
-
         self.add_labels_to_pr(&octocrab, new_pr.number).await?;
 
         self.logger.info("🎉 Pull request workflow completed successfully!");

@@ -31,25 +31,13 @@ runs:
         toolchain: stable
         override: true
 
-    - name: Verify Scripts Directory
-      shell: bash
-      run: |
-        SCRIPTS_DIR="${{ github.workspace }}/.github/scripts"
-        if [ ! -d "$SCRIPTS_DIR" ]; then
-          echo "❌ Scripts directory not found at: $SCRIPTS_DIR"
-          exit 1
-        fi
-        echo "📁 Found scripts directory at: $SCRIPTS_DIR"
-        ls -la "$SCRIPTS_DIR"
-
     - name: Debug Inputs
       shell: bash
       working-directory: .github/scripts
-      run: |
-        cargo run --bin step-debug-inputs
+      run: cargo run --bin step-debug-inputs
       env:
         INPUT_SHA: ${{ inputs.sha }}
-        INPUT_BRANCH: ${{ inputs.branch }} # Corrected input
+        INPUT_BRANCH: ${{ inputs.branch }}
         GITHUB_REF: ${{ github.ref }}
         GITHUB_SHA: ${{ github.sha }}
         RUST_LOG: info
@@ -67,47 +55,17 @@ runs:
       run: cargo run --bin step_process_queue
       env:
         INPUT_SHA: ${{ inputs.sha }}
-        INPUT_BRANCH: ${{ inputs.branch }} # Corrected input
+        INPUT_BRANCH: ${{ inputs.branch }}
         RUST_LOG: info
 
-    - name: Run Automated Tests
+    - id: create_pr
       shell: bash
       working-directory: .github/scripts
       run: |
-        # Add your automated tests here
-        # For example: cargo test
-        echo "Running automated tests..."
-
-    - name: Push Queue Branch
-      shell: bash
-      run: |
-        # Configure git
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        
-        # Add and commit changes
-        git add .github/release_queue/
-        git commit -m "📦 Queue update for ${{ inputs.sha }}"
-        
-        # Push the queue branch
-        git push origin "${{ steps.setup_queue.outputs.branch }}"
-      env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-
-    - name: Create PR
-      shell: bash
-      working-directory: .github/scripts
-      run: |
-        # Extract branch name without refs/heads/ prefix and store in a variable
-        BRANCH_NAME="${{ inputs.branch }}"
-        CLEAN_BRANCH="${BRANCH_NAME#refs/heads/}"  # Remove refs/heads/ if present
-        echo "Using branch: $CLEAN_BRANCH"
-        
-        # Run the PR creation with the cleaned branch name
         RUST_LOG=info \
         GITHUB_TOKEN="${{ inputs.github_token }}" \
         QUEUE_BRANCH="${{ steps.setup_queue.outputs.branch }}" \
-        INPUT_BRANCH="$CLEAN_BRANCH" \
+        INPUT_BRANCH="${{ inputs.branch }}" \
         INPUT_SHA="${{ inputs.sha }}" \
         QUEUE_POSITION="${{ steps.process_queue.outputs.position }}" \
         QUEUE_REMAINING="${{ steps.process_queue.outputs.remaining }}" \
