@@ -87,6 +87,25 @@ impl PrCreator {
         Ok(())
     }
 
+    // Add method to check branch protection
+    async fn check_branch_protection(&self, octocrab: &Octocrab, branch: &str) -> Result<bool> {
+        self.logger.info(&format!("🛡️ Checking protection for branch: {}", branch));
+
+        match octocrab
+            .repos(&self.owner, &self.repo)
+            .get_branch_protection(branch)
+            .await {
+                Ok(_) => {
+                    self.logger.info(&format!("✅ Branch '{}' is protected", branch));
+                    Ok(true)
+                },
+                Err(e) => {
+                    self.logger.warn(&format!("Branch protection check failed: {}", e));
+                    Ok(false)
+                }
+            }
+    }
+
     // Create pull request
     async fn create_pull_request(&self, octocrab: &Octocrab) -> Result<octocrab::models::pulls::PullRequest> {
         self.logger.info("Creating pull request...");
@@ -98,9 +117,15 @@ impl PrCreator {
         let base_branch = self.input_branch.replace("refs/heads/", "");
         let head_branch = self.queue_branch.replace("refs/heads/", "");
 
-        // Swap base and head for correct PR creation:
-        // base = target branch (beta)
-        // head = source branch (queue-update-xxx)
+        // Check branch protection
+        let is_protected = self.check_branch_protection(octocrab, &base_branch).await?;
+        
+        if is_protected {
+            self.logger.info("Target branch is protected, proceeding with PR creation");
+        } else {
+            self.logger.warn("Target branch is not protected, but proceeding anyway");
+        }
+
         self.logger.info(&format!("Creating PR: head '{}' into base '{}'", head_branch, base_branch));
 
         // Prepare pull request details

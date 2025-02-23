@@ -78,6 +78,22 @@ runs:
         # For example: cargo test
         echo "Running automated tests..."
 
+    - name: Push Queue Branch
+      shell: bash
+      run: |
+        # Configure git
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        
+        # Add and commit changes
+        git add .github/release_queue/
+        git commit -m "📦 Queue update for ${{ inputs.sha }}"
+        
+        # Push the queue branch
+        git push origin "${{ steps.setup_queue.outputs.branch }}"
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
     - name: Create PR
       shell: bash
       working-directory: .github/scripts
