@@ -198,7 +198,7 @@ impl PrCreator {
         // Validate branches first
         self.validate_branches()?;
 
-        // Clean branch names and qualify them with owner
+        // Clean branch names - head needs owner, base doesn't
         let base_branch = self.input_branch.replace("refs/heads/", "");
         let head_branch = format!("{}:{}", self.owner, self.queue_branch.replace("refs/heads/", ""));
 
@@ -213,18 +213,16 @@ impl PrCreator {
             self.logger.warn("Target branch is not protected, but proceeding anyway");
         }
 
-        // Prepare pull request details
-        let title = format!("📦 Queue Update: Release {} (Position: {})", self.sha, self.position);
-        let body = format!(
-            "This PR updates the release queue for commit {}.\n\nQueue Status:\n- Position: {}\n- Items needed: {} more\n- Estimated time: {}",
-            self.sha, self.position, self.remaining, self.est_time
-        );
-
-        // Create the pull request with qualified head branch
+        // Create the pull request with correct branch formats
+        // - base should be just the branch name
+        // - head should be owner:branch
         octocrab
             .pulls(&self.owner, &self.repo)
-            .create(&base_branch, &head_branch, title.as_str())
-            .body(body)
+            .create(base_branch, &head_branch, format!("📦 Queue Update: Release {} (Position: {})", self.sha, self.position))
+            .body(format!(
+                "This PR updates the release queue for commit {}.\n\nQueue Status:\n- Position: {}\n- Items needed: {} more\n- Estimated time: {}",
+                self.sha, self.position, self.remaining, self.est_time
+            ))
             .send()
             .await
             .context("Failed to create pull request")
