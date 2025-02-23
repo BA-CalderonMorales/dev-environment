@@ -198,9 +198,11 @@ impl PrCreator {
         // Validate branches first
         self.validate_branches()?;
 
-        // Clean branch names (remove refs/heads/ if present)
+        // Clean branch names and qualify them with owner
         let base_branch = self.input_branch.replace("refs/heads/", "");
-        let head_branch = self.queue_branch.replace("refs/heads/", "");
+        let head_branch = format!("{}:{}", self.owner, self.queue_branch.replace("refs/heads/", ""));
+
+        self.logger.info(&format!("Creating PR: head '{}' into base '{}'", head_branch, base_branch));
 
         // Check branch protection
         let is_protected = self.check_branch_protection(octocrab, &base_branch).await?;
@@ -211,8 +213,6 @@ impl PrCreator {
             self.logger.warn("Target branch is not protected, but proceeding anyway");
         }
 
-        self.logger.info(&format!("Creating PR: head '{}' into base '{}'", head_branch, base_branch));
-
         // Prepare pull request details
         let title = format!("📦 Queue Update: Release {} (Position: {})", self.sha, self.position);
         let body = format!(
@@ -220,10 +220,10 @@ impl PrCreator {
             self.sha, self.position, self.remaining, self.est_time
         );
 
-        // Create the pull request with correct branch order
+        // Create the pull request with qualified head branch
         octocrab
             .pulls(&self.owner, &self.repo)
-            .create(&base_branch, &head_branch, title.as_str())  // Swapped order
+            .create(&base_branch, &head_branch, title.as_str())
             .body(body)
             .send()
             .await
