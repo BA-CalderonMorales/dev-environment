@@ -191,7 +191,7 @@ impl PrCreator {
         Ok(())
     }
 
-    // Create pull request
+    // Create pull request with enhanced error handling and logging
     async fn create_pull_request(&self, octocrab: &Octocrab) -> Result<octocrab::models::pulls::PullRequest> {
         self.logger.info("Creating pull request...");
 
@@ -202,30 +202,91 @@ impl PrCreator {
         let base_branch = self.input_branch.replace("refs/heads/", "");
         let head_branch = format!("{}:{}", self.owner, self.queue_branch.replace("refs/heads/", ""));
 
-        self.logger.info(&format!("Creating PR: head '{}' into base '{}'", head_branch, base_branch));
+        // Enhanced logging for branch formatting
+        self.logger.info("🔄 PR Creation Parameters:");
+        self.logger.info(&format!("- Repository: {}/{}", self.owner, self.repo));
+        self.logger.info(&format!("- Base Branch (raw): {}", self.input_branch));
+        self.logger.info(&format!("- Base Branch (cleaned): {}", base_branch));
+        self.logger.info(&format!("- Head Branch (raw): {}", self.queue_branch));
+        self.logger.info(&format!("- Head Branch (formatted): {}", head_branch));
 
-        // Check branch protection
-        let is_protected = self.check_branch_protection(octocrab, &base_branch).await?;
-        
-        if is_protected {
-            self.logger.info("Target branch is protected, proceeding with PR creation");
-        } else {
-            self.logger.warn("Target branch is not protected, but proceeding anyway");
-        }
-
-        // Create the pull request with correct branch formats
-        // - base should be just the branch name
-        // - head should be owner:branch
-        octocrab
-            .pulls(&self.owner, &self.repo)
-            .create(base_branch, &head_branch, format!("📦 Queue Update: Release {} (Position: {})", self.sha, self.position))
-            .body(format!(
-                "This PR updates the release queue for commit {}.\n\nQueue Status:\n- Position: {}\n- Items needed: {} more\n- Estimated time: {}",
-                self.sha, self.position, self.remaining, self.est_time
-            ))
+        // Verify branches exist
+        self.logger.info("🔍 Verifying branches exist...");
+        let branches = octocrab
+            .repos(&self.owner, &self.repo)
+            .list_branches()
             .send()
             .await
-            .context("Failed to create pull request")
+            .context("Failed to list branches")?;
+
+        // Log all available branches
+        self.logger.info("📋 Available branches:");
+        for branch in &branches.items {
+            self.logger.info(&format!("- {} (protected: {})", branch.name, branch.protected));
+        }
+
+        // Verify both branches exist
+        let base_exists = branches.items.iter().any(|b| b.name == base_branch);
+        let head_exists = branches.items.iter().any(|b| b.name == self.queue_branch);
+
+        if !base_exists {
+            self.logger.error(&format!("❌ Base branch '{}' not found!", base_branch));
+            anyhow::bail!("Base branch not found");
+        }
+        if !head_exists {
+            self.logger.error(&format!("❌ Head branch '{}' not found!", self.queue_branch));
+            anyhow::bail!("Head branch not found");
+        }
+
+        // Check branch protection with detailed logging
+        let is_protected = self.check_branch_protection(octocrab, &base_branch).await?;
+        self.logger.info(&format!("🛡️ Base branch protection: {}", is_protected));
+
+        // Prepare PR details with logging
+        let title = format!("📦 Queue Update: Release {} (Position: {})", self.sha, self.position);
+        let body = format!(
+            "This PR updates the release queue for commit {}.\n\nQueue Status:\n- Position: {}\n- Items needed: {} more\n- Estimated time: {}",
+            self.sha, self.position, self.remaining, self.est_time
+        );
+
+        self.logger.info("📝 Creating PR with details:");
+        self.logger.info(&format!("- Title: {}", title));
+        self.logger.info(&format!("- Base: {}", base_branch));
+        self.logger.info(&format!("- Head: {}", head_branch));
+
+        // Attempt PR creation with detailed error handling
+        match octocrab
+            .pulls(&self.owner, &self.repo)
+            .create(&base_branch, &head_branch, title)
+            .body(body)
+            .send()
+            .await {
+                Ok(pr) => {
+                    self.logger.info(&format!("✅ PR created successfully: #{}", pr.number));
+                    Ok(pr)
+                },
+                Err(e) => {
+                    self.logger.error(&format!("❌ PR creation failed with error: {}", e));
+                    self.logger.error("🔍 Debugging information:");
+                    self.logger.error(&format!("- API URL: {}/repos/{}/{}/pulls", 
+                        octocrab.base_url, self.owner, self.repo));
+                    self.logger.error("- Request payload:");
+                    self.logger.error(&format!("  base: {}", base_branch));
+                    self.logger.error(&format!("  head: {}", head_branch));
+                    
+                    // Try alternate format if first attempt failed
+                    self.logger.info("🔄 Attempting alternate branch format...");
+                    let alt_head = self.queue_branch.replace("refs/heads/", "");
+                    
+                    octocrab
+                        .pulls(&self.owner, &self.repo)
+                        .create(&base_branch, &alt_head, title)
+                        .body(body)
+                        .send()
+                        .await
+                        .context("Failed to create PR with alternate format")
+                }
+            }
     }
 
     // Add labels to pull request
