@@ -191,102 +191,153 @@ impl PrCreator {
         Ok(())
     }
 
-    // Create pull request with enhanced error handling and logging
+    // Add method to test GitHub token permissions
+    async fn verify_token_permissions(&self, octocrab: &Octocrab) -> Result<()> {
+        self.logger.info("🔑 Verifying GitHub token permissions...");
+        
+        // Get current user info to check token validity
+        match octocrab.current().user().await {
+            Ok(user) => {
+                self.logger.info(&format!("✅ Authenticated as: {}", user.login));
+                Ok(())
+            },
+            Err(e) => {
+                self.logger.warn(&format!("❌ Token verification failed: {}", e));
+                anyhow::bail!("GitHub token has insufficient permissions")
+            }
+        }
+    }
+
+    // Create pull request with robust error handling and diagnostics
     async fn create_pull_request(&self, octocrab: &Octocrab) -> Result<octocrab::models::pulls::PullRequest> {
-        self.logger.info("Creating pull request...");
-
-        // Validate branches first
+        self.logger.info("🚀 Starting pull request creation process...");
+        
+        // Step 1: Verify token has sufficient permissions
+        self.verify_token_permissions(octocrab).await?;
+        
+        // Step 2: Validate branch names and format them appropriately
         self.validate_branches()?;
-
-        // Clean branch names - head needs owner, base doesn't
+        
+        // Clean branch names with various formatting options to try
         let base_branch = self.input_branch.replace("refs/heads/", "");
-        let head_branch = format!("{}:{}", self.owner, self.queue_branch.replace("refs/heads/", ""));
-
-        // Enhanced logging for branch formatting
-        self.logger.info("🔄 PR Creation Parameters:");
-        self.logger.info(&format!("- Repository: {}/{}", self.owner, self.repo));
-        self.logger.info(&format!("- Base Branch (raw): {}", self.input_branch));
-        self.logger.info(&format!("- Base Branch (cleaned): {}", base_branch));
-        self.logger.info(&format!("- Head Branch (raw): {}", self.queue_branch));
-        self.logger.info(&format!("- Head Branch (formatted): {}", head_branch));
-
-        // Verify branches exist
-        self.logger.info("🔍 Verifying branches exist...");
+        let head_branch = self.queue_branch.replace("refs/heads/", "");
+        
+        // Step 3: Check branch protection status to ensure we're targeting protected branches properly
+        self.logger.info("🛡️ Validating branch protection status...");
+        let is_protected = self.check_branch_protection(octocrab, &base_branch).await?;
+        self.logger.info(&format!("Base branch '{}' protection status: {}", base_branch, if is_protected { "protected" } else { "not protected" }));
+        
+        // Generate all possible branch format combinations for robust testing
+        let branch_formats = [
+            // Strategy 1: Standard format (most common)
+            (base_branch.clone(), head_branch.clone()),
+            
+            // Strategy 2: With owner qualification on head only
+            (base_branch.clone(), format!("{}:{}", self.owner, head_branch)),
+            
+            // Strategy 3: With refs/heads/ prefix (sometimes needed)
+            (format!("refs/heads/{}", base_branch), format!("refs/heads/{}", head_branch)),
+            
+            // Strategy 4: Fully qualified branch names
+            (format!("refs/heads/{}", base_branch), format!("{}:refs/heads/{}", self.owner, head_branch)),
+        ];
+        
+        // Step 4: Log detailed diagnostics for debugging
+        self.logger.info("📊 Diagnostic Information:");
+        self.logger.info(&format!("- Repository owner: {}", self.owner));
+        self.logger.info(&format!("- Repository name: {}", self.repo));
+        self.logger.info(&format!("- Raw base branch: {}", self.input_branch));
+        self.logger.info(&format!("- Raw head branch: {}", self.queue_branch));
+        
+        // Log all available branches for debugging
         let branches = octocrab
             .repos(&self.owner, &self.repo)
             .list_branches()
             .send()
-            .await
-            .context("Failed to list branches")?;
-
-        // Log all available branches
-        self.logger.info("📋 Available branches:");
+            .await?;
+            
+        self.logger.info("📋 Available repository branches:");
         for branch in &branches.items {
             self.logger.info(&format!("- {} (protected: {})", branch.name, branch.protected));
         }
-
-        // Verify both branches exist
-        let base_exists = branches.items.iter().any(|b| b.name == base_branch);
-        let head_exists = branches.items.iter().any(|b| b.name == self.queue_branch);
-
-        if !base_exists {
-            self.logger.error(&format!("❌ Base branch '{}' not found!", base_branch));
-            anyhow::bail!("Base branch not found");
-        }
-        if !head_exists {
-            self.logger.error(&format!("❌ Head branch '{}' not found!", self.queue_branch));
-            anyhow::bail!("Head branch not found");
-        }
-
-        // Check branch protection with detailed logging
-        let is_protected = self.check_branch_protection(octocrab, &base_branch).await?;
-        self.logger.info(&format!("🛡️ Base branch protection: {}", is_protected));
-
-        // Prepare PR details with logging
+        
+        // Step 4: Try multiple strategies until one works
         let title = format!("📦 Queue Update: Release {} (Position: {})", self.sha, self.position);
         let body = format!(
             "This PR updates the release queue for commit {}.\n\nQueue Status:\n- Position: {}\n- Items needed: {} more\n- Estimated time: {}",
             self.sha, self.position, self.remaining, self.est_time
         );
-
-        self.logger.info("📝 Creating PR with details:");
-        self.logger.info(&format!("- Title: {}", title));
-        self.logger.info(&format!("- Base: {}", base_branch));
-        self.logger.info(&format!("- Head: {}", head_branch));
-
-        // Attempt PR creation with detailed error handling
-        match octocrab
-            .pulls(&self.owner, &self.repo)
-            .create(&base_branch, &head_branch, title)
-            .body(body)
-            .send()
-            .await {
-                Ok(pr) => {
-                    self.logger.info(&format!("✅ PR created successfully: #{}", pr.number));
-                    Ok(pr)
-                },
-                Err(e) => {
-                    self.logger.error(&format!("❌ PR creation failed with error: {}", e));
-                    self.logger.error("🔍 Debugging information:");
-                    self.logger.error(&format!("- API URL: {}/repos/{}/{}/pulls", 
-                        octocrab.base_url, self.owner, self.repo));
-                    self.logger.error("- Request payload:");
-                    self.logger.error(&format!("  base: {}", base_branch));
-                    self.logger.error(&format!("  head: {}", head_branch));
-                    
-                    // Try alternate format if first attempt failed
-                    self.logger.info("🔄 Attempting alternate branch format...");
-                    let alt_head = self.queue_branch.replace("refs/heads/", "");
-                    
-                    octocrab
-                        .pulls(&self.owner, &self.repo)
-                        .create(&base_branch, &alt_head, title)
-                        .body(body)
-                        .send()
-                        .await
-                        .context("Failed to create PR with alternate format")
+        
+        // Try each branch format strategy
+        for (i, (base, head)) in branch_formats.iter().enumerate() {
+            self.logger.info(&format!("🔄 Trying PR creation strategy {}/{}...", i+1, branch_formats.len()));
+            self.logger.info(&format!("  Base: {}", base));
+            self.logger.info(&format!("  Head: {}", head));
+            
+            match octocrab
+                .pulls(&self.owner, &self.repo)
+                .create(base, head, title.clone())
+                .body(body.clone())
+                .send()
+                .await {
+                    Ok(pr) => {
+                        self.logger.info(&format!("✅ PR created successfully using strategy {}: #{}", i+1, pr.number));
+                        return Ok(pr);
+                    },
+                    Err(e) => {
+                        self.logger.warn(&format!("⚠️ Strategy {} failed: {}", i+1, e));
+                        // Continue with next strategy
+                    }
                 }
-            }
+        }
+        
+        // Step 5: If all strategies fail, try direct API call with raw JSON
+        self.logger.info("⚡ Attempting direct API call as last resort...");
+        
+        // Construct direct request with raw JSON payload
+        let client = reqwest::Client::new();
+        let url = format!("https://api.github.com/repos/{}/{}/pulls", self.owner, self.repo);
+        
+        let payload = serde_json::json!({
+            "title": title,
+            "body": body,
+            "head": format!("{}:{}", self.owner, head_branch),
+            "base": base_branch
+        });
+        
+        self.logger.info(&format!("Direct API request to: {}", url));
+        self.logger.info(&format!("Payload: {}", payload));
+        
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("token {}", self.github_token))
+            .header("Accept", "application/vnd.github.v3+json")
+            .header("User-Agent", "OctocrabClient")
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to send direct API request")?;
+        
+        // Capture status code first before consuming the response
+        let status = response.status();
+        
+        // Parse response
+        if status.is_success() {
+            let pr: octocrab::models::pulls::PullRequest = response
+                .json()
+                .await
+                .context("Failed to parse PR response")?;
+                
+            self.logger.info(&format!("✅ PR created successfully via direct API: #{}", pr.number));
+            return Ok(pr);
+        }
+        
+        // Log the full error response for debugging
+        let error_text = response.text().await.unwrap_or_else(|_| "Failed to get response text".to_string());
+        self.logger.warn(&format!("❌ Direct API call failed with status code: {}", status));
+        self.logger.warn(&format!("Error response: {}", error_text));
+        
+        anyhow::bail!("Failed to create pull request after trying all strategies")
     }
 
     // Add labels to pull request
