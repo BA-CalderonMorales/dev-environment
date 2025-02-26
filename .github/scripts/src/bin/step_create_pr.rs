@@ -191,7 +191,7 @@ impl PrCreator {
         Ok(())
     }
 
-    // Add method to test GitHub token permissions
+    // Modified to make token verification optional
     async fn verify_token_permissions(&self, octocrab: &Octocrab) -> Result<()> {
         self.logger.info("🔑 Verifying GitHub token permissions...");
         
@@ -202,8 +202,9 @@ impl PrCreator {
                 Ok(())
             },
             Err(e) => {
-                self.logger.warn(&format!("❌ Token verification failed: {}", e));
-                anyhow::bail!("GitHub token has insufficient permissions")
+                self.logger.warn(&format!("⚠️ Token verification warning: {}", e));
+                self.logger.info("Proceeding with PR creation anyway, as GITHUB_TOKEN might have limited API access but still have PR creation permissions");
+                Ok(()) // Return Ok() instead of an error to continue execution
             }
         }
     }
