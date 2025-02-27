@@ -43,10 +43,14 @@ runs:
         override: true
 
     - name: Setup GPG Key
+      id: setup_gpg
       if: inputs.bot_gpg_private_key != ''
       shell: bash
       working-directory: .github/scripts
-      run: cargo run --bin step_setup_gpg
+      run: |
+        cargo run --bin step_setup_gpg
+        echo "gpg_setup_status=$?" >> $GITHUB_OUTPUT
+      continue-on-error: true
       env:
         INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
         INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
@@ -56,7 +60,22 @@ runs:
     - name: Create Git Tag
       shell: bash
       run: |
-        git tag -a ${{ inputs.version }} -m "Release ${{ inputs.version }}"
+        # Set up basic git config if not already done by GPG setup
+        if [ "${{ steps.setup_gpg.outputs.gpg_setup_status || '1' }}" != "0" ]; then
+          git config --global user.email "${{ inputs.bot_email }}"
+          git config --global user.name "${{ inputs.bot_name || 'GitHub Actions' }}"
+        fi
+        
+        # Create unsigned tag if GPG setup failed
+        if [ "${{ steps.setup_gpg.outputs.gpg_setup_status || '1' }}" != "0" ]; then
+          echo "Creating unsigned tag (GPG setup failed)"
+          git tag -a ${{ inputs.version }} -m "Release ${{ inputs.version }}"
+        else
+          echo "Creating signed tag"
+          git tag -s ${{ inputs.version }} -m "Release ${{ inputs.version }}"
+        fi
+        
+        # Push the tag
         git push origin ${{ inputs.version }}
 
     - name: Create GitHub Release
