@@ -90,6 +90,14 @@ jobs:
       prerelease: ${{ steps.action.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install GitHub CLI
+        run: |
+          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh -y
       - id: action
         uses: ./.github/actions/process-release-queue-job
         with:
@@ -155,13 +163,12 @@ jobs:
         with:
           version: ${{ needs.determine_version.outputs.new_version }}
           prerelease: ${{ needs.process_queue.outputs.prerelease || 'true' }}  # Default to prerelease for beta
+          release_sha: ${{ needs.process_queue.outputs.sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
-          bot_github_token: ${{ secrets.GITHUB_TOKEN }}
-          bot_email: ${{ secrets.BOT_EMAIL }}
-          bot_name: ${{ secrets.BOT_NAME }}
-          bot_domain: ${{ secrets.BOT_DOMAIN }}
+          bot_email: ${{ secrets.BOT_EMAIL || 'actions@github.com' }}
+          bot_name: ${{ secrets.BOT_NAME || 'GitHub Actions' }}
 
   #####################################################################
   # Handle Failure
