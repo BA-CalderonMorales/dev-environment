@@ -71,3 +71,16 @@ runs:
         QUEUE_REMAINING="${{ steps.process_queue.outputs.remaining }}" \
         QUEUE_ESTIMATED_TIME="${{ steps.process_queue.outputs.estimated_time }}" \
         cargo run --bin step_create_pr
+
+    - name: Ensure PR has correct labels
+      shell: bash
+      run: |
+        PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
+        if [ -n "$PR_NUMBER" ]; then
+          echo "Adding release-queue label to PR #$PR_NUMBER"
+          gh pr edit $PR_NUMBER --add-label "release-queue"
+        else
+          echo "No PR number found in output"
+        fi
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
