@@ -1,35 +1,37 @@
 name: 'Create Release'
-description: 'Creates a new release with proper versioning'
+description: 'Creates a GitHub release with version tagging and updates queues'
 
 inputs:
+  github_token:
+    description: 'GitHub token'
+    required: true
   version:
-    description: 'Version to create release for'
+    description: 'Version to release'
     required: true
   prerelease:
     description: 'Whether this is a prerelease'
     required: true
-    default: 'true'
-  github_token:
-    description: 'GitHub token'
+  release_sha:
+    description: 'SHA to reference in release'
     required: true
   bot_gpg_private_key:
-    description: 'Bot GPG private key for signing'
-    required: true
+    description: 'GPG private key for signing commits'
+    required: false
   bot_gpg_passphrase:
-    description: 'Bot GPG passphrase'
-    required: true
-  bot_github_token:
-    description: 'Bot GitHub token'
-    required: true
+    description: 'GPG passphrase'
+    required: false
   bot_email:
     description: 'Bot email for git config'
-    required: true
+    required: false
+    default: 'actions@github.com'
   bot_name:
     description: 'Bot name for git config'
-    required: true
+    required: false
+    default: 'GitHub Actions'
   bot_domain:
-    description: 'Bot domain for config'
-    required: true
+    description: 'Bot domain for git config'
+    required: false
+    default: 'github.com'
 
 runs:
   using: 'composite'
@@ -40,129 +42,72 @@ runs:
         toolchain: stable
         override: true
 
-    - name: Verify Scripts Directory
-      shell: bash
-      run: |
-        SCRIPTS_DIR="${{ github.workspace }}/.github/scripts"
-        if [ ! -d "$SCRIPTS_DIR" ]; then
-          echo "❌ Scripts directory not found at: $SCRIPTS_DIR"
-          exit 1
-        fi
-        echo "📁 Found scripts directory at: $SCRIPTS_DIR"
-        ls -la "$SCRIPTS_DIR"
-
-    - name: Verify Docs Directory
-      shell: bash
-      run: |
-        DOCS_DIR="${{ github.workspace }}/docs"
-        if [ ! -d "$DOCS_DIR" ]; then
-          echo "📁 Creating docs directory"
-          mkdir -p "$DOCS_DIR"
-          echo "# Documentation" > "$DOCS_DIR/README.md"
-        fi
-        echo "📁 Found docs directory at: $DOCS_DIR"
-        ls -la "$DOCS_DIR"
-
-    - name: Debug Inputs
+    - name: Setup GPG Key
+      if: inputs.bot_gpg_private_key != ''
       shell: bash
       working-directory: .github/scripts
-      run: |
-        cargo run --bin step-debug-inputs
-      env:
-        INPUT_VERSION: ${{ inputs.version }}
-        INPUT_PRERELEASE: ${{ inputs.prerelease }}
-        GITHUB_REF: ${{ github.ref }}
-        GITHUB_SHA: ${{ github.sha }}
-        RUST_LOG: info
-
-    - name: Validate Version
-      shell: bash
-      run: |
-        if [ -z "${{ inputs.version }}" ]; then
-          echo "Error: Version input is required"
-          exit 1
-        fi
-        echo "Using version: ${{ inputs.version }}"
-
-    - name: Package Release Assets
-      shell: bash
-      working-directory: .github/scripts
-      run: |
-        cargo run --bin step-package-assets
-      env:
-        RUST_LOG: info
-
-    - name: Setup GPG
-      shell: bash
-      working-directory: .github/scripts
-      run: |
-        cargo run --bin step-setup-gpg
+      run: cargo run --bin step_setup_gpg
       env:
         INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
         INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
         RUST_LOG: info
 
-    - name: Configure Git
+    - name: Create Git Tag
+      shell: bash
+      run: |
+        git tag -a ${{ inputs.version }} -m "Release ${{ inputs.version }}"
+        git push origin ${{ inputs.version }}
+
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const { data: release } = await github.rest.repos.createRelease({
+            ...context.repo,
+            tag_name: '${{ inputs.version }}',
+            name: 'Release ${{ inputs.version }}',
+            body: 'Release ${{ inputs.version }} created from commit ${{ inputs.release_sha }}.',
+            draft: false,
+            prerelease: ${{ inputs.prerelease == 'true' }}
+          });
+          console.log(`Release created: ${release.html_url}`);
+          return release.id;
+
+    - name: Update Release Queue
       shell: bash
       working-directory: .github/scripts
-      run: |
-        cargo run --bin step-configure-git
-      env:
-        INPUT_BOT_NAME: ${{ inputs.bot_name }}
-        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
-        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
-        RUST_LOG: info
-
-    - name: Check Beta Stability
-      if: inputs.prerelease == 'false'
-      shell: bash
-      run: |
-        # Get the latest beta tag
-        latest_beta=$(git describe --tags --match "v*-beta.*" --abbrev=0)
-        
-        # Calculate days since beta release
-        beta_date=$(git log -1 --format=%at $latest_beta)
-        current_date=$(date +%s)
-        days_since_beta=$(( ($current_date - $beta_date) / 86400 ))
-        
-        # Check if beta has been stable for at least 7 days
-        if [ $days_since_beta -lt 7 ]; then
-          echo "❌ Beta version $latest_beta is too recent ($days_since_beta days old)"
-          echo "Wait at least 7 days before promoting to stable"
-          exit 1
-        fi
-        
-        echo "✅ Beta version $latest_beta has been stable for $days_since_beta days"
-
-    - name: Create Release
-      shell: bash
-      run: |
-        RELEASE_NOTES="Release ${{ inputs.version }}"
-        
-        # Add stability notice for stable releases
-        if [ "${{ inputs.prerelease }}" = "false" ]; then
-          RELEASE_NOTES="$RELEASE_NOTES\n\n🔐 Stable Release\n"
-          RELEASE_NOTES="$RELEASE_NOTES\nThis version has been tested in beta for $(( $days_since_beta )) days."
-        else
-          RELEASE_NOTES="$RELEASE_NOTES\n\n🧪 Beta Release\n"
-          RELEASE_NOTES="$RELEASE_NOTES\nThis is a beta release for testing purposes."
-        fi
-        
-        gh release create ${{ inputs.version }} \
-          --title "Release ${{ inputs.version }}" \
-          --notes "$RELEASE_NOTES" \
-          --prerelease=${{ inputs.prerelease }}
+      run: cargo run --bin step_update_queue
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
-
-    - name: Update Documentation
-      shell: bash
-      working-directory: .github/scripts
-      run: |
-        cargo run --bin step-update-docs
-      env:
-        GH_TOKEN: ${{ inputs.bot_github_token }}
-        BOT_EMAIL: ${{ inputs.bot_email }}
-        BOT_NAME: ${{ inputs.bot_name }}
-        BOT_DOMAIN: ${{ inputs.bot_domain }}
+        INPUT_ACTION: clear
+        INPUT_BRANCH: ${{ github.ref_name }}
+        INPUT_PROCESSED_SHA: ${{ inputs.release_sha }}
         RUST_LOG: info
+
+    - name: Close Associated Release PRs
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          // Search for PRs containing the release SHA
+          const query = `is:pr is:open label:release-queue ${{ inputs.release_sha }}`;
+          const searchResult = await github.rest.search.issuesAndPullRequests({q: query});
+          
+          for (const item of searchResult.data.items) {
+            console.log(`Closing PR #${item.number} associated with release ${{ inputs.version }}`);
+            
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: item.number,
+              body: `✅ This PR has been included in release ${{ inputs.version }}. Closing automatically.`
+            });
+            
+            await github.rest.pulls.update({
+              ...context.repo,
+              pull_number: item.number,
+              state: 'closed'
+            });
+          }
