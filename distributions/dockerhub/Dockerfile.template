@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+FROM ubuntu:22.04
+
+LABEL maintainer="BA-CalderonMorales"
+LABEL version="${VERSION}"
+LABEL description="Configurable development environment container"
+LABEL environment="${ENV_TYPE}"
+
+ARG NODE_VERSION=${NODE_VERSION}
+ARG GO_VERSION=${GO_VERSION}
+
+# Environment-specific installations
+${ENV_SPECIFIC_INSTALLS}

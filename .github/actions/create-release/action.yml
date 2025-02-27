@@ -1,92 +1,113 @@
 name: 'Create Release'
-description: 'Creates a new release with packaged application state'
+description: 'Creates a GitHub release with version tagging and updates queues'
 
 inputs:
+  github_token:
+    description: 'GitHub token'
+    required: true
   version:
     description: 'Version to release'
     required: true
   prerelease:
     description: 'Whether this is a prerelease'
     required: true
-  github_token:
-    description: 'GitHub token for creating release'
+  release_sha:
+    description: 'SHA to reference in release'
     required: true
   bot_gpg_private_key:
-    description: 'Bot GPG private key for signing'
-    required: true
+    description: 'GPG private key for signing commits'
+    required: false
   bot_gpg_passphrase:
-    description: 'Bot GPG passphrase'
-    required: true
-  bot_github_token:
-    description: 'Bot GitHub token'
-    required: true
+    description: 'GPG passphrase'
+    required: false
   bot_email:
     description: 'Bot email for git config'
-    required: true
+    required: false
+    default: 'actions@github.com'
   bot_name:
     description: 'Bot name for git config'
-    required: true
+    required: false
+    default: 'GitHub Actions'
   bot_domain:
-    description: 'Bot domain for config'
-    required: true
+    description: 'Bot domain for git config'
+    required: false
+    default: 'github.com'
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
-    - name: Debug Inputs
-      shell: bash
-      run: cargo run --bin step_debug_inputs
-      env:
-        INPUT_VERSION: ${{ inputs.version }}
-        INPUT_PRERELEASE: ${{ inputs.prerelease }}
-        GITHUB_REF: ${{ github.ref }}
-        GITHUB_SHA: ${{ github.sha }}
-        RUST_LOG: info
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
 
-    - name: Validate Version
+    - name: Setup GPG Key
+      if: inputs.bot_gpg_private_key != ''
       shell: bash
-      run: cargo run --bin step_validate_version
-      env:
-        INPUT_VERSION: ${{ inputs.version }}
-        RUST_LOG: info
-
-    - name: Package Release Assets
-      shell: bash
-      run: cargo run --bin step_package_assets
-      env:
-        RUST_LOG: info
-
-    - name: Setup GPG
-      shell: bash
+      working-directory: .github/scripts
       run: cargo run --bin step_setup_gpg
       env:
         INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
         INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
         RUST_LOG: info
 
-    - name: Configure Git
+    - name: Create Git Tag
       shell: bash
-      run: cargo run --bin step_configure_git
-      env:
-        INPUT_BOT_NAME: ${{ inputs.bot_name }}
-        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
-        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
-        RUST_LOG: info
+      run: |
+        git tag -a ${{ inputs.version }} -m "Release ${{ inputs.version }}"
+        git push origin ${{ inputs.version }}
 
     - name: Create GitHub Release
+      id: create_release
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const { data: release } = await github.rest.repos.createRelease({
+            ...context.repo,
+            tag_name: '${{ inputs.version }}',
+            name: 'Release ${{ inputs.version }}',
+            body: 'Release ${{ inputs.version }} created from commit ${{ inputs.release_sha }}.',
+            draft: false,
+            prerelease: ${{ inputs.prerelease == 'true' }}
+          });
+          console.log(`Release created: ${release.html_url}`);
+          return release.id;
+
+    - name: Update Release Queue
       shell: bash
-      run: cargo run --bin step_create_release
+      working-directory: .github/scripts
+      run: cargo run --bin step_update_queue
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        INPUT_ACTION: clear
+        INPUT_BRANCH: ${{ github.ref_name }}
+        INPUT_PROCESSED_SHA: ${{ inputs.release_sha }}
         RUST_LOG: info
 
-    - name: Update Documentation
-      shell: bash
-      run: cargo run --bin step_update_docs
-      env:
-        GH_TOKEN: ${{ inputs.bot_github_token }}
-        BOT_EMAIL: ${{ inputs.bot_email }}
-        BOT_NAME: ${{ inputs.bot_name }}
-        BOT_DOMAIN: ${{ inputs.bot_domain }}
-        RUST_LOG: info
+    - name: Close Associated Release PRs
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          // Search for PRs containing the release SHA
+          const query = `is:pr is:open label:release-queue ${{ inputs.release_sha }}`;
+          const searchResult = await github.rest.search.issuesAndPullRequests({q: query});
+          
+          for (const item of searchResult.data.items) {
+            console.log(`Closing PR #${item.number} associated with release ${{ inputs.version }}`);
+            
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: item.number,
+              body: `✅ This PR has been included in release ${{ inputs.version }}. Closing automatically.`
+            });
+            
+            await github.rest.pulls.update({
+              ...context.repo,
+              pull_number: item.number,
+              state: 'closed'
+            });
+          }

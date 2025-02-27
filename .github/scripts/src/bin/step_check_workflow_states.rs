@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use octocrab::{models, Octocrab};
 use serde::Deserialize;
 use std::env;
-use github_workflow_scripts::{Logger, init_logging, get_logger};
+use github_workflow_scripts::{Logger, init, get_logger};
 
 // Define our expected types
 #[derive(Debug, Deserialize)]
@@ -92,7 +92,7 @@ impl WorkflowStateChecker {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let is_local = env::var("GITHUB_ACTIONS").is_err();
     let logger = get_logger(is_local);
     let checker = WorkflowStateChecker::new(logger);

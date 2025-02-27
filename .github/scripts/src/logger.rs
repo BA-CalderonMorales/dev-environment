@@ -1,5 +1,6 @@
 use std::sync::Once;
 use tracing::{debug, info, warn, Level};
+use tracing_subscriber::fmt;
 
 static INIT: Once = Once::new();
 
@@ -41,10 +42,22 @@ impl Logger for MockLogger {
     }
 }
 
-pub fn init_logging() {
+pub fn init() {
     INIT.call_once(|| {
-        tracing_subscriber::fmt()
-            .with_max_level(Level::DEBUG)
+        let log_level = std::env::var("RUST_LOG")
+            .unwrap_or_else(|_| "info".to_string());
+            
+        fmt()
+            .with_max_level(match log_level.as_str() {
+                "debug" => Level::DEBUG,
+                "warn" => Level::WARN,
+                _ => Level::INFO,
+            })
+            .with_target(false)
+            .with_thread_ids(false)
+            .with_file(true)
+            .with_line_number(true)
+            .pretty()
             .init();
     });
 }

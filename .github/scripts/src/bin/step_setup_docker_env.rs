@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use github_workflow_scripts::{get_logger, init_logging};
+use github_workflow_scripts::{get_logger, init};
 use std::process::Command;
 
 fn run_command(cmd: &str, args: &[&str]) -> Result<()> {
@@ -12,7 +12,7 @@ fn run_command(cmd: &str, args: &[&str]) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let logger = get_logger(false);
 
     logger.info("Setting up Docker environment...");

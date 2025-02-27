@@ -16,7 +16,7 @@ use octocrab::Octocrab;
 use serde::Deserialize;
 use serde_json::Value;
 use std::env;
-use github_workflow_scripts::{init_logging, get_logger};
+use github_workflow_scripts::{init, get_logger};
 
 #[derive(Debug, Deserialize)]
 struct Cache {
@@ -33,7 +33,7 @@ struct ListCachesResponse {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logging();
+    init();
     let logger = get_logger(false);
 
     logger.info("🧹 Starting cache cleanup...");

@@ -1,76 +1,58 @@
 name: 'DockerHub Build'
-description: 'Builds and pushes Docker images to DockerHub'
+description: 'Builds and pushes Docker images to registry with version awareness'
 
 inputs:
   environment:
-    description: 'Target environment'
+    description: 'Target environment (dev/beta/prod)'
     required: true
   base_image:
-    description: 'Base image to use'
+    description: 'Base image tag to use'
+    required: true
+  version:
+    description: 'Version to tag image with'
     required: true
 
 outputs:
   image_changed:
-    description: 'Whether image was changed'
-    value: ${{ steps.build.outputs.changed }}
+    description: 'Whether the image was changed'
+    value: ${{ steps.build.outputs.image_changed }}
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
-    - name: Set up Docker Buildx
+    - name: Setup Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Verify Base Image
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ba-calderonmorales/dev-environment
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}},value=${{ inputs.version }}
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          type=raw,value=beta,enable=${{ github.ref == 'refs/heads/beta' }}
+          type=raw,value=pipeline,enable=${{ github.ref == 'refs/heads/main' }}
+          type=raw,value=dev,enable=${{ github.ref == 'refs/heads/beta' }}
+
+    - name: Generate Dockerfiles
       shell: bash
       run: |
-        echo "🔍 Verifying base image exists: ${{ inputs.base_image }}"
-        if ! docker manifest inspect cmoe640/dev-environment:${{ inputs.base_image }} > /dev/null 2>&1; then
-          echo "::error::Required base image cmoe640/dev-environment:${{ inputs.base_image }} not found in registry"
-          echo "This suggests the setup-docker action failed to prepare the image correctly."
-          exit 1
-        fi
-        echo "✅ Base image verified"
+        chmod +x ./scripts/generate-dockerfile.sh
+        ./scripts/generate-dockerfile.sh pipeline ${{ inputs.version }}
+        ./scripts/generate-dockerfile.sh dev ${{ inputs.version }}
+        ./scripts/generate-dockerfile.sh beta ${{ inputs.version }}
+        ./scripts/generate-dockerfile.sh latest ${{ inputs.version }}
 
-    - name: Build and Push
+    - name: Build and push
       id: build
-      shell: bash
-      run: |
-        if [[ "${{ steps.check_base.outputs.build_from_source }}" == "true" ]]; then
-          # Building from source branch
-          SOURCE_BRANCH="${{ steps.check_base.outputs.source_branch }}"
-          echo "🏗️ Building from branch: $SOURCE_BRANCH"
-          
-          # Ensure we have the latest source
-          git fetch origin $SOURCE_BRANCH
-          git checkout origin/$SOURCE_BRANCH -- distributions/dockerhub/
-          
-          # Build using the branch's Dockerfile
-          echo "🚀 Building image from $SOURCE_BRANCH branch Dockerfile"
-          docker build \
-            -t cmoe640/dev-environment:${{ inputs.base_image }} \
-            -f distributions/dockerhub/Dockerfile \
-            --build-arg BRANCH=$SOURCE_BRANCH \
-            .
-            
-          # Push the new image
-          echo "📤 Pushing image to registry"
-          docker push cmoe640/dev-environment:${{ inputs.base_image }}
-          echo "changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "⏩ Using existing image"
-          echo "changed=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Report Build Status
-      shell: bash
-      run: |
-        echo "## 🏗️ Docker Build Results" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Build Details" >> $GITHUB_STEP_SUMMARY
-        echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Image: \`cmoe640/dev-environment:${{ inputs.base_image }}\`" >> $GITHUB_STEP_SUMMARY
-        if [[ "${{ steps.build.outputs.changed }}" == "true" ]]; then
-          echo "- Status: ✨ New image built and pushed" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "- Status: ♻️ Using existing image" >> $GITHUB_STEP_SUMMARY
-        fi
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

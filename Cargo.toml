@@ -1,0 +1,8 @@
+[package]
+name = "dev-environment"
+version = "0.1.0-beta.1"
+edition = "2021"
+authors = ["BA-CalderonMorales"]
+description = "Configurable development environment container"
+
+# ...existing dependencies...

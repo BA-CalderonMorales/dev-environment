@@ -4,6 +4,7 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use github_workflow_scripts::{get_logger, init};
 use octocrab::Octocrab;
 use std::{env, fs};
 
@@ -17,11 +18,27 @@ struct ReleaseInfo {
 
 impl ReleaseInfo {
     async fn new() -> Result<Self> {
+        // Try multiple sources for version info (without adding extra v prefix)
         let version = env::var("VALIDATED_VERSION")
-            .context("VALIDATED_VERSION not set")?;
+            .or_else(|_| env::var("INPUT_VERSION"))
+            .or_else(|_| env::var("INITIAL_VERSION"))
+            .context("No version information found")?
+            .trim_start_matches('v')
+            .to_string();
+
+        // Get repository info for correct URLs
+        let repository = env::var("GITHUB_REPOSITORY")
+            .context("GITHUB_REPOSITORY not set")?;
+
+        // Default to true for prerelease if on beta branch
         let prerelease = env::var("INPUT_PRERELEASE")
-            .context("INPUT_PRERELEASE not set")?
-            .parse::<bool>()?;
+            .map(|v| v.parse::<bool>().unwrap_or(false))
+            .unwrap_or_else(|_| {
+                env::var("GITHUB_REF")
+                    .map(|r| r.contains("/beta"))
+                    .unwrap_or(false)
+            });
+
         let release_type = if prerelease { "Beta" } else { "Stable" };
         
         // Read checksum file
@@ -40,8 +57,8 @@ This release includes:
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/user/dev-environment
-cd dev-environment
+git clone https://github.com/{repository}
+cd {repository}
 
 # Run setup script
 ./setup.sh
@@ -69,14 +86,22 @@ cd dev-environment
 
     async fn create_release(&self) -> Result<()> {
         let token = env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
+        let repository = env::var("GITHUB_REPOSITORY")
+            .context("GITHUB_REPOSITORY not set")?;
+        
+        // Parse owner/repo from GITHUB_REPOSITORY
+        let (owner, repo) = repository
+            .split_once('/')
+            .context("Invalid repository format")?;
+
         let octocrab = Octocrab::builder()
             .personal_token(token)
             .build()
             .context("Failed to create GitHub client")?;
 
-        // In GitHub Actions, we can use the current repository context
+        // Create the release using parsed owner/repo
         let release = octocrab
-            .repos(env::var("GITHUB_REPOSITORY_OWNER")?, env::var("GITHUB_REPOSITORY")?)
+            .repos(owner, repo)
             .releases()
             .create(&self.tag_name)
             .name(&self.name)
@@ -88,17 +113,19 @@ cd dev-environment
             .context("Failed to create release")?;
 
         println!("Created release {} ({})", self.name, release.id);
-
-        // Note: For uploading assets in GitHub Actions, it's better to use
-        // the actions/upload-release-asset action instead of doing it here
         Ok(())
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    init();
+    let logger = get_logger(false);
+    
+    logger.info("🎉 Starting release creation...");
     let release_info = ReleaseInfo::new().await?;
-    println!("Creating release with info: {:?}", release_info);
+    logger.info(&format!("Creating release with info: {:?}", release_info));
     release_info.create_release().await?;
+    logger.info("✨ Release created successfully!");
     Ok(())
 }

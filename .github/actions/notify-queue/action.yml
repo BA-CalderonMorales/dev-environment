@@ -1,0 +1,62 @@
+name: 'Notify Queue Status'
+description: 'Notifies status of release queue processing and updates related issues'
+
+inputs:
+  can_proceed:
+    description: 'Whether queue processing can proceed'
+    required: true
+  commit_sha:
+    description: 'Commit SHA being released'
+    required: false
+  release_result:
+    description: 'Result of release job'
+    required: false
+  github_token:
+    description: 'GitHub token for API access'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check Queue Status
+      if: inputs.can_proceed == 'false'
+      shell: bash
+      run: |
+        echo "No items in release queue to process"
+        echo "Next scheduled release window: Saturday at 10:00 AM CST"
+        echo "Queue empty, no items to process" >> $GITHUB_STEP_SUMMARY
+
+    - name: Update Related Issues
+      if: inputs.commit_sha
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const sha = '${{ inputs.commit_sha }}';
+          const success = '${{ inputs.release_result }}' === 'success';
+          
+          // Search for related issues
+          const query = `is:issue is:open label:pending-release sha:${sha}`;
+          const issues = await github.rest.search.issuesAndPullRequests({q: query});
+          
+          // Update each related issue
+          for (const issue of issues.data.items) {
+            // Add status comment
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: issue.number,
+              body: success 
+                ? '✅ Release successfully processed'
+                : '❌ Release processing failed'
+            });
+            
+            // Close and label issue if successful
+            if (success) {
+              await github.rest.issues.update({
+                ...context.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                labels: ['released']
+              });
+            }
+          }

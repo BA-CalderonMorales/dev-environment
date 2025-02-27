@@ -1,0 +1,226 @@
+name: 'Process Release Queue'
+description: 'Processes release queue items and determines if a release should be created'
+
+inputs:
+  github_token:
+    required: true
+  trigger_sha:
+    required: false
+    default: ''
+  source_branch:
+    required: true
+  force_process:
+    required: false
+    default: 'false'
+  is_scheduled:
+    required: false
+    default: 'false'
+  initial_version:
+    required: true
+
+outputs:
+  sha:
+    description: 'SHA to release'
+    value: ${{ steps.queue_check.outputs.sha }}
+  branch:
+    description: 'Branch to release from'
+    value: ${{ inputs.source_branch }}
+  can_proceed:
+    description: 'Whether to proceed with release'
+    value: ${{ steps.queue_check.outputs.can_proceed }}
+  version:
+    description: 'Version to release'
+    value: ${{ steps.get_version.outputs.version }}
+  prerelease:
+    description: 'Whether this is a prerelease'
+    value: ${{ steps.get_version.outputs.is_beta }}
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - id: queue_check
+      shell: bash
+      run: |
+        # Improved debugging
+        echo "🔍 Starting release queue check..."
+        echo "Branch: ${{ inputs.source_branch }}"
+        echo "Force process: ${{ inputs.force_process }}"
+        echo "Is scheduled: ${{ inputs.is_scheduled }}"
+
+        # Get queue file path from branch
+        if [[ "${{ inputs.source_branch }}" == "beta" ]]; then
+          QUEUE_FILE=".github/release_queue/beta.json"
+          MIN_QUEUE_SIZE=3  # For testing, reduce to 3 items
+          MIN_AGE_DAYS=0     # No waiting period for beta
+        elif [[ "${{ inputs.source_branch }}" == "main" ]]; then
+          QUEUE_FILE=".github/release_queue/main.json"
+          MIN_QUEUE_SIZE=5  # For testing, reduce to 5 items
+          MIN_AGE_DAYS=7    # One week stability period
+        else
+          echo "Invalid branch: ${{ inputs.source_branch }}"
+          exit 1
+        fi
+
+        # Create queue directory/file if they don't exist
+        mkdir -p .github/release_queue
+        if [ ! -f "$QUEUE_FILE" ]; then
+          echo '{"items":[]}' > "$QUEUE_FILE"
+          echo "📄 Created new queue file: $QUEUE_FILE"
+        fi
+
+        # Display current queue contents
+        echo "Current queue content:"
+        cat "$QUEUE_FILE"
+
+        # Process trigger SHA if provided directly
+        if [ ! -z "${{ inputs.trigger_sha }}" ]; then
+          echo "Direct SHA provided: ${{ inputs.trigger_sha }}"
+          echo "sha=${{ inputs.trigger_sha }}" >> $GITHUB_OUTPUT
+          echo "can_proceed=true" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Find release queue PRs using GitHub CLI with improved query
+        echo "🔍 Scanning for release queue PRs..."
+        
+        # List all open PRs targeting this branch first - for diagnostic purposes
+        echo "All open PRs to ${{ inputs.source_branch }}:"
+        gh pr list --base "${{ inputs.source_branch }}" --json number,title,labels | tee all_prs.json
+        
+        # Now filter for just those with the release-queue label
+        prs=$(gh pr list \
+          --base "${{ inputs.source_branch }}" \
+          --label "release-queue" \
+          --json number,title,headRefName,labels,mergeable \
+          --state open)
+        
+        echo "$prs" > found_prs.json
+        pr_count=$(echo "$prs" | jq length)
+        echo "🔎 Found $pr_count open release queue PRs"
+
+        # Process PRs and update queue file
+        if [ "$pr_count" -gt 0 ]; then
+          # Get existing queue data
+          queue_data=$(cat "$QUEUE_FILE")
+          
+          echo "📊 Queue data before processing:"
+          echo "$queue_data" | jq .
+          
+          # For each PR, extract SHA from title and add to queue
+          echo "$prs" | jq -c '.[]' | while read -r pr; do
+            pr_number=$(echo "$pr" | jq -r '.number')
+            pr_title=$(echo "$pr" | jq -r '.title')
+            pr_branch=$(echo "$pr" | jq -r '.headRefName')
+            pr_labels=$(echo "$pr" | jq -r '.labels[].name')
+            
+            echo "🔖 PR #$pr_number: $pr_title (Branch: $pr_branch, Labels: $pr_labels)"
+            
+            # Try to extract SHA using multiple regex patterns
+            pr_sha=""
+            
+            # Pattern 1: Format "Queue Update: Release [SHA] (Position: X)"
+            if [[ $pr_title =~ Release\ ([0-9a-f]+)\ \(Position ]]; then
+              pr_sha="${BASH_REMATCH[1]}"
+              echo "✓ Found SHA using pattern 1: $pr_sha"
+            # Pattern 2: Try any SHA-like pattern (40 hex characters)
+            elif [[ $pr_title =~ ([0-9a-f]{40}) ]]; then
+              pr_sha="${BASH_REMATCH[1]}"
+              echo "✓ Found SHA using pattern 2: $pr_sha"
+            # Pattern 3: Try SHA with shorter length (at least 7 chars)
+            elif [[ $pr_title =~ ([0-9a-f]{7,39}) ]]; then
+              pr_sha="${BASH_REMATCH[1]}"
+              echo "✓ Found SHA using pattern 3: $pr_sha"
+            else
+              echo "⚠️ Could not extract SHA from PR #$pr_number title"
+              continue
+            fi
+            
+            if [ -n "$pr_sha" ]; then
+              # Check if SHA already in queue
+              already_in_queue=$(echo "$queue_data" | jq ".items[] | select(.commit==\"$pr_sha\") | any")
+              
+              if [ "$already_in_queue" != "true" ]; then
+                echo "➕ Adding SHA $pr_sha from PR #$pr_number to queue"
+                
+                # Add to queue
+                timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+                queue_data=$(echo "$queue_data" | jq ".items += [{\"commit\": \"$pr_sha\", \"date\": \"$timestamp\", \"pr\": $pr_number}]")
+                
+                # Comment on PR
+                gh pr comment $pr_number -b "✅ Added to release queue. Position: $(echo "$queue_data" | jq '.items | length')"
+              else
+                echo "ℹ️ SHA $pr_sha already in queue, skipping"
+              fi
+            fi
+          done
+          
+          # Write updated queue back to file
+          echo "$queue_data" > "$QUEUE_FILE"
+          
+          echo "📊 Queue data after processing:"
+          cat "$QUEUE_FILE" | jq .
+        else
+          echo "⚠️ No PRs with release-queue label found"
+        fi
+
+        # Check queue conditions
+        QUEUE_SIZE=$(jq '.items | length' "$QUEUE_FILE")
+        echo "Queue size: $QUEUE_SIZE item(s)"
+        
+        OLDEST_ITEM_DATE=$(jq -r '.items[0].date // empty' "$QUEUE_FILE")
+        
+        if [ ! -z "$OLDEST_ITEM_DATE" ]; then
+          DAYS_OLD=$(( ( $(date +%s) - $(date -d "$OLDEST_ITEM_DATE" +%s) ) / 86400 ))
+          echo "Oldest item age: $DAYS_OLD day(s)"
+        else
+          DAYS_OLD=0
+          echo "No items in queue"
+        fi
+
+        # Determine if release should proceed
+        if [ "${{ inputs.force_process }}" == "true" ]; then
+          CAN_PROCEED="true"
+          echo "➡️ Force processing requested"
+        elif [ "${{ inputs.is_scheduled }}" == "true" ] && [ $QUEUE_SIZE -gt 0 ]; then
+          CAN_PROCEED="true"
+          echo "➡️ Scheduled run with items in queue: $QUEUE_SIZE items"
+        elif [ $QUEUE_SIZE -ge $MIN_QUEUE_SIZE ] && [ $DAYS_OLD -ge $MIN_AGE_DAYS ]; then
+          CAN_PROCEED="true"
+          echo "➡️ Queue requirements met: size=$QUEUE_SIZE items, age=$DAYS_OLD days"
+        else
+          CAN_PROCEED="false"
+          echo "⏸️ Queue requirements not met: $QUEUE_SIZE/$MIN_QUEUE_SIZE items, $DAYS_OLD/$MIN_AGE_DAYS days"
+        fi
+        
+        # Set outputs
+        echo "can_proceed=$CAN_PROCEED" >> $GITHUB_OUTPUT
+        
+        if [ "$CAN_PROCEED" == "true" ]; then
+          # Get first SHA from queue
+          FIRST_SHA=$(jq -r '.items[0].commit' "$QUEUE_FILE")
+          echo "sha=$FIRST_SHA" >> $GITHUB_OUTPUT
+          echo "💡 Selected commit for release: $FIRST_SHA"
+        else
+          echo "⏸️ No release will be processed at this time"
+        fi
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - id: get_version
+      if: steps.queue_check.outputs.can_proceed == 'true'
+      uses: ./.github/actions/version-determiner
+      with:
+        github_token: ${{ inputs.github_token }}
+        ref: ${{ inputs.source_branch }}
+        initial_version: ${{ inputs.initial_version }}
+
+    - name: Debug Version Output
+      if: steps.get_version.outputs.version
+      shell: bash
+      run: |
+        echo "Version determined: ${{ steps.get_version.outputs.version }}"
+        echo "Is prerelease: ${{ steps.get_version.outputs.is_beta }}"

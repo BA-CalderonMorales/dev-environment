@@ -1,0 +1,66 @@
+name: 'Debug Merge Info'
+description: 'Provides detailed debug information about merge events and job statuses'
+
+inputs:
+  event_name:
+    required: true
+    description: 'GitHub event name'
+  ref:
+    required: true
+    description: 'GitHub ref'
+  head_commit_message:
+    required: true
+    description: 'Head commit message'
+  base_ref:
+    required: false
+    description: 'Base ref for PR'
+  head_ref:
+    required: false
+    description: 'Head ref for PR'
+  validate_branch_result:
+    required: true
+    description: 'Result of validate_branch job'
+  e2e_tests_result:
+    required: true
+    description: 'Result of e2e_tests job'
+  security_scan_result:
+    required: true
+    description: 'Result of security_scan job'
+
+outputs:
+  is_valid_merge:
+    description: 'Whether this is a valid merge for release queueing'
+    value: ${{ steps.check_merge.outputs.is_valid }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: check_merge
+      shell: bash
+      run: |
+        echo "=== Debug Merge Info ==="
+        echo "Event: ${{ inputs.event_name }}"
+        echo "Ref: ${{ inputs.ref }}"
+        echo "Head commit message: ${{ inputs.head_commit_message }}"
+        echo "Base ref: ${{ inputs.base_ref }}"
+        echo "Head ref: ${{ inputs.head_ref }}"
+        echo "Validate branch result: ${{ inputs.validate_branch_result }}"
+        echo "E2E tests result: ${{ inputs.e2e_tests_result }}"
+        echo "Security scan result: ${{ inputs.security_scan_result }}"
+        echo "======================="
+        
+        # Simplified validation - allow any merge to beta/main
+        if [[ "${{ inputs.ref }}" == "refs/heads/beta" || "${{ inputs.ref }}" == "refs/heads/main" ]]; then
+          if [[ "${{ inputs.event_name }}" == "workflow_dispatch" || 
+                ("${{ inputs.event_name }}" == "push" && 
+                 "${{ inputs.head_commit_message }}" == *"Merge pull request"*) ]]; then
+            echo "is_valid=true" >> $GITHUB_OUTPUT
+            echo "✅ Valid merge for release queueing on ${{ inputs.ref }}"
+          else
+            echo "is_valid=false" >> $GITHUB_OUTPUT
+            echo "❌ Not a merge or workflow_dispatch event"
+          fi
+        else
+          echo "is_valid=false" >> $GITHUB_OUTPUT
+          echo "❌ Not a beta or main branch"
+        fi

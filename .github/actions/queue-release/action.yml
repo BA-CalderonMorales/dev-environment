@@ -1,79 +1,86 @@
 name: 'Queue Release'
-description: 'Adds successful builds to release queue'
+description: 'Adds a commit to the release queue via PR'
 
 inputs:
   github_token:
-    description: 'GitHub token for queue operations'
+    description: 'GitHub token used for authentication'
     required: true
   sha:
-    description: 'Commit SHA to queue'
+    description: 'Commit SHA to be queued for release'
     required: true
   branch:
-    description: 'Branch name'
+    description: 'Target branch for the release (beta or main)'
     required: true
-
 outputs:
   queue_position:
     description: 'Position in queue'
-    value: ${{ steps.queue.outputs.position }}
+    value: ${{ steps.process_queue.outputs.position }}
   estimated_time:
     description: 'Estimated time until release'
-    value: ${{ steps.queue.outputs.eta }}
+    value: ${{ steps.process_queue.outputs.estimated_time }}
+  pr_number:
+    description: 'Created PR number'
+    value: ${{ steps.create_pr.outputs.pr_number }}
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
-    - id: queue
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
-      run: |
-        # Find or create queue issue
-        QUEUE_ISSUE_NUMBER=$(gh issue list --search "🔄 Release Queue in:title" --json number --jq '.[0].number')
-        
-        if [[ -z "$QUEUE_ISSUE_NUMBER" ]]; then
-          echo "Creating release queue issue..."
-          QUEUE_ISSUE_NUMBER=$(gh issue create \
-            --title "🔄 Release Queue" \
-            --body "# Release Queue Management Issue
-            
-            This issue tracks the release queue for automated deployments.
-            
-            ## Queue Statistics
-            Last Updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            
-            Branch: ${{ inputs.branch }}
-            Latest SHA: ${{ inputs.sha }}" \
-            --label "release-queue" \
-            --label "automated" \
-            --json number --jq '.number')
-        fi
-        
-        # Add new item to queue
-        QUEUE_ENTRY="QUEUED:SHA:${{ inputs.sha }}|BRANCH:${{ inputs.branch }}|TIME:$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-        gh issue comment $QUEUE_ISSUE_NUMBER --body "$QUEUE_ENTRY"
-        
-        # Get queue position
-        POSITION=$(gh issue view $QUEUE_ISSUE_NUMBER --json comments \
-          --jq '.comments | map(select(.body | startswith("QUEUED:"))) | length')
-        
-        # Calculate ETA
-        DAYS_UNTIL_NEXT_SATURDAY=$(( (6 - $(date +%u) + 7) % 7 ))
-        if [[ $DAYS_UNTIL_NEXT_SATURDAY -eq 0 && $(date +%H) -ge 16 ]]; then
-          DAYS_UNTIL_NEXT_SATURDAY=7
-        fi
-        
-        # Update queue statistics in issue body
-        gh issue edit $QUEUE_ISSUE_NUMBER --body "# Release Queue Management Issue
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
 
-        This issue tracks the release queue for automated deployments.
-        
-        ## Queue Statistics (Updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ"))
-        
-        Branch: ${{ inputs.branch }}
-        Latest SHA: ${{ inputs.sha }}
-        Total Queued: $POSITION"
-        
-        # Set outputs
-        echo "position=$POSITION" >> $GITHUB_OUTPUT
-        echo "eta=$DAYS_UNTIL_NEXT_SATURDAY days" >> $GITHUB_OUTPUT
+    - name: Debug Inputs
+      shell: bash
+      working-directory: .github/scripts
+      run: cargo run --bin step-debug-inputs
+      env:
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        GITHUB_REF: ${{ github.ref }}
+        GITHUB_SHA: ${{ github.sha }}
+        RUST_LOG: info
+
+    - id: setup_queue
+      shell: bash
+      working-directory: .github/scripts
+      run: cargo run --bin step_setup_queue
+      env:
+        RUST_LOG: info
+
+    - id: process_queue
+      shell: bash
+      working-directory: .github/scripts
+      run: cargo run --bin step_process_queue
+      env:
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        RUST_LOG: info
+
+    - id: create_pr
+      shell: bash
+      working-directory: .github/scripts
+      run: |
+        RUST_LOG=info \
+        GITHUB_TOKEN="${{ inputs.github_token }}" \
+        QUEUE_BRANCH="${{ steps.setup_queue.outputs.branch }}" \
+        INPUT_BRANCH="${{ inputs.branch }}" \
+        INPUT_SHA="${{ inputs.sha }}" \
+        QUEUE_POSITION="${{ steps.process_queue.outputs.position }}" \
+        QUEUE_REMAINING="${{ steps.process_queue.outputs.remaining }}" \
+        QUEUE_ESTIMATED_TIME="${{ steps.process_queue.outputs.estimated_time }}" \
+        cargo run --bin step_create_pr
+
+    - name: Ensure PR has correct labels
+      shell: bash
+      run: |
+        PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
+        if [ -n "$PR_NUMBER" ]; then
+          echo "Adding release-queue label to PR #$PR_NUMBER"
+          gh pr edit $PR_NUMBER --add-label "release-queue"
+        else
+          echo "No PR number found in output"
+        fi
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
