@@ -1,209 +1,401 @@
 name: Create Release
 
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
-  # Manual trigger with branch protection
+  # Automatic releases every Saturday at 12:00 CST (18:00 UTC)
+  schedule:
+    - cron: '0 18 * * 6'
+  
+  # Manual release trigger
   workflow_dispatch:
     inputs:
-      trigger_sha:
-        description: 'SHA to release (optional)'
-        required: false
-        type: string
-      source_branch:
-        description: 'Branch (must be beta or main)'
-        required: false
-        type: string
-        default: 'beta'
-      force_process:
-        description: 'Force queue processing'
+      target_branch:
+        description: 'Target branch for release (beta or main)'
+        required: true
+        type: choice
+        options:
+          - beta
+          - main
+      force_release:
+        description: 'Force release creation even if queue is empty'
         required: false
         type: boolean
         default: false
-  # Weekly scheduled release processing - only on beta/main
-  schedule:
-    # Run every Saturday at 10:00 AM CST (16:00 UTC)
-    - cron: '0 16 * * SAT'
-
-# Add concurrency to prevent multiple releases running simultaneously
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
 
 permissions:
   contents: write
+  packages: write
+  actions: write
+  security-events: write
   pull-requests: write
+  checks: write
+  deployments: write
   issues: write
-
-env:
-  MAINTAINER_GITHUB: '@BA-CalderonMorales'
-  INITIAL_VERSION: 'v0.1.0-beta.1'  # Updated to match Cargo.toml
-  DOCKER_IMAGE: 'ba-calderonmorales/dev-environment'
-
-# NOTE: For full details on our release process, please refer to RELEASE_SCHEDULE.md at the repository root.
-# This file uses branch protection (beta/main) to trigger automations based on merges from develop.
+  repository-projects: write
+  statuses: write
 
 jobs:
   #####################################################################
-  # Branch Protection Check
-  # ---------------------
-  # Purpose: Ensures releases only run on beta/main branches
-  #
+  # Check Release Queue
+  # ------------------
+  # Purpose: Determine if releases need to be created
+  # 
   # Flow:
-  # 1. Validates branch name
-  # 2. Blocks unauthorized release attempts
-  # 3. Sets release type for downstream jobs
+  # 1. Checks if any PRs are queued for release
+  # 2. Determines target branch (beta or main)
+  # 3. Validates release requirements are met
+  #
+  # Dependencies: None
+  # Outputs: 
+  #   - has_releases: Whether releases are available
+  #   - target_branch: Branch to create release for (beta/main)
+  #   - release_count: Number of PRs in queue
+  # Used by: process_queue
   #####################################################################
-  branch_check:
+  check_release_queue:
     runs-on: ubuntu-22.04
     outputs:
-      branch: ${{ steps.action.outputs.branch }}
-      allowed: ${{ steps.action.outputs.allowed }}
+      has_releases: ${{ steps.check_queue.outputs.has_releases }}
+      target_branch: ${{ steps.check_queue.outputs.target_branch }}
+      release_count: ${{ steps.check_queue.outputs.release_count }}
     steps:
       - uses: actions/checkout@v4
-      - id: action
-        uses: ./.github/actions/branch-check
         with:
-          source_branch: ${{ github.event.inputs.source_branch }}
-          github_ref: ${{ github.ref }}
+          fetch-depth: 0  # Full history for accurate release determination
+
+      - name: Set target branch
+        id: set_target
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "target_branch=${{ github.event.inputs.target_branch }}" >> $GITHUB_OUTPUT
+          else
+            # Auto-determine target branch based on queue priorities
+            echo "target_branch=auto" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: ./.github/actions/check-release-queue
+        id: check_queue
+        with:
+          target_branch: ${{ steps.set_target.outputs.target_branch }}
+          force_release: ${{ github.event.inputs.force_release || 'false' }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   #####################################################################
   # Process Release Queue
   # -------------------
-  # Purpose: Processes the release queue and prepares for release creation
-  #
+  # Purpose: Processes queued PRs and prepares releases
+  # 
   # Flow:
-  # 1. Gets next item from queue
-  # 2. Verifies all prerequisites
-  # 3. Sets up release parameters
+  # 1. Retrieves queue information
+  # 2. Sorts PRs by priority
+  # 3. Validates each PR is ready for release
+  #
+  # Dependencies: check_release_queue
+  # Outputs:
+  #   - release_data: JSON containing release information
+  #   - version_tag: New version tag
+  # Used by: create_release, generate_artifacts
   #####################################################################
   process_queue:
-    needs: branch_check
-    if: |
-      github.event_name == 'workflow_dispatch' || 
-      github.event_name == 'schedule' && 
-      needs.branch_check.outputs.allowed == 'true'
+    needs: check_release_queue
+    if: needs.check_release_queue.outputs.has_releases == 'true'
     runs-on: ubuntu-22.04
     outputs:
-      sha: ${{ steps.action.outputs.sha }}
-      branch: ${{ steps.action.outputs.branch }}
-      can_proceed: ${{ steps.action.outputs.can_proceed }}
-      version: ${{ steps.action.outputs.version }}
-      prerelease: ${{ steps.action.outputs.prerelease }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install GitHub CLI
-        run: |
-          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-          sudo apt update
-          sudo apt install gh -y
-      - id: action
-        uses: ./.github/actions/process-release-queue-job
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          trigger_sha: ${{ inputs.trigger_sha }}
-          source_branch: ${{ inputs.source_branch }}
-          force_process: ${{ inputs.force_process }}
-          is_scheduled: ${{ github.event_name == 'schedule' }}
-          initial_version: ${{ env.INITIAL_VERSION }}
-
-  #####################################################################
-  # Determine Version
-  # -----------------
-  # Purpose: Determines the next version for the release
-  #
-  # Flow:
-  # 1. Gets the latest tag
-  # 2. Parses the version components
-  # 3. Increments the beta number
-  # 4. Sets the new version
-  #####################################################################
-  determine_version:
-    runs-on: ubuntu-latest
-    outputs:
-      new_version: ${{ steps.version_action.outputs.new_version }}
+      release_data: ${{ steps.process.outputs.release_data }}
+      version_tag: ${{ steps.process.outputs.version_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - id: version_action
-        uses: ./.github/actions/version-determiner
+
+      - uses: ./.github/actions/process-release-queue
+        id: process
+        with:
+          target_branch: ${{ needs.check_release_queue.outputs.target_branch }}
+          release_count: ${{ needs.check_release_queue.outputs.release_count }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  #####################################################################
+  # Generate Version
+  # --------------
+  # Purpose: Creates a new version for the release
+  # 
+  # Flow:
+  # 1. Determines current version
+  # 2. Calculates version bump based on changes
+  # 3. Validates version follows semver
+  #
+  # Dependencies: process_queue
+  # Outputs:
+  #   - version: New version number
+  #   - previous_version: Previous version
+  # Used by: create_release
+  #####################################################################
+  generate_version:
+    needs: [check_release_queue, process_queue]
+    if: needs.check_release_queue.outputs.has_releases == 'true'
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.new_version }}
+      previous_version: ${{ steps.version.outputs.previous_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/version-determiner
+        id: version
+        with:
+          target_branch: ${{ needs.check_release_queue.outputs.target_branch }}
+          release_data: ${{ needs.process_queue.outputs.release_data }}
+
+  #####################################################################
+  # Generate Artifacts
+  # ----------------
+  # Purpose: Creates release artifacts
+  # 
+  # Flow:
+  # 1. Builds release artifacts
+  # 2. Validates artifacts
+  # 3. Prepares for publishing
+  #
+  # Dependencies: process_queue, generate_version
+  # Outputs:
+  #   - artifact_paths: Paths to generated artifacts
+  # Used by: create_release
+  #####################################################################
+  generate_artifacts:
+    needs: [check_release_queue, process_queue, generate_version]
+    if: needs.check_release_queue.outputs.has_releases == 'true'
+    runs-on: ubuntu-22.04
+    outputs:
+      artifact_paths: ${{ steps.artifacts.outputs.artifact_paths }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.check_release_queue.outputs.target_branch }}
+
+      - uses: ./.github/actions/generate-release-artifacts
+        id: artifacts
+        with:
+          version: ${{ needs.generate_version.outputs.version }}
+          target_branch: ${{ needs.check_release_queue.outputs.target_branch }}
+          release_data: ${{ needs.process_queue.outputs.release_data }}
+
+  #####################################################################
+  # Update Changelog
+  # --------------
+  # Purpose: Updates changelog with release notes
+  # 
+  # Flow:
+  # 1. Extracts PR information
+  # 2. Formats changelog entries
+  # 3. Updates CHANGELOG.md
+  #
+  # Dependencies: process_queue, generate_version
+  # Outputs:
+  #   - changelog_updated: Whether changelog was updated
+  # Used by: create_release
+  #####################################################################
+  update_changelog:
+    needs: [check_release_queue, process_queue, generate_version]
+    if: needs.check_release_queue.outputs.has_releases == 'true'
+    runs-on: ubuntu-22.04
+    outputs:
+      changelog_updated: ${{ steps.changelog.outputs.updated }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.check_release_queue.outputs.target_branch }}
+
+      - uses: ./.github/actions/update-changelog
+        id: changelog
+        with:
+          version: ${{ needs.generate_version.outputs.version }}
+          target_branch: ${{ needs.check_release_queue.outputs.target_branch }}
+          release_data: ${{ needs.process_queue.outputs.release_data }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   #####################################################################
   # Create Release
-  # -------------
-  # Purpose: Creates the actual release if queue processing succeeded
-  #
+  # ------------
+  # Purpose: Creates GitHub release with generated artifacts
+  # 
   # Flow:
-  # 1. Creates GitHub release
-  # 2. Updates Docker tags
-  # 3. Updates documentation
+  # 1. Tags release
+  # 2. Uploads artifacts
+  # 3. Publishes release
+  #
+  # Dependencies: process_queue, generate_version, 
+  #               generate_artifacts, update_changelog
+  # Outputs:
+  #   - release_url: URL to published release
+  # Used by: notify_release
   #####################################################################
   create_release:
-    needs: [branch_check, process_queue, determine_version]
-    if: |
-      github.event_name == 'workflow_dispatch' && needs.process_queue.outputs.can_proceed == 'true' ||
-      needs.branch_check.outputs.allowed == 'true' &&
-      needs.process_queue.outputs.can_proceed == 'true'
+    needs: [check_release_queue, process_queue, generate_version, 
+            generate_artifacts, update_changelog]
+    if: needs.check_release_queue.outputs.has_releases == 'true'
     runs-on: ubuntu-22.04
+    outputs:
+      release_url: ${{ steps.create.outputs.release_url }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}  # Ensure token has right permissions
+          ref: ${{ needs.check_release_queue.outputs.target_branch }}
 
-      - name: Create VERSION file
-        run: |
-          echo "${{ needs.determine_version.outputs.new_version }}" > VERSION
-
-      - name: Create Release
-        uses: ./.github/actions/create-release
+      - uses: ./.github/actions/create-github-release
+        id: create
         with:
-          version: ${{ needs.determine_version.outputs.new_version }}
-          prerelease: ${{ needs.process_queue.outputs.prerelease || 'true' }}  # Default to prerelease for beta
-          release_sha: ${{ needs.process_queue.outputs.sha }}
+          version: ${{ needs.generate_version.outputs.version }}
+          previous_version: ${{ needs.generate_version.outputs.previous_version }}
+          target_branch: ${{ needs.check_release_queue.outputs.target_branch }}
+          artifact_paths: ${{ needs.generate_artifacts.outputs.artifact_paths }}
+          release_data: ${{ needs.process_queue.outputs.release_data }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          bot_email: ${{ secrets.BOT_EMAIL }}
+          bot_name: ${{ secrets.BOT_NAME }}
           bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
-          bot_email: ${{ secrets.BOT_EMAIL || 'actions@github.com' }}
-          bot_name: ${{ secrets.BOT_NAME || 'GitHub Actions' }}
 
   #####################################################################
-  # Handle Failure
-  # -------------
-  # Purpose: Handles any failures in the release process
+  # Update Release Queue
+  # -----------------
+  # Purpose: Updates queue to remove processed PRs
+  # 
+  # Flow:
+  # 1. Removes processed PRs from queue
+  # 2. Updates queue status
+  # 3. Notifies stakeholders
+  #
+  # Dependencies: process_queue, create_release
+  # Outputs: None
+  # Used by: notify_release
   #####################################################################
-  handle_failure:
-    needs: [branch_check, process_queue, create_release]
-    if: |
-      always() &&
-      (needs.branch_check.outputs.allowed == 'true' && failure())
+  update_release_queue:
+    needs: [check_release_queue, process_queue, create_release]
+    if: needs.check_release_queue.outputs.has_releases == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/handle-release-failure
+        with: 
+          fetch-depth: 0
+
+      - uses: ./.github/actions/update-release-queue
+        id: update_queue
         with:
+          release_data: ${{ needs.process_queue.outputs.release_data }}
+          release_url: ${{ needs.create_release.outputs.release_url }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          maintainer: ${{ env.MAINTAINER_GITHUB }}
-          sha: ${{ needs.process_queue.outputs.sha }}
-          branch: ${{ needs.process_queue.outputs.branch }}
+          bot_email: ${{ secrets.BOT_EMAIL }}
+          bot_name: ${{ secrets.BOT_NAME }}
+          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
 
   #####################################################################
-  # Notify Queue
-  # -------------
-  # Purpose: Notifies the status of the release queue
+  # Notify Release
+  # ------------
+  # Purpose: Notifies stakeholders about release
+  # 
+  # Flow:
+  # 1. Creates notifications for various platforms
+  # 2. Updates issues and PRs
+  # 3. Sends release summary
+  #
+  # Dependencies: create_release, update_release_queue
+  # Outputs: None
+  # Used by: None
   #####################################################################
-  notify_queue:
-    needs: [process_queue, create_release]
-    if: always()
+  notify_release:
+    needs: [check_release_queue, create_release, update_release_queue]
+    if: needs.check_release_queue.outputs.has_releases == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/notify-queue
+
+      - uses: ./.github/actions/notify-release
+        id: notify
         with:
-          can_proceed: ${{ needs.process_queue.outputs.can_proceed }}
-          commit_sha: ${{ needs.process_queue.outputs.sha }}
-          release_result: ${{ needs.create_release.result }}
+          release_url: ${{ needs.create_release.outputs.release_url }}
+          target_branch: ${{ needs.check_release_queue.outputs.target_branch }}
+          teams_webhook: ${{ secrets.TEAMS_WEBHOOK }}
+          slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+  #####################################################################
+  # Handle Empty Queue
+  # ----------------
+  # Purpose: Handles case when no releases are available
+  # 
+  # Flow:
+  # 1. Logs queue status
+  # 2. Notifies if force_release was attempted
+  # 3. Updates release planning
+  #
+  # Dependencies: check_release_queue
+  # Outputs: None
+  # Used by: None
+  #####################################################################
+  handle_empty_queue:
+    needs: check_release_queue
+    if: needs.check_release_queue.outputs.has_releases != 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/handle-empty-queue
+        id: empty_queue
+        with:
+          target_branch: ${{ github.event.inputs.target_branch || 'auto' }}
+          force_requested: ${{ github.event.inputs.force_release || 'false' }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          is_scheduled: ${{ github.event_name == 'schedule' }}
+
+  #####################################################################
+  # Error Handling
+  # -------------
+  # Purpose: Handles failures in release process
+  # 
+  # Flow:
+  # 1. Captures error information
+  # 2. Creates diagnostic report
+  # 3. Notifies stakeholders
+  # 4. Attempts rollback if necessary
+  #
+  # Dependencies: All jobs
+  # Outputs: None
+  # Used by: None
+  # Note: Always runs when any job fails
+  #####################################################################
+  error_handling:
+    if: failure()
+    needs: [check_release_queue, process_queue, generate_version, 
+            generate_artifacts, update_changelog, create_release, 
+            update_release_queue, notify_release, handle_empty_queue]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/handle-release-errors
+        id: error_handler
+        with:
+          error_context: |
+            Check Queue Result: ${{ needs.check_release_queue.result }}
+            Process Queue Result: ${{ needs.process_queue.result }}
+            Generate Version Result: ${{ needs.generate_version.result }}
+            Generate Artifacts Result: ${{ needs.generate_artifacts.result }}
+            Update Changelog Result: ${{ needs.update_changelog.result }}
+            Create Release Result: ${{ needs.create_release.result }}
+            Update Queue Result: ${{ needs.update_release_queue.result }}
+            Notify Release Result: ${{ needs.notify_release.result }}
+            Empty Queue Result: ${{ needs.handle_empty_queue.result }}
+          target_branch: ${{ github.event.inputs.target_branch || needs.check_release_queue.outputs.target_branch || 'unknown' }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          teams_webhook: ${{ secrets.TEAMS_WEBHOOK }}
+          slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
