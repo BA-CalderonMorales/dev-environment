@@ -82,10 +82,10 @@ jobs:
   #####################################################################
   process_queue:
     needs: branch_check
+    # Modified to always run for manual triggers on allowed branches
     if: |
-      github.event_name == 'workflow_dispatch' || 
-      github.event_name == 'schedule' && 
-      needs.branch_check.outputs.allowed == 'true'
+      (github.event_name == 'workflow_dispatch' && needs.branch_check.outputs.allowed == 'true') || 
+      (github.event_name == 'schedule' && needs.branch_check.outputs.allowed == 'true')
     runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.action.outputs.sha }}
@@ -184,10 +184,10 @@ jobs:
   #####################################################################
   create_release:
     needs: [branch_check, process_queue, determine_version, validate_gpg]
+    # Modified to always run for manual triggers on allowed branches
     if: |
-      github.event_name == 'workflow_dispatch' && needs.process_queue.outputs.can_proceed == 'true' ||
-      needs.branch_check.outputs.allowed == 'true' &&
-      needs.process_queue.outputs.can_proceed == 'true'
+      (github.event_name == 'workflow_dispatch' && needs.branch_check.outputs.allowed == 'true') ||
+      (github.event_name == 'schedule' && needs.branch_check.outputs.allowed == 'true' && needs.process_queue.outputs.can_proceed == 'true')
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
