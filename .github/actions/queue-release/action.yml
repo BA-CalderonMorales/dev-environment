@@ -41,7 +41,7 @@ runs:
     # Debug inputs to diagnose any issues
     - name: Debug Inputs
       shell: bash
-      run: cargo run --bin step-debug-inputs  # Use hyphenated name as in Cargo.toml
+      run: cargo run --bin step_debug_inputs  # Use snake_case name as in Cargo.toml
       env:
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_BRANCH: ${{ inputs.branch }}
@@ -53,7 +53,7 @@ runs:
       shell: bash
       run: |
         cd ${{ github.workspace }}/.github/scripts
-        cargo run --bin step-queue-release  # Use hyphenated name as in Cargo.toml
+        cargo run --bin step_queue_release  # Use snake_case name as in Cargo.toml
       env:
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_BRANCH: ${{ inputs.branch }}
