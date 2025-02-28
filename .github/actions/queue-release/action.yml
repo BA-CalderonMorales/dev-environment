@@ -1,26 +1,33 @@
 name: 'Queue Release'
-description: 'Adds a commit to the release queue via PR'
+description: 'Add a commit to the release queue for processing'
 
 inputs:
   github_token:
-    description: 'GitHub token used for authentication'
+    description: 'GitHub token for authentication'
     required: true
   sha:
-    description: 'Commit SHA to be queued for release'
+    description: 'SHA of commit to queue'
     required: true
   branch:
-    description: 'Target branch for the release (beta or main)'
+    description: 'Branch name (beta/main)'
     required: true
+  bot_gpg_private_key:
+    description: 'GPG key for signing'
+    required: false
+  bot_gpg_passphrase:
+    description: 'GPG passphrase'
+    required: false
+  bot_email:
+    description: 'Bot email'
+    required: false
+
 outputs:
   queue_position:
-    description: 'Position in queue'
-    value: ${{ steps.process_queue.outputs.position }}
+    description: 'Position in release queue'
+    value: ${{ steps.queue.outputs.queue_position }}
   estimated_time:
-    description: 'Estimated time until release'
-    value: ${{ steps.process_queue.outputs.estimated_time }}
-  pr_number:
-    description: 'Created PR number'
-    value: ${{ steps.create_pr.outputs.pr_number }}
+    description: 'Estimated time to release'
+    value: ${{ steps.queue.outputs.estimated_time }}
 
 runs:
   using: 'composite'
@@ -31,56 +38,26 @@ runs:
         toolchain: stable
         override: true
 
+    # Debug inputs to diagnose any issues
     - name: Debug Inputs
       shell: bash
-      working-directory: .github/scripts
-      run: cargo run --bin step-debug-inputs
+      run: cargo run --bin step_debug_inputs  # Use snake_case name as in Cargo.toml
       env:
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_BRANCH: ${{ inputs.branch }}
-        GITHUB_REF: ${{ github.ref }}
-        GITHUB_SHA: ${{ github.sha }}
-        RUST_LOG: info
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
 
-    - id: setup_queue
+    # The main queue logic
+    - name: Add to Release Queue
+      id: queue
       shell: bash
-      working-directory: .github/scripts
-      run: cargo run --bin step_setup_queue
-      env:
-        RUST_LOG: info
-
-    - id: process_queue
-      shell: bash
-      working-directory: .github/scripts
-      run: cargo run --bin step_process_queue
+      run: |
+        cd ${{ github.workspace }}/.github/scripts
+        cargo run --bin step_queue_release  # Use snake_case name as in Cargo.toml
       env:
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_BRANCH: ${{ inputs.branch }}
-        RUST_LOG: info
-
-    - id: create_pr
-      shell: bash
-      working-directory: .github/scripts
-      run: |
-        RUST_LOG=info \
-        GITHUB_TOKEN="${{ inputs.github_token }}" \
-        QUEUE_BRANCH="${{ steps.setup_queue.outputs.branch }}" \
-        INPUT_BRANCH="${{ inputs.branch }}" \
-        INPUT_SHA="${{ inputs.sha }}" \
-        QUEUE_POSITION="${{ steps.process_queue.outputs.position }}" \
-        QUEUE_REMAINING="${{ steps.process_queue.outputs.remaining }}" \
-        QUEUE_ESTIMATED_TIME="${{ steps.process_queue.outputs.estimated_time }}" \
-        cargo run --bin step_create_pr
-
-    - name: Ensure PR has correct labels
-      shell: bash
-      run: |
-        PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
-        if [ -n "$PR_NUMBER" ]; then
-          echo "Adding release-queue label to PR #$PR_NUMBER"
-          gh pr edit $PR_NUMBER --add-label "release-queue"
-        else
-          echo "No PR number found in output"
-        fi
-      env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
+        INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
