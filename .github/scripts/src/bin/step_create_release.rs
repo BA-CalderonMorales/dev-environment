@@ -1,131 +1,183 @@
 //! GitHub release creation script for create-release action
 //! Used by: ./.github/actions/create-release/action.yml
-//! Purpose: Creates GitHub release with assets
+//! Purpose: Creates GitHub release with proper tag handling
 
 use anyhow::{Context, Result};
-use chrono::Utc;
-use github_workflow_scripts::{get_logger, init};
-use octocrab::Octocrab;
-use std::{env, fs};
+use github_workflow_scripts::{get_logger, init, github}; // Now properly imported
+use std::env;
+use std::process::Command;
 
-#[derive(Debug)]
-struct ReleaseInfo {
-    tag_name: String,
-    name: String,
-    prerelease: bool,
-    body: String,
-}
-
-impl ReleaseInfo {
-    async fn new() -> Result<Self> {
-        // Try multiple sources for version info (without adding extra v prefix)
-        let version = env::var("VALIDATED_VERSION")
-            .or_else(|_| env::var("INPUT_VERSION"))
-            .or_else(|_| env::var("INITIAL_VERSION"))
-            .context("No version information found")?
-            .trim_start_matches('v')
-            .to_string();
-
-        // Get repository info for correct URLs
-        let repository = env::var("GITHUB_REPOSITORY")
-            .context("GITHUB_REPOSITORY not set")?;
-
-        // Default to true for prerelease if on beta branch
-        let prerelease = env::var("INPUT_PRERELEASE")
-            .map(|v| v.parse::<bool>().unwrap_or(false))
-            .unwrap_or_else(|_| {
-                env::var("GITHUB_REF")
-                    .map(|r| r.contains("/beta"))
-                    .unwrap_or(false)
-            });
-
-        let release_type = if prerelease { "Beta" } else { "Stable" };
-        
-        // Read checksum file
-        let checksum = fs::read_to_string("checksum.txt")
-            .context("Failed to read checksum.txt")?;
-
-        let body = format!(
-            r#"## Release Notes
-            
-### Distributions
-This release includes:
-- Complete development environment configuration
-- Docker setup files for containerized usage
-- Direct deployment scripts
-
-### Installation
-```bash
-# Clone the repository
-git clone https://github.com/{repository}
-cd {repository}
-
-# Run setup script
-./setup.sh
-```
-
-### SHA-256 Checksums
-```
-{checksum}
-```
-
-### Release Details
-- Type: {release_type}
-- Version: {version}
-- Release Date: {}"#, 
-            Utc::now().format("%Y-%m-%d")
-        );
-
-        Ok(Self {
-            tag_name: format!("v{version}"),
-            name: format!("{release_type} Release v{version}"),
-            prerelease,
-            body,
-        })
-    }
-
-    async fn create_release(&self) -> Result<()> {
-        let token = env::var("GITHUB_TOKEN").context("GITHUB_TOKEN not set")?;
-        let repository = env::var("GITHUB_REPOSITORY")
-            .context("GITHUB_REPOSITORY not set")?;
-        
-        // Parse owner/repo from GITHUB_REPOSITORY
-        let (owner, repo) = repository
-            .split_once('/')
-            .context("Invalid repository format")?;
-
-        let octocrab = Octocrab::builder()
-            .personal_token(token)
-            .build()
-            .context("Failed to create GitHub client")?;
-
-        // Create the release using parsed owner/repo
-        let release = octocrab
-            .repos(owner, repo)
-            .releases()
-            .create(&self.tag_name)
-            .name(&self.name)
-            .body(&self.body)
-            .draft(false)
-            .prerelease(self.prerelease)
-            .send()
-            .await
-            .context("Failed to create release")?;
-
-        println!("Created release {} ({})", self.name, release.id);
-        Ok(())
-    }
-}
-
+// Main function to create a release with proper error handling
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize logging
     init();
     let logger = get_logger(false);
     
-    logger.info("🎉 Starting release creation...");
-    let release_info = ReleaseInfo::new().await?;
-    logger.info(&format!("Creating release with info: {:?}", release_info));
-    release_info.create_release().await?;
-    logger.info("✨ Release created successfully!");
+    logger.info("🚀 Creating GitHub release...");
+    
+    // Get required parameters from environment variables
+    let version = env::var("INPUT_VERSION").context("Missing INPUT_VERSION")?;
+    let release_sha = env::var("INPUT_RELEASE_SHA").context("Missing INPUT_RELEASE_SHA")?;
+    let github_token = env::var("INPUT_GITHUB_TOKEN").context("Missing INPUT_GITHUB_TOKEN")?;
+    
+    // Optional parameters with defaults
+    let prerelease = env::var("INPUT_PRERELEASE")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    
+    let generate_notes = env::var("INPUT_GENERATE_RELEASE_NOTES")
+        .map(|v| v == "true")
+        .unwrap_or(true);
+    
+    let draft = env::var("INPUT_DRAFT")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    
+    // Determine GitHub repository
+    let github_repository = env::var("GITHUB_REPOSITORY")
+        .context("Missing GITHUB_REPOSITORY environment variable")?;
+    
+    // Set environment variables for GitHub CLI
+    env::set_var("GITHUB_TOKEN", &github_token);
+    
+    // Check if tag has been created and pushed successfully
+    logger.info(&format!("Verifying tag {} exists...", version));
+    
+    // Fetch latest tags to ensure we see the new one
+    let fetch_result = Command::new("git")
+        .args(&["fetch", "--tags"])
+        .output();
+    
+    if let Err(e) = fetch_result {
+        logger.warn(&format!("Failed to fetch tags: {}", e));
+    }
+    
+    // Verify our tag exists
+    let tag_check = Command::new("git")
+        .args(&["tag", "-l", &version])
+        .output()
+        .context("Failed to check if tag exists")?;
+    
+    let tag_exists = String::from_utf8_lossy(&tag_check.stdout)
+        .trim()
+        .contains(&version);
+    
+    if !tag_exists {
+        logger.warn(&format!("Tag {} not found, creating it now...", version));
+        
+        // Check if we should sign the tag
+        let gpg_check = Command::new("git")
+            .args(&["config", "--get", "user.signingkey"])
+            .output()
+            .context("Failed to check git signing key")?;
+        
+        let signing_configured = gpg_check.status.success() && 
+                                String::from_utf8_lossy(&gpg_check.stdout).trim().len() > 0;
+        
+        // Create signed or unsigned tag as appropriate
+        if signing_configured {
+            logger.info("Creating signed tag...");
+            let signed_tag = Command::new("git")
+                .args(&["tag", "-s", &version, &release_sha, "-m", &format!("Release {}", version)])
+                .output()
+                .context("Failed to create signed tag")?;
+            
+            if !signed_tag.status.success() {
+                logger.warn(&format!("Failed to create signed tag: {}", 
+                    String::from_utf8_lossy(&signed_tag.stderr)));
+                    
+                // Try without signing as fallback
+                logger.info("Falling back to unsigned tag...");
+                let unsigned_tag = Command::new("git")
+                    .args(&["tag", "-a", &version, &release_sha, "-m", &format!("Release {}", version)])
+                    .output()
+                    .context("Failed to create unsigned tag")?;
+                    
+                if !unsigned_tag.status.success() {
+                    return Err(anyhow::anyhow!(
+                        "Failed to create unsigned tag: {}", 
+                        String::from_utf8_lossy(&unsigned_tag.stderr)
+                    ));
+                }
+            }
+        } else {
+            logger.info("Creating unsigned tag...");
+            let unsigned_tag = Command::new("git")
+                .args(&["tag", "-a", &version, &release_sha, "-m", &format!("Release {}", version)])
+                .output()
+                .context("Failed to create unsigned tag")?;
+                
+            if !unsigned_tag.status.success() {
+                return Err(anyhow::anyhow!(
+                    "Failed to create unsigned tag: {}", 
+                    String::from_utf8_lossy(&unsigned_tag.stderr)
+                ));
+            }
+        }
+        
+        // Push the tag
+        logger.info("Pushing tag to remote...");
+        let push_result = Command::new("git")
+            .args(&["push", "origin", &format!("refs/tags/{}", version)])
+            .output()
+            .context("Failed to push tag")?;
+            
+        if !push_result.status.success() {
+            return Err(anyhow::anyhow!(
+                "Failed to push tag: {}", 
+                String::from_utf8_lossy(&push_result.stderr)
+            ));
+        }
+    } else {
+        logger.info(&format!("Tag {} already exists, using existing tag", version));
+    }
+    
+    // Create GitHub release using gh CLI
+    logger.info("Creating GitHub release...");
+    
+    // Build command arguments
+    let mut args = vec!["release", "create", &version, "--target", &release_sha];
+    
+    // Add title
+    args.push("--title");
+    args.push(&version);
+    
+    // Add optional flags
+    if prerelease {
+        args.push("--prerelease");
+    }
+    
+    if draft {
+        args.push("--draft");
+    }
+    
+    if generate_notes {
+        args.push("--generate-notes");
+    }
+    
+    // Execute release command
+    let release_result = Command::new("gh")
+        .args(&args)
+        .output()
+        .context("Failed to execute GitHub CLI")?;
+        
+    if !release_result.status.success() {
+        return Err(anyhow::anyhow!(
+            "Failed to create GitHub release: {}", 
+            String::from_utf8_lossy(&release_result.stderr)
+        ));
+    }
+    
+    // Output release URL for action output
+    let release_url = format!(
+        "https://github.com/{}/releases/tag/{}", 
+        github_repository,
+        version
+    );
+    
+    github::set_output("release_url", &release_url);
+    logger.info(&format!("✅ Release created successfully: {}", release_url));
+    
     Ok(())
 }

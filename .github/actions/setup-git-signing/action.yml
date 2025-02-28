@@ -1,0 +1,68 @@
+name: 'Setup Git Signing'
+description: 'Configures git with commit signing capabilities with fallback options'
+
+inputs:
+  bot_email:
+    description: 'Email for git config'
+    required: true
+  bot_name:
+    description: 'Name for git config'
+    required: true
+  bot_gpg_private_key:
+    description: 'GPG private key for signing'
+    required: false
+  bot_gpg_passphrase:
+    description: 'Passphrase for GPG private key'
+    required: false
+  force_no_signing:
+    description: 'Force disable signing even if keys are available'
+    required: false
+    default: 'false'
+  debug_mode:
+    description: 'Enable debug output'
+    required: false
+    default: 'false'
+  workflow_type:
+    description: 'Type of workflow (distribution or release)'
+    required: false
+    default: 'release'
+
+outputs:
+  signing_enabled:
+    description: 'Whether commit signing was successfully enabled'
+    value: ${{ steps.setup_git.outputs.signing_enabled }}
+  gpg_key_id:
+    description: 'ID of the imported GPG key'
+    value: ${{ steps.setup_git.outputs.gpg_key_id }}
+
+runs:
+  using: 'composite'
+  steps:
+    # Compile Rust scripts if needed
+    - name: Ensure Rust scripts are compiled
+      shell: bash
+      run: |
+        if [ ! -f "${{ github.workspace }}/.github/scripts/target/debug/step_setup_gpg" ] || [ ! -f "${{ github.workspace }}/.github/scripts/target/debug/step_setup_release_gpg" ]; then
+          cd ${{ github.workspace }}/.github/scripts
+          cargo build
+        fi
+
+    # Use the appropriate Rust script based on workflow type
+    - name: Set up Git and GPG
+      id: setup_git
+      shell: bash
+      run: |
+        if [[ "${{ inputs.workflow_type }}" == "release" ]]; then
+          echo "Using release-specific GPG setup"
+          ${{ github.workspace }}/.github/scripts/target/debug/step_setup_release_gpg
+        else
+          echo "Using distribution GPG setup"
+          ${{ github.workspace }}/.github/scripts/target/debug/step_setup_gpg
+        fi
+      env:
+        INPUT_BOT_EMAIL: ${{ inputs.bot_email }}
+        INPUT_BOT_NAME: ${{ inputs.bot_name }}
+        INPUT_BOT_GPG_PRIVATE_KEY: ${{ inputs.bot_gpg_private_key }}
+        INPUT_BOT_GPG_PASSPHRASE: ${{ inputs.bot_gpg_passphrase }}
+        INPUT_FORCE_NO_SIGNING: ${{ inputs.force_no_signing }}
+        INPUT_DEBUG_MODE: ${{ inputs.debug_mode }}
