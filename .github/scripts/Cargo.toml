@@ -7,66 +7,71 @@ description = "Rust scripts for GitHub Actions workflows"
 [lib]
 path = "src/lib.rs"
 
-# Updated binary targets with consistent underscore naming
+# Binary targets use hyphenated names (for action compatibility) 
+# but reference underscore-based file paths (Rust convention)
 [[bin]]
-name = "step_check_workflow_states"
+name = "step-check-workflow-states"
 path = "src/bin/step_check_workflow_states.rs"
 
 [[bin]]
-name = "step_check_artifacts"
+name = "step-check-artifacts"
 path = "src/bin/step_check_artifacts.rs"
 
 [[bin]]
-name = "step_check_base_image"
+name = "step-check-base-image"
 path = "src/bin/step_check_base_image.rs"
 
 [[bin]]
-name = "step_setup_docker_env"
+name = "step-setup-docker-env"
 path = "src/bin/step_setup_docker_env.rs"
 
 [[bin]]
-name = "step_build_image"
+name = "step-build-image"
 path = "src/bin/step_build_image.rs"
 
 [[bin]]
-name = "step_verify_docker_image"
+name = "step-verify-docker-image"
 path = "src/bin/step_verify_docker_image.rs"
 
 [[bin]]
-name = "step_validate_version"
+name = "step-validate-version"
 path = "src/bin/step_validate_version.rs"
 
 [[bin]]
-name = "step_package_assets"
+name = "step-package-assets"
 path = "src/bin/step_package_assets.rs"
 
 [[bin]]
-name = "step_configure_git"
+name = "step-configure-git"
 path = "src/bin/step_configure_git.rs"
 
 [[bin]]
-name = "step_update_docs"
+name = "step-update-docs"
 path = "src/bin/step_update_docs.rs"
 
 [[bin]]
-name = "step_debug_inputs"
+name = "step-debug-inputs"
 path = "src/bin/step_debug_inputs.rs"
 
 [[bin]]
-name = "step_create_release"
+name = "step-create-release"
 path = "src/bin/step_create_release.rs"
 
 [[bin]]
-name = "step_cache_cleanup"
+name = "step-cache-cleanup"
 path = "src/bin/step_cache_cleanup.rs"
 
 [[bin]]
-name = "step_setup_gpg"
+name = "step-setup-gpg"
 path = "src/bin/step_setup_gpg.rs"
 
 [[bin]]
-name = "step_setup_release_gpg"
+name = "step-setup-release-gpg"
 path = "src/bin/step_setup_release_gpg.rs"
+
+[[bin]]
+name = "step-queue-release"
+path = "src/bin/step_queue_release.rs"
 
 [dependencies]
 anyhow = "1.0.79"  # Error handling
