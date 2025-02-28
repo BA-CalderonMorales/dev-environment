@@ -2,72 +2,82 @@
 name = "github-workflow-scripts"
 version = "0.1.0"
 edition = "2021"
+description = "Rust scripts for GitHub Actions workflows"
 
 [lib]
 path = "src/lib.rs"
 
+# Updated binary targets with consistent underscore naming
 [[bin]]
-name = "step-check-workflow-states"
+name = "step_check_workflow_states"
 path = "src/bin/step_check_workflow_states.rs"
 
 [[bin]]
-name = "step-check-artifacts"
+name = "step_check_artifacts"
 path = "src/bin/step_check_artifacts.rs"
 
 [[bin]]
-name = "step-check-base-image"
+name = "step_check_base_image"
 path = "src/bin/step_check_base_image.rs"
 
 [[bin]]
-name = "step-setup-docker-env"
+name = "step_setup_docker_env"
 path = "src/bin/step_setup_docker_env.rs"
 
 [[bin]]
-name = "step-build-image"
+name = "step_build_image"
 path = "src/bin/step_build_image.rs"
 
 [[bin]]
-name = "step-verify-docker-image"
+name = "step_verify_docker_image"
 path = "src/bin/step_verify_docker_image.rs"
 
 [[bin]]
-name = "step-validate-version"
+name = "step_validate_version"
 path = "src/bin/step_validate_version.rs"
 
 [[bin]]
-name = "step-package-assets"
+name = "step_package_assets"
 path = "src/bin/step_package_assets.rs"
 
 [[bin]]
-name = "step-configure-git"
+name = "step_configure_git"
 path = "src/bin/step_configure_git.rs"
 
 [[bin]]
-name = "step-update-docs"
+name = "step_update_docs"
 path = "src/bin/step_update_docs.rs"
 
 [[bin]]
-name = "step-debug-inputs"
+name = "step_debug_inputs"
 path = "src/bin/step_debug_inputs.rs"
 
 [[bin]]
-name = "step-create-release"
+name = "step_create_release"
 path = "src/bin/step_create_release.rs"
 
 [[bin]]
-name = "step-cache-cleanup"
+name = "step_cache_cleanup"
 path = "src/bin/step_cache_cleanup.rs"
 
+[[bin]]
+name = "step_setup_gpg"
+path = "src/bin/step_setup_gpg.rs"
+
+[[bin]]
+name = "step_setup_release_gpg"
+path = "src/bin/step_setup_release_gpg.rs"
+
 [dependencies]
-anyhow = "1.0"
+anyhow = "1.0.79"  # Error handling
+chrono = "0.4.31"  # Date and time handling
+serde = { version = "1.0.194", features = ["derive"] }  # Serialization/deserialization
+serde_json = "1.0.111"  # JSON support
+tokio = { version = "1.35.1", features = ["full"] }  # Async runtime
+base64 = "0.21.5"  # Base64 encoding/decoding
 octocrab = "0.31"
-tokio = { version = "1.0", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 reqwest = { version = "0.11", features = ["json"] }
 regex = "1.5"
-chrono = "0.4"
 sha2 = "0.10"
-base64 = "0.21"
