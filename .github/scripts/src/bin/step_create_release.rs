@@ -2,15 +2,16 @@
 //! Used by: ./.github/actions/create-release/action.yml
 //! Purpose: Creates GitHub release with proper tag handling
 
-use anyhow::{Context, Result};
-use github_workflow_scripts::{get_logger, init, github}; // Now properly imported
+use anyhow::{Context, Result, anyhow};
+use github_workflow_scripts::{get_logger, init, github, Logger};
 use std::env;
 use std::process::Command;
+use std::fs;
 
 // Main function to create a release with proper error handling
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
+    // Initialize logging and configuration
     init();
     let logger = get_logger(false);
     
@@ -34,14 +35,37 @@ async fn main() -> Result<()> {
         .map(|v| v == "true")
         .unwrap_or(false);
     
-    // Determine GitHub repository
-    let github_repository = env::var("GITHUB_REPOSITORY")
-        .context("Missing GITHUB_REPOSITORY environment variable")?;
+    let allow_unsigned = env::var("INPUT_ALLOW_UNSIGNED")
+        .map(|v| v == "true")
+        .unwrap_or(true);
     
     // Set environment variables for GitHub CLI
     env::set_var("GITHUB_TOKEN", &github_token);
+    let github_repository = env::var("GITHUB_REPOSITORY")
+        .context("Missing GITHUB_REPOSITORY environment variable")?;
     
-    // Check if tag has been created and pushed successfully
+    // Process flow: Check tag → Create tag → Push tag → Create release
+    if !tag_exists(&version, logger.as_ref())? {
+        // Try to create and push tag
+        create_and_push_tag(&version, &release_sha, allow_unsigned, logger.as_ref())?;
+    }
+    
+    // Create GitHub release
+    create_github_release(
+        &version, 
+        &release_sha, 
+        prerelease, 
+        draft, 
+        generate_notes,
+        &github_repository,
+        logger.as_ref()
+    )?;
+    
+    Ok(())
+}
+
+/// Check if a tag already exists
+fn tag_exists(version: &str, logger: &dyn Logger) -> Result<bool> {
     logger.info(&format!("Verifying tag {} exists...", version));
     
     // Fetch latest tags to ensure we see the new one
@@ -55,93 +79,194 @@ async fn main() -> Result<()> {
     
     // Verify our tag exists
     let tag_check = Command::new("git")
-        .args(&["tag", "-l", &version])
+        .args(&["tag", "-l", version])
         .output()
         .context("Failed to check if tag exists")?;
     
     let tag_exists = String::from_utf8_lossy(&tag_check.stdout)
         .trim()
-        .contains(&version);
+        .contains(version);
     
-    if !tag_exists {
-        logger.warn(&format!("Tag {} not found, creating it now...", version));
-        
-        // Check if we should sign the tag
-        let gpg_check = Command::new("git")
-            .args(&["config", "--get", "user.signingkey"])
-            .output()
-            .context("Failed to check git signing key")?;
-        
-        let signing_configured = gpg_check.status.success() && 
-                                String::from_utf8_lossy(&gpg_check.stdout).trim().len() > 0;
-        
-        // Create signed or unsigned tag as appropriate
-        if signing_configured {
-            logger.info("Creating signed tag...");
-            let signed_tag = Command::new("git")
-                .args(&["tag", "-s", &version, &release_sha, "-m", &format!("Release {}", version)])
-                .output()
-                .context("Failed to create signed tag")?;
-            
-            if !signed_tag.status.success() {
-                logger.warn(&format!("Failed to create signed tag: {}", 
-                    String::from_utf8_lossy(&signed_tag.stderr)));
-                    
-                // Try without signing as fallback
-                logger.info("Falling back to unsigned tag...");
-                let unsigned_tag = Command::new("git")
-                    .args(&["tag", "-a", &version, &release_sha, "-m", &format!("Release {}", version)])
-                    .output()
-                    .context("Failed to create unsigned tag")?;
-                    
-                if !unsigned_tag.status.success() {
-                    return Err(anyhow::anyhow!(
-                        "Failed to create unsigned tag: {}", 
-                        String::from_utf8_lossy(&unsigned_tag.stderr)
-                    ));
-                }
-            }
-        } else {
-            logger.info("Creating unsigned tag...");
-            let unsigned_tag = Command::new("git")
-                .args(&["tag", "-a", &version, &release_sha, "-m", &format!("Release {}", version)])
-                .output()
-                .context("Failed to create unsigned tag")?;
-                
-            if !unsigned_tag.status.success() {
-                return Err(anyhow::anyhow!(
-                    "Failed to create unsigned tag: {}", 
-                    String::from_utf8_lossy(&unsigned_tag.stderr)
-                ));
-            }
-        }
-        
-        // Push the tag
-        logger.info("Pushing tag to remote...");
-        let push_result = Command::new("git")
-            .args(&["push", "origin", &format!("refs/tags/{}", version)])
-            .output()
-            .context("Failed to push tag")?;
-            
-        if !push_result.status.success() {
-            return Err(anyhow::anyhow!(
-                "Failed to push tag: {}", 
-                String::from_utf8_lossy(&push_result.stderr)
-            ));
-        }
-    } else {
+    if tag_exists {
         logger.info(&format!("Tag {} already exists, using existing tag", version));
+    } else {
+        logger.warn(&format!("Tag {} not found, creating it now...", version));
     }
     
-    // Create GitHub release using gh CLI
+    Ok(tag_exists)
+}
+
+/// Create and push a tag to the remote repository
+fn create_and_push_tag(version: &str, commit_sha: &str, allow_unsigned: bool, logger: &dyn Logger) -> Result<()> {
+    // Configure GPG for batch mode operation
+    configure_gpg_for_batch_mode(logger)?;
+    
+    // First, try to create a signed tag
+    logger.info("Creating signed tag...");
+    let signing_result = create_signed_tag(version, commit_sha);
+    
+    // If signing fails and unsigned tags are allowed, create an unsigned tag
+    if let Err(e) = signing_result {
+        logger.warn(&format!("Failed to create signed tag: {}", e));
+        
+        if allow_unsigned {
+            logger.info("Falling back to unsigned tag...");
+            
+            // Properly disable GPG signing for this operation
+            disable_git_signing(logger)?;
+            
+            // Create truly unsigned tag
+            let unsigned_result = create_unsigned_tag(version, commit_sha);
+            if let Err(e) = unsigned_result {
+                return Err(anyhow!("Failed to create unsigned tag: {}", e));
+            }
+        } else {
+            return Err(anyhow!("Failed to create signed tag and unsigned tags not allowed"));
+        }
+    }
+    
+    // Push the tag to remote
+    logger.info("Pushing tag to remote...");
+    let push_result = Command::new("git")
+        .args(&["push", "origin", &format!("refs/tags/{}", version)])
+        .output()
+        .context("Failed to push tag")?;
+        
+    if !push_result.status.success() {
+        return Err(anyhow!(
+            "Failed to push tag: {}", 
+            String::from_utf8_lossy(&push_result.stderr)
+        ));
+    }
+    
+    logger.info(&format!("✅ Successfully pushed tag {}", version));
+    Ok(())
+}
+
+/// Configure GPG for batch mode operation
+fn configure_gpg_for_batch_mode(logger: &dyn Logger) -> Result<()> {
+    logger.info("Configuring GPG for batch mode operation");
+    
+    // Create necessary GPG configuration directories
+    let home_dir = env::var("HOME").unwrap_or_else(|_| "/home/runner".to_string());
+    let gpg_dir = format!("{}/.gnupg", home_dir);
+    fs::create_dir_all(&gpg_dir).context("Failed to create GPG directory")?;
+    
+    // Create gpg.conf with appropriate settings
+    let gpg_conf_path = format!("{}/gpg.conf", gpg_dir);
+    let gpg_conf_content = "allow-loopback-pinentry\npinentry-mode loopback\nno-tty\nbatch\n";
+    fs::write(&gpg_conf_path, gpg_conf_content)
+        .context("Failed to write GPG configuration")?;
+    
+    // Create gpg-agent.conf
+    let agent_conf_path = format!("{}/gpg-agent.conf", gpg_dir);
+    let agent_conf_content = "allow-loopback-pinentry\nallow-preset-passphrase\n";
+    fs::write(&agent_conf_path, agent_conf_content)
+        .context("Failed to write GPG agent configuration")?;
+    
+    // Set proper permissions
+    Command::new("chmod")
+        .args(&["700", &gpg_dir])
+        .output()
+        .ok();
+    
+    Command::new("chmod")
+        .args(&["600", &gpg_conf_path, &agent_conf_path])
+        .output()
+        .ok();
+    
+    // Set environment variables for GPG
+    env::set_var("GPG_TTY", "");
+    
+    // Reload GPG agent
+    Command::new("gpg-connect-agent")
+        .args(&["reloadagent", "/bye"])
+        .output()
+        .ok();
+    
+    logger.info("✅ GPG configured for batch mode");
+    Ok(())
+}
+
+/// Disable Git GPG signing temporarily
+fn disable_git_signing(logger: &dyn Logger) -> Result<()> {
+    logger.info("Temporarily disabling Git signing");
+    
+    // Unset signing key
+    Command::new("git")
+        .args(&["config", "--local", "--unset", "user.signingkey"])
+        .output()
+        .ok();
+    
+    // Disable commit signing
+    Command::new("git")
+        .args(&["config", "--local", "commit.gpgsign", "false"])
+        .output()
+        .context("Failed to disable commit signing")?;
+    
+    // Disable tag signing
+    Command::new("git")
+        .args(&["config", "--local", "tag.gpgsign", "false"])
+        .output()
+        .context("Failed to disable tag signing")?;
+    
+    logger.info("✅ Git signing disabled");
+    Ok(())
+}
+
+/// Create a signed Git tag
+fn create_signed_tag(version: &str, commit_sha: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(&["tag", "-s", version, commit_sha, "-m", &format!("Release {}", version)])
+        .output()
+        .context("Failed to execute git tag command")?;
+    
+    if !output.status.success() {
+        return Err(anyhow!(
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    
+    Ok(())
+}
+
+/// Create an unsigned Git tag
+fn create_unsigned_tag(version: &str, commit_sha: &str) -> Result<()> {
+    // Create a truly unsigned tag
+    let output = Command::new("git")
+        .args(&["tag", "-a", version, commit_sha, "-m", &format!("Release {} (unsigned)", version)])
+        .output()
+        .context("Failed to execute git tag command")?;
+    
+    if !output.status.success() {
+        return Err(anyhow!(
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    
+    Ok(())
+}
+
+/// Create GitHub release using the GitHub CLI
+fn create_github_release(
+    version: &str,
+    release_sha: &str,
+    prerelease: bool,
+    draft: bool,
+    generate_notes: bool,
+    github_repository: &str,
+    logger: &dyn Logger
+) -> Result<()> {
     logger.info("Creating GitHub release...");
     
     // Build command arguments
-    let mut args = vec!["release", "create", &version, "--target", &release_sha];
+    let mut args = vec!["release", "create", version, "--target", release_sha];
     
     // Add title
     args.push("--title");
-    args.push(&version);
+    args.push(version);
     
     // Add optional flags
     if prerelease {
@@ -163,7 +288,7 @@ async fn main() -> Result<()> {
         .context("Failed to execute GitHub CLI")?;
         
     if !release_result.status.success() {
-        return Err(anyhow::anyhow!(
+        return Err(anyhow!(
             "Failed to create GitHub release: {}", 
             String::from_utf8_lossy(&release_result.stderr)
         ));

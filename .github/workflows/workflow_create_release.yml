@@ -71,6 +71,67 @@ jobs:
           github_ref: ${{ github.ref }}
 
   #####################################################################
+  # Determine Version
+  # -----------------
+  # Purpose: Determines the next version for the release
+  #
+  # Flow:
+  # 1. Gets the latest tag
+  # 2. Parses the version components
+  # 3. Increments the beta number
+  # 4. Sets the new version
+  #####################################################################
+  determine_version:
+    needs: branch_check
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.version_action.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - id: version_action
+        uses: ./.github/actions/version-determiner
+
+  #####################################################################
+  # Validate GPG Keys
+  # -----------------
+  # Purpose: Validates GPG keys before attempting release
+  #
+  # Flow:
+  # 1. Tests GPG key import
+  # 2. Verifies signing capability
+  # 3. Provides diagnostic information
+  #####################################################################
+  validate_gpg:
+    needs: [branch_check, determine_version]
+    runs-on: ubuntu-22.04
+    outputs:
+      signing_enabled: ${{ steps.test_gpg.outputs.signing_enabled }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Test GPG Configuration
+        id: test_gpg
+        uses: ./.github/actions/setup-git-signing
+        with:
+          bot_email: ${{ secrets.BOT_EMAIL || 'actions@github.com' }}
+          bot_name: ${{ secrets.BOT_NAME || 'GitHub Actions' }}
+          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
+          debug_mode: 'true'
+      
+      - name: Report GPG Status
+        run: |
+          if [[ "${{ steps.test_gpg.outputs.signing_enabled }}" == "true" ]]; then
+            echo "✅ GPG signing is properly configured with key ID: ${{ steps.test_gpg.outputs.gpg_key_id }}"
+          else
+            echo "⚠️ GPG signing is not available. Releases will be created without signatures."
+            echo "   Please check your BOT_GPG_PRIVATE_KEY and BOT_GPG_PASSPHRASE secrets."
+          fi
+
+  #####################################################################
   # Process Release Queue
   # -------------------
   # Purpose: Processes the release queue and prepares for release creation
@@ -81,11 +142,11 @@ jobs:
   # 3. Sets up release parameters
   #####################################################################
   process_queue:
-    needs: branch_check
+    needs: [branch_check, determine_version, validate_gpg]
+    # Modified to always run for manual triggers on allowed branches
     if: |
-      github.event_name == 'workflow_dispatch' || 
-      github.event_name == 'schedule' && 
-      needs.branch_check.outputs.allowed == 'true'
+      (github.event_name == 'workflow_dispatch' && needs.branch_check.outputs.allowed == 'true') || 
+      (github.event_name == 'schedule' && needs.branch_check.outputs.allowed == 'true')
     runs-on: ubuntu-22.04
     outputs:
       sha: ${{ steps.action.outputs.sha }}
@@ -114,65 +175,6 @@ jobs:
           initial_version: ${{ env.INITIAL_VERSION }}
 
   #####################################################################
-  # Determine Version
-  # -----------------
-  # Purpose: Determines the next version for the release
-  #
-  # Flow:
-  # 1. Gets the latest tag
-  # 2. Parses the version components
-  # 3. Increments the beta number
-  # 4. Sets the new version
-  #####################################################################
-  determine_version:
-    runs-on: ubuntu-latest
-    outputs:
-      new_version: ${{ steps.version_action.outputs.new_version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - id: version_action
-        uses: ./.github/actions/version-determiner
-
-  #####################################################################
-  # Validate GPG Keys
-  # -----------------
-  # Purpose: Validates GPG keys before attempting release
-  #
-  # Flow:
-  # 1. Tests GPG key import
-  # 2. Verifies signing capability
-  # 3. Provides diagnostic information
-  #####################################################################
-  validate_gpg:
-    runs-on: ubuntu-22.04
-    outputs:
-      signing_enabled: ${{ steps.test_gpg.outputs.signing_enabled }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Test GPG Configuration
-        id: test_gpg
-        uses: ./.github/actions/setup-git-signing
-        with:
-          bot_email: ${{ secrets.BOT_EMAIL || 'actions@github.com' }}
-          bot_name: ${{ secrets.BOT_NAME || 'GitHub Actions' }}
-          bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
-          bot_gpg_passphrase: ${{ secrets.BOT_GPG_PASSPHRASE }}
-          debug_mode: 'true'
-      
-      - name: Report GPG Status
-        run: |
-          if [[ "${{ steps.test_gpg.outputs.signing_enabled }}" == "true" ]]; then
-            echo "✅ GPG signing is properly configured with key ID: ${{ steps.test_gpg.outputs.gpg_key_id }}"
-          else
-            echo "⚠️ GPG signing is not available. Releases will be created without signatures."
-            echo "   Please check your BOT_GPG_PRIVATE_KEY and BOT_GPG_PASSPHRASE secrets."
-          fi
-
-  #####################################################################
   # Create Release
   # -------------
   # Purpose: Creates the actual release if queue processing succeeded
@@ -183,11 +185,11 @@ jobs:
   # 3. Updates documentation
   #####################################################################
   create_release:
-    needs: [branch_check, process_queue, determine_version, validate_gpg]
+    needs: [branch_check, determine_version, validate_gpg, process_queue]
+    # Modified to always run for manual triggers on allowed branches
     if: |
-      github.event_name == 'workflow_dispatch' && needs.process_queue.outputs.can_proceed == 'true' ||
-      needs.branch_check.outputs.allowed == 'true' &&
-      needs.process_queue.outputs.can_proceed == 'true'
+      (github.event_name == 'workflow_dispatch' && needs.branch_check.outputs.allowed == 'true') ||
+      (github.event_name == 'schedule' && needs.branch_check.outputs.allowed == 'true' && needs.process_queue.outputs.can_proceed == 'true')
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
