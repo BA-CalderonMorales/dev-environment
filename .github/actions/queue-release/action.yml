@@ -32,11 +32,14 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Set up Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        override: true
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build workflow scripts
+      shell: bash
+      run: |
+        cd .github/scripts
+        cargo build --release
 
     # Debug inputs to diagnose any issues
     - name: Debug Inputs
