@@ -44,7 +44,9 @@ runs:
     # Debug inputs to diagnose any issues
     - name: Debug Inputs
       shell: bash
-      run: cargo run --bin step_debug_inputs  # Use snake_case name as in Cargo.toml
+      run: |
+        cd ${{ github.workspace }}/.github/scripts
+        cargo run --bin step_debug_inputs  # Use snake_case name as in Cargo.toml
       env:
         INPUT_SHA: ${{ inputs.sha }}
         INPUT_BRANCH: ${{ inputs.branch }}
