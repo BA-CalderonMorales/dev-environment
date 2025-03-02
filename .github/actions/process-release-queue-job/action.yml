@@ -3,19 +3,25 @@ description: 'Processes release queue items and determines if a release should b
 
 inputs:
   github_token:
+    description: 'GitHub token for repository authentication and API access'
     required: true
   trigger_sha:
+    description: 'SHA to trigger release directly (bypassing queue)'
     required: false
     default: ''
   source_branch:
+    description: 'Branch to process release queue for'
     required: true
   force_process:
+    description: 'Whether to force processing of queue'
     required: false
     default: 'false'
   is_scheduled:
+    description: 'Whether this run is scheduled'
     required: false
     default: 'false'
   initial_version:
+    description: 'Initial version to use for release'
     required: true
 
 outputs:
