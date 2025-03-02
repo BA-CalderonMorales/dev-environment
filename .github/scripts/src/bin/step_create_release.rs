@@ -1,6 +1,6 @@
 //! GitHub release creation script for create-release action
 //! Used by: ./.github/actions/create-release/action.yml
-//! Purpose: Creates GitHub release with proper tag handling
+//! Purpose: Creates GitHub release with proper tag handling and semantic versioning
 
 use anyhow::{Context, Result, anyhow};
 use github_workflow_scripts::{get_logger, init, github, Logger};
@@ -39,20 +39,24 @@ async fn main() -> Result<()> {
         .map(|v| v == "true")
         .unwrap_or(true);
     
+    // Validate and normalize version format according to semantic versioning
+    let normalized_version = normalize_version(&version);
+    logger.info(&format!("Using normalized version: {}", normalized_version));
+    
     // Set environment variables for GitHub CLI
     env::set_var("GITHUB_TOKEN", &github_token);
     let github_repository = env::var("GITHUB_REPOSITORY")
         .context("Missing GITHUB_REPOSITORY environment variable")?;
     
     // Process flow: Check tag → Create tag → Push tag → Create release
-    if !tag_exists(&version, logger.as_ref())? {
+    if !tag_exists(&normalized_version, logger.as_ref())? {
         // Try to create and push tag
-        create_and_push_tag(&version, &release_sha, allow_unsigned, logger.as_ref())?;
+        create_and_push_tag(&normalized_version, &release_sha, allow_unsigned, logger.as_ref())?;
     }
     
     // Create GitHub release
     create_github_release(
-        &version, 
+        &normalized_version, 
         &release_sha, 
         prerelease, 
         draft, 
@@ -62,6 +66,36 @@ async fn main() -> Result<()> {
     )?;
     
     Ok(())
+}
+
+/// Normalize version string according to semantic versioning best practices
+/// 
+/// Ensures version follows the pattern 'vX.Y.Z' or 'vX.Y.Z-suffix' format.
+/// If version doesn't start with 'v', it adds it.
+fn normalize_version(version: &str) -> String {
+    let mut result = version.trim().to_string();
+    
+    // Add 'v' prefix if not present (GitHub recommendation)
+    if !result.starts_with('v') {
+        result = format!("v{}", result);
+    }
+    
+    // Ensure the version follows semantic format
+    // This is a simple check, not a full semver validation
+    if !result[1..].contains('.') {
+        // If no dots, add .0.0 (assuming it's just a major version)
+        if result[1..].chars().all(|c| c.is_digit(10)) {
+            result = format!("{}.0.0", result);
+        }
+    } else if result[1..].matches('.').count() == 1 {
+        // If only one dot, add .0 (assuming it's major.minor)
+        let parts: Vec<&str> = result[1..].split('.').collect();
+        if parts.len() == 2 && parts[0].chars().all(|c| c.is_digit(10)) && parts[1].chars().all(|c| c.is_digit(10)) {
+            result = format!("{}.0", result);
+        }
+    }
+    
+    result
 }
 
 /// Check if a tag already exists
@@ -261,16 +295,25 @@ fn create_github_release(
 ) -> Result<()> {
     logger.info("Creating GitHub release...");
     
+    // Determine if this is a pre-release based on version string and input flag
+    let is_prerelease = prerelease || 
+                     version.contains("-alpha") || 
+                     version.contains("-beta") || 
+                     version.contains("-rc") || 
+                     version.contains("-pre");
+    
     // Build command arguments
     let mut args = vec!["release", "create", version, "--target", release_sha];
     
-    // Add title
+    // Add title with semantic version formatting
+    let title = format!("Release {}", version);
     args.push("--title");
-    args.push(version);
+    args.push(&title);
     
     // Add optional flags
-    if prerelease {
+    if is_prerelease {
         args.push("--prerelease");
+        logger.info("Creating as pre-release based on version format or input flag");
     }
     
     if draft {
@@ -304,5 +347,36 @@ fn create_github_release(
     github::set_output("release_url", &release_url);
     logger.info(&format!("✅ Release created successfully: {}", release_url));
     
+    // Add additional info about semantic versioning
+    if version.starts_with("v0.") || is_prerelease {
+        logger.info("Note: This release is marked as a pre-release or development version.");
+        logger.info("For production releases, consider using semantic versioning v1.0.0 or higher.");
+    }
+    
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_version() {
+        // Test adding 'v' prefix
+        assert_eq!(normalize_version("1.0.0"), "v1.0.0");
+        
+        // Test keeping existing 'v' prefix
+        assert_eq!(normalize_version("v1.0.0"), "v1.0.0");
+        
+        // Test adding minor and patch numbers
+        assert_eq!(normalize_version("v1"), "v1.0.0");
+        assert_eq!(normalize_version("v1.2"), "v1.2.0");
+        
+        // Test preserving pre-release suffixes
+        assert_eq!(normalize_version("v1.0.0-beta"), "v1.0.0-beta");
+        assert_eq!(normalize_version("1.0-alpha.1"), "v1.0-alpha.1");
+        
+        // Test trimming whitespace
+        assert_eq!(normalize_version(" v1.0.0 "), "v1.0.0");
+    }
 }
