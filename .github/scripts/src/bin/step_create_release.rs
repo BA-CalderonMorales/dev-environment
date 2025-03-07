@@ -19,6 +19,12 @@ async fn main() -> Result<()> {
     
     // Get required parameters from environment variables
     let version = env::var("INPUT_VERSION").context("Missing INPUT_VERSION")?;
+    
+    // Validate version is not empty
+    if version.trim().is_empty() {
+        return Err(anyhow!("Empty version provided. Please specify a valid version."));
+    }
+    
     let release_sha = env::var("INPUT_RELEASE_SHA").context("Missing INPUT_RELEASE_SHA")?;
     let github_token = env::var("INPUT_GITHUB_TOKEN").context("Missing INPUT_GITHUB_TOKEN")?;
     
