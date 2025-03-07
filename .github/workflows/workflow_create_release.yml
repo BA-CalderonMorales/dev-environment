@@ -40,7 +40,7 @@ permissions:
 
 env:
   MAINTAINER_GITHUB: '@BA-CalderonMorales'
-  INITIAL_VERSION: 'v0.1.0-beta.1'  # Updated to match Cargo.toml
+  INITIAL_VERSION: 'beta-v0.0.1'  # Updated to match new versioning scheme
   DOCKER_IMAGE: 'ba-calderonmorales/dev-environment'
 
 # NOTE: For full details on our release process, please refer to RELEASE_SCHEDULE.md at the repository root.
@@ -78,14 +78,15 @@ jobs:
   # Flow:
   # 1. Gets the latest tag
   # 2. Parses the version components
-  # 3. Increments the beta number
+  # 3. Increments version according to branch (beta/stable)
   # 4. Sets the new version
   #####################################################################
   determine_version:
     needs: branch_check
     runs-on: ubuntu-latest
     outputs:
-      new_version: ${{ steps.version_action.outputs.new_version }}
+      new_version: ${{ steps.version_action.outputs.version }}
+      is_beta: ${{ steps.version_action.outputs.is_beta }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -201,10 +202,20 @@ jobs:
         run: |
           echo "${{ needs.determine_version.outputs.new_version }}" > VERSION
 
+      # Debug step to check version output
+      - name: Debug Version Output
+        run: |
+          echo "Determined version: ${{ needs.determine_version.outputs.new_version }}"
+          echo "Is beta: ${{ needs.determine_version.outputs.is_beta }}"
+          echo "Process queue version: ${{ needs.process_queue.outputs.version }}"
+          echo "VERSION file content:"
+          cat VERSION
+
       - name: Create Release
         uses: ./.github/actions/create-release
         with:
-          version: ${{ needs.determine_version.outputs.new_version }}
+          # Explicitly use the new_version output from determine_version
+          version: ${{ needs.determine_version.outputs.new_version || 'beta-v0.0.1' }}
           prerelease: ${{ needs.process_queue.outputs.prerelease || 'true' }}  # Default to prerelease for beta
           release_sha: ${{ needs.process_queue.outputs.sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
