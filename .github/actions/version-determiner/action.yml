@@ -25,7 +25,18 @@ runs:
       id: set_version
       shell: bash
       run: |
+        # Ensure we get a valid default version from environment
+        default_version="${{ env.INITIAL_VERSION }}"
+        if [[ -z "$default_version" ]]; then
+          default_version="beta-v0.0.1"
+        fi
+        
         latest_tag="${{ steps.get_latest_tag.outputs.latest_tag }}"
+        if [[ -z "$latest_tag" ]]; then
+          latest_tag="$default_version"
+          echo "No latest tag found, using default: $latest_tag"
+        fi
+        
         current_branch=$(git rev-parse --abbrev-ref HEAD)
         
         # Get source branch from input or current branch
