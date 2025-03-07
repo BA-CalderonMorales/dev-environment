@@ -39,9 +39,8 @@ async fn main() -> Result<()> {
         .map(|v| v == "true")
         .unwrap_or(true);
     
-    // Validate and normalize version format according to semantic versioning
-    let normalized_version = normalize_version(&version);
-    logger.info(&format!("Using normalized version: {}", normalized_version));
+    // No need to normalize for our custom version format - use as-is
+    logger.info(&format!("Using version: {}", version));
     
     // Set environment variables for GitHub CLI
     env::set_var("GITHUB_TOKEN", &github_token);
@@ -49,16 +48,16 @@ async fn main() -> Result<()> {
         .context("Missing GITHUB_REPOSITORY environment variable")?;
     
     // Process flow: Check tag → Create tag → Push tag → Create release
-    if !tag_exists(&normalized_version, logger.as_ref())? {
+    if !tag_exists(&version, logger.as_ref())? {
         // Try to create and push tag
-        create_and_push_tag(&normalized_version, &release_sha, allow_unsigned, logger.as_ref())?;
+        create_and_push_tag(&version, &release_sha, allow_unsigned, logger.as_ref())?;
     }
     
     // Create GitHub release
     create_github_release(
-        &normalized_version, 
+        &version, 
         &release_sha, 
-        prerelease, 
+        prerelease || is_beta_version(&version), 
         draft, 
         generate_notes,
         &github_repository,
@@ -66,36 +65,6 @@ async fn main() -> Result<()> {
     )?;
     
     Ok(())
-}
-
-/// Normalize version string according to semantic versioning best practices
-/// 
-/// Ensures version follows the pattern 'vX.Y.Z' or 'vX.Y.Z-suffix' format.
-/// If version doesn't start with 'v', it adds it.
-fn normalize_version(version: &str) -> String {
-    let mut result = version.trim().to_string();
-    
-    // Add 'v' prefix if not present (GitHub recommendation)
-    if !result.starts_with('v') {
-        result = format!("v{}", result);
-    }
-    
-    // Ensure the version follows semantic format
-    // This is a simple check, not a full semver validation
-    if !result[1..].contains('.') {
-        // If no dots, add .0.0 (assuming it's just a major version)
-        if result[1..].chars().all(|c| c.is_digit(10)) {
-            result = format!("{}.0.0", result);
-        }
-    } else if result[1..].matches('.').count() == 1 {
-        // If only one dot, add .0 (assuming it's major.minor)
-        let parts: Vec<&str> = result[1..].split('.').collect();
-        if parts.len() == 2 && parts[0].chars().all(|c| c.is_digit(10)) && parts[1].chars().all(|c| c.is_digit(10)) {
-            result = format!("{}.0", result);
-        }
-    }
-    
-    result
 }
 
 /// Check if a tag already exists
@@ -128,6 +97,11 @@ fn tag_exists(version: &str, logger: &dyn Logger) -> Result<bool> {
     }
     
     Ok(tag_exists)
+}
+
+/// Determine if a version is a beta release based on its prefix
+fn is_beta_version(version: &str) -> bool {
+    version.starts_with("beta-")
 }
 
 /// Create and push a tag to the remote repository
@@ -250,8 +224,15 @@ fn disable_git_signing(logger: &dyn Logger) -> Result<()> {
 
 /// Create a signed Git tag
 fn create_signed_tag(version: &str, commit_sha: &str) -> Result<()> {
+    // Create the tag message based on the version type
+    let message = if is_beta_version(version) {
+        format!("Beta Release {}", version)
+    } else {
+        format!("Stable Release {}", version)
+    };
+
     let output = Command::new("git")
-        .args(&["tag", "-s", version, commit_sha, "-m", &format!("Release {}", version)])
+        .args(&["tag", "-s", version, commit_sha, "-m", &message])
         .output()
         .context("Failed to execute git tag command")?;
     
@@ -267,9 +248,15 @@ fn create_signed_tag(version: &str, commit_sha: &str) -> Result<()> {
 
 /// Create an unsigned Git tag
 fn create_unsigned_tag(version: &str, commit_sha: &str) -> Result<()> {
-    // Create a truly unsigned tag
+    // Create the tag message based on the version type
+    let message = if is_beta_version(version) {
+        format!("Beta Release {} (unsigned)", version)
+    } else {
+        format!("Stable Release {} (unsigned)", version)  // Fixed: Added missing argument
+    };
+
     let output = Command::new("git")
-        .args(&["tag", "-a", version, commit_sha, "-m", &format!("Release {} (unsigned)", version)])
+        .args(&["tag", "-a", version, commit_sha, "-m", &message])
         .output()
         .context("Failed to execute git tag command")?;
     
@@ -295,23 +282,21 @@ fn create_github_release(
 ) -> Result<()> {
     logger.info("Creating GitHub release...");
     
-    // Determine if this is a pre-release based on version string and input flag
-    let is_prerelease = prerelease || 
-                     version.contains("-alpha") || 
-                     version.contains("-beta") || 
-                     version.contains("-rc") || 
-                     version.contains("-pre");
-    
     // Build command arguments
     let mut args = vec!["release", "create", version, "--target", release_sha];
     
-    // Add title with semantic version formatting
-    let title = format!("Release {}", version);
+    // Create appropriate title based on version type
+    let title = if is_beta_version(version) {
+        format!("Beta Release {}", version)
+    } else {
+        format!("Stable Release {}", version)
+    };
+    
     args.push("--title");
     args.push(&title);
     
     // Add optional flags
-    if is_prerelease {
+    if prerelease {
         args.push("--prerelease");
         logger.info("Creating as pre-release based on version format or input flag");
     }
@@ -347,11 +332,11 @@ fn create_github_release(
     github::set_output("release_url", &release_url);
     logger.info(&format!("✅ Release created successfully: {}", release_url));
     
-    // Add additional info about semantic versioning
-    if version.starts_with("v0.") || is_prerelease {
-        logger.info("Note: This release is marked as a pre-release or development version.");
-        logger.info("For production releases, consider using semantic versioning v1.0.0 or higher.");
-    }
+    // Add explanation of version scheme
+    logger.info("Version Scheme Explanation:");
+    logger.info("- a: proud version: bump when we're proud of a release");
+    logger.info("- b: default version: just a normal/okay release");
+    logger.info("- c: bump when fixing things too embarrassing to admit");
     
     Ok(())
 }
@@ -361,22 +346,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_normalize_version() {
-        // Test adding 'v' prefix
-        assert_eq!(normalize_version("1.0.0"), "v1.0.0");
-        
-        // Test keeping existing 'v' prefix
-        assert_eq!(normalize_version("v1.0.0"), "v1.0.0");
-        
-        // Test adding minor and patch numbers
-        assert_eq!(normalize_version("v1"), "v1.0.0");
-        assert_eq!(normalize_version("v1.2"), "v1.2.0");
-        
-        // Test preserving pre-release suffixes
-        assert_eq!(normalize_version("v1.0.0-beta"), "v1.0.0-beta");
-        assert_eq!(normalize_version("1.0-alpha.1"), "v1.0-alpha.1");
-        
-        // Test trimming whitespace
-        assert_eq!(normalize_version(" v1.0.0 "), "v1.0.0");
+    fn test_is_beta_version() {
+        assert_eq!(is_beta_version("beta-v0.0.1"), true);
+        assert_eq!(is_beta_version("stable-v0.0.1"), false);
+        assert_eq!(is_beta_version("v0.0.1"), false);
     }
 }
