@@ -28,12 +28,24 @@ runs:
         latest_tag="${{ steps.get_latest_tag.outputs.latest_tag }}"
         current_branch=$(git rev-parse --abbrev-ref HEAD)
         
+        # Get source branch from input or current branch
+        source_branch="${{ github.event.inputs.source_branch }}"
+        if [[ -z "$source_branch" ]]; then
+          source_branch="$current_branch"
+        fi
+        echo "Source branch: $source_branch"
+        
         # Function to increment version component
         increment_version() {
           local version=$1
           local position=$2  # proud=1, default=2, fix=3
           
           IFS='.' read -ra parts <<< "$version"
+          # Ensure we have at least 3 parts
+          while [ ${#parts[@]} -lt 3 ]; do
+            parts+=("0")
+          done
+          
           parts[$((position-1))]=$((parts[$((position-1))+1]))
           
           # Reset subsequent numbers to 0
@@ -55,34 +67,62 @@ runs:
             echo "0.0.1"  # Default if no match
           fi
         }
-
-        if [[ "$current_branch" == "beta" || "${{ github.event.inputs.source_branch }}" == "beta" ]]; then
-          # Beta release path
-          numeric_version=$(extract_version "$latest_tag")
+        
+        # Get all tags sorted by version
+        get_latest_version_for_prefix() {
+          local prefix=$1
+          local latest=""
+          local highest_version="0.0.0"
           
-          if [[ $latest_tag =~ ^beta- ]]; then
-            # Already a beta tag, increment fix version (c)
+          # Get all tags matching the prefix
+          git tag -l "${prefix}*" | while read -r tag; do
+            if [[ $tag =~ ${prefix}-v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+              local ver="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+              # Very simple version comparison - would need more robust solution for real semver
+              if [[ "$ver" > "$highest_version" ]]; then
+                highest_version="$ver"
+                latest="$tag"
+              fi
+            fi
+          done
+          
+          echo "$latest"
+        }
+
+        # Get the latest tags for each prefix
+        latest_beta_tag=$(get_latest_version_for_prefix "beta")
+        latest_stable_tag=$(get_latest_version_for_prefix "stable")
+        
+        echo "Latest beta tag: $latest_beta_tag"
+        echo "Latest stable tag: $latest_stable_tag"
+        
+        if [[ "$source_branch" == "beta" ]]; then
+          # Beta release path - we need to get the latest beta tag
+          if [[ -n "$latest_beta_tag" ]]; then
+            # We have a beta tag, increment its fix version (c)
+            numeric_version=$(extract_version "$latest_beta_tag")
             version=$(increment_version "$numeric_version" 3)
             new_version="beta-v${version}"
-          elif [[ $latest_tag =~ ^stable- ]]; then
-            # Coming from stable, increment default version (b) for new features
+          elif [[ -n "$latest_stable_tag" ]]; then
+            # No beta tag but we have stable - increment default version (b)
+            numeric_version=$(extract_version "$latest_stable_tag")
             version=$(increment_version "$numeric_version" 2)
             new_version="beta-v${version}"
           else
-            # Default to initial beta
+            # No tags at all, use initial beta
             new_version="beta-v0.0.1"
           fi
           
           is_beta="true"
-        elif [[ "$current_branch" == "main" || "${{ github.event.inputs.source_branch }}" == "main" ]]; then
+        elif [[ "$source_branch" == "main" ]]; then
           # Stable release path
-          numeric_version=$(extract_version "$latest_tag")
-          
-          if [[ $latest_tag =~ ^beta- ]]; then
-            # Promoting beta to stable (same version number)
+          if [[ -n "$latest_beta_tag" ]]; then
+            # Promoting latest beta to stable
+            numeric_version=$(extract_version "$latest_beta_tag")
             new_version="stable-v${numeric_version}"
-          elif [[ $latest_tag =~ ^stable- ]]; then
+          elif [[ -n "$latest_stable_tag" ]]; then
             # Increment fix version (c) for stable-to-stable
+            numeric_version=$(extract_version "$latest_stable_tag")
             version=$(increment_version "$numeric_version" 3)
             new_version="stable-v${version}"
           else
@@ -95,7 +135,7 @@ runs:
           # Fallback for unknown branches - use beta
           new_version="beta-v0.0.1"
           is_beta="true"
-          echo "::warning::Unknown branch. Defaulting to initial beta version."
+          echo "::warning::Unknown branch '$source_branch'. Defaulting to initial beta version."
         fi
         
         # Final validation to ensure we have a valid version
