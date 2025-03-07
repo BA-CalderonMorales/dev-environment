@@ -1,6 +1,6 @@
 //! GitHub release creation script for create-release action
 //! Used by: ./.github/actions/create-release/action.yml
-//! Purpose: Creates GitHub release with proper tag handling and semantic versioning
+//! Purpose: Creates GitHub release with proper tag handling
 
 use anyhow::{Context, Result, anyhow};
 use github_workflow_scripts::{get_logger, init, github, Logger};
@@ -39,9 +39,6 @@ async fn main() -> Result<()> {
         .map(|v| v == "true")
         .unwrap_or(true);
     
-    // No need to normalize for our custom version format - use as-is
-    logger.info(&format!("Using version: {}", version));
-    
     // Set environment variables for GitHub CLI
     env::set_var("GITHUB_TOKEN", &github_token);
     let github_repository = env::var("GITHUB_REPOSITORY")
@@ -57,7 +54,7 @@ async fn main() -> Result<()> {
     create_github_release(
         &version, 
         &release_sha, 
-        prerelease || is_beta_version(&version), 
+        prerelease, 
         draft, 
         generate_notes,
         &github_repository,
@@ -97,11 +94,6 @@ fn tag_exists(version: &str, logger: &dyn Logger) -> Result<bool> {
     }
     
     Ok(tag_exists)
-}
-
-/// Determine if a version is a beta release based on its prefix
-fn is_beta_version(version: &str) -> bool {
-    version.starts_with("beta-")
 }
 
 /// Create and push a tag to the remote repository
@@ -224,15 +216,8 @@ fn disable_git_signing(logger: &dyn Logger) -> Result<()> {
 
 /// Create a signed Git tag
 fn create_signed_tag(version: &str, commit_sha: &str) -> Result<()> {
-    // Create the tag message based on the version type
-    let message = if is_beta_version(version) {
-        format!("Beta Release {}", version)
-    } else {
-        format!("Stable Release {}", version)
-    };
-
     let output = Command::new("git")
-        .args(&["tag", "-s", version, commit_sha, "-m", &message])
+        .args(&["tag", "-s", version, commit_sha, "-m", &format!("Release {}", version)])
         .output()
         .context("Failed to execute git tag command")?;
     
@@ -248,15 +233,9 @@ fn create_signed_tag(version: &str, commit_sha: &str) -> Result<()> {
 
 /// Create an unsigned Git tag
 fn create_unsigned_tag(version: &str, commit_sha: &str) -> Result<()> {
-    // Create the tag message based on the version type
-    let message = if is_beta_version(version) {
-        format!("Beta Release {} (unsigned)", version)
-    } else {
-        format!("Stable Release {} (unsigned)", version)  // Fixed: Added missing argument
-    };
-
+    // Create a truly unsigned tag
     let output = Command::new("git")
-        .args(&["tag", "-a", version, commit_sha, "-m", &message])
+        .args(&["tag", "-a", version, commit_sha, "-m", &format!("Release {} (unsigned)", version)])
         .output()
         .context("Failed to execute git tag command")?;
     
@@ -285,20 +264,13 @@ fn create_github_release(
     // Build command arguments
     let mut args = vec!["release", "create", version, "--target", release_sha];
     
-    // Create appropriate title based on version type
-    let title = if is_beta_version(version) {
-        format!("Beta Release {}", version)
-    } else {
-        format!("Stable Release {}", version)
-    };
-    
+    // Add title
     args.push("--title");
-    args.push(&title);
+    args.push(version);
     
     // Add optional flags
     if prerelease {
         args.push("--prerelease");
-        logger.info("Creating as pre-release based on version format or input flag");
     }
     
     if draft {
@@ -332,23 +304,5 @@ fn create_github_release(
     github::set_output("release_url", &release_url);
     logger.info(&format!("✅ Release created successfully: {}", release_url));
     
-    // Add explanation of version scheme
-    logger.info("Version Scheme Explanation:");
-    logger.info("- a: proud version: bump when we're proud of a release");
-    logger.info("- b: default version: just a normal/okay release");
-    logger.info("- c: bump when fixing things too embarrassing to admit");
-    
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_beta_version() {
-        assert_eq!(is_beta_version("beta-v0.0.1"), true);
-        assert_eq!(is_beta_version("stable-v0.0.1"), false);
-        assert_eq!(is_beta_version("v0.0.1"), false);
-    }
 }
