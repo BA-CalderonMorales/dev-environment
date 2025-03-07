@@ -56,33 +56,56 @@ runs:
     - name: Validate Version
       shell: bash
       run: |
-        if [[ -z "${{ inputs.version }}" ]]; then
+        VERSION="${{ inputs.version }}"
+        if [[ -z "$VERSION" ]]; then
           echo "::error::Version input is empty. Please provide a valid version."
-          exit 1
+          echo "Falling back to default version"
+          VERSION="beta-v0.0.1"
         fi
-        echo "Using version: ${{ inputs.version }}"
+        echo "Using version: $VERSION"
+        echo "version=$VERSION" >> $GITHUB_ENV  # Make it available to all steps
 
     # Check if release exists first
     - name: Check if release exists
       id: check_release
       shell: bash
       run: |
-        echo "Checking for existing tag ${{ inputs.version }}..."
-        if git rev-parse -q --verify "refs/tags/${{ inputs.version }}" >/dev/null; then
+        VERSION="${{ env.version }}"
+        echo "Checking for existing tag $VERSION..."
+        if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
           echo "Tag already exists"
-          if [[ "${{ inputs.skip_if_exists }}" == "true" ]]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+          echo "exists=true" >> $GITHUB_OUTPUT
+
+          # Check if a GitHub release exists for this tag
+          if gh release view "$VERSION" &>/dev/null; then
+            echo "GitHub release for tag $VERSION already exists"
+            echo "release_exists=true" >> $GITHUB_OUTPUT
+            
+            # Get the release URL for output
+            release_url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
+            echo "release_url=$release_url" >> $GITHUB_OUTPUT
           else
-            echo "Tag ${{ inputs.version }} already exists, and skip_if_exists is false"
-            exit 1
+            echo "GitHub release does not exist yet for tag $VERSION"
+            echo "release_exists=false" >> $GITHUB_OUTPUT
           fi
         else
+          echo "Tag does not exist"
           echo "exists=false" >> $GITHUB_OUTPUT
+          echo "release_exists=false" >> $GITHUB_OUTPUT
         fi
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    # Set up release URL output if the release already exists
+    - name: Set existing release URL
+      if: steps.check_release.outputs.release_exists == 'true'
+      id: existing_release
+      shell: bash
+      run: echo "release_url=${{ steps.check_release.outputs.release_url }}" >> $GITHUB_OUTPUT
 
     # Setup Git signing using existing step_setup_gpg.rs script
     - name: Setup GPG and Git
-      if: steps.check_release.outputs.exists != 'true'
+      if: steps.check_release.outputs.release_exists != 'true'
       id: setup_git
       uses: ./.github/actions/setup-git-signing
       with:
@@ -94,7 +117,7 @@ runs:
 
     # Compile Rust scripts if needed
     - name: Ensure Rust scripts are compiled
-      if: steps.check_release.outputs.exists != 'true'
+      if: steps.check_release.outputs.release_exists != 'true'
       shell: bash
       run: |
         if [ ! -f "${{ github.workspace }}/.github/scripts/target/debug/step_create_release" ]; then
@@ -104,12 +127,12 @@ runs:
 
     # Run the release creation script
     - name: Create GitHub Release
-      if: steps.check_release.outputs.exists != 'true'
+      if: steps.check_release.outputs.release_exists != 'true'
       id: create_release
       shell: bash
       run: ${{ github.workspace }}/.github/scripts/target/debug/step_create_release
       env:
-        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_VERSION: ${{ env.version }}
         INPUT_PRERELEASE: ${{ inputs.prerelease }}
         INPUT_RELEASE_SHA: ${{ inputs.release_sha }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
