@@ -1,5 +1,5 @@
 name: 'Version Determiner'
-description: 'Determines the next version number with beta support'
+description: 'Determines the next version number with prefix support'
 
 outputs:
   new_version:
@@ -16,8 +16,8 @@ runs:
       id: get_latest_tag
       shell: bash
       run: |
-        # Get the latest tag, defaulting to v0.1.0-beta.1 if none exists
-        latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0-beta.1")
+        # Get the latest tag, defaulting to beta-v0.0.1 if none exists
+        latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "beta-v0.0.1")
         echo "Latest tag: $latest_tag"
         echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
 
@@ -31,7 +31,7 @@ runs:
         # Function to increment version component
         increment_version() {
           local version=$1
-          local position=$2  # major=1, minor=2, patch=3
+          local position=$2  # proud=1, default=2, fix=3
           
           IFS='.' read -ra parts <<< "$version"
           parts[$((position-1))]=$((parts[$((position-1))]+1))
@@ -43,46 +43,54 @@ runs:
           
           echo "${parts[*]}" | tr ' ' '.'
         }
+        
+        # Extract the numeric version part, ignoring prefix
+        extract_version() {
+          local tag=$1
+          if [[ $tag =~ (stable|beta)-v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            echo "${BASH_REMATCH[2]}"
+          elif [[ $tag =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            echo "${BASH_REMATCH[1]}"
+          else
+            echo "0.0.1"  # Default if no match
+          fi
+        }
 
         if [[ "$current_branch" == "beta" || "${{ github.event.inputs.source_branch }}" == "beta" ]]; then
           # Beta release path
-          if [[ $latest_tag =~ v([0-9]+)\.([0-9]+)\.([0-9]+)-beta\.([0-9]+) ]]; then
-            major="${BASH_REMATCH[1]}"
-            minor="${BASH_REMATCH[2]}"
-            patch="${BASH_REMATCH[3]}"
-            beta="${BASH_REMATCH[4]}"
-            
-            # Increment beta number only
-            new_beta=$((beta + 1))
-            new_version="v$major.$minor.$patch-beta.$new_beta"
-            is_beta="true"
-          elif [[ $latest_tag =~ v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            # If coming from a stable version, start new beta series
-            # Increment minor version for new feature cycle
-            version=$(increment_version "${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}" 2)
-            new_version="v${version}-beta.1"
-            is_beta="true"
+          numeric_version=$(extract_version "$latest_tag")
+          
+          if [[ $latest_tag =~ ^beta- ]]; then
+            # Already a beta tag, increment fix version (c)
+            version=$(increment_version "$numeric_version" 3)
+            new_version="beta-v${version}"
+          elif [[ $latest_tag =~ ^stable- ]]; then
+            # Coming from stable, increment default version (b) for new features
+            version=$(increment_version "$numeric_version" 2)
+            new_version="beta-v${version}"
           else
             # Default to initial beta
-            new_version="v0.1.0-beta.1"
-            is_beta="true"
+            new_version="beta-v0.0.1"
           fi
+          
+          is_beta="true"
         elif [[ "$current_branch" == "main" || "${{ github.event.inputs.source_branch }}" == "main" ]]; then
           # Stable release path
-          if [[ $latest_tag =~ v([0-9]+)\.([0-9]+)\.([0-9]+)-beta\.[0-9]+ ]]; then
-            # Convert beta to stable (remove beta suffix)
-            new_version="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
-            is_beta="false"
-          elif [[ $latest_tag =~ v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            # Increment patch for stable-to-stable
-            version=$(increment_version "${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}" 3)
-            new_version="v${version}"
-            is_beta="false"
+          numeric_version=$(extract_version "$latest_tag")
+          
+          if [[ $latest_tag =~ ^beta- ]]; then
+            # Promoting beta to stable (same version number)
+            new_version="stable-v${numeric_version}"
+          elif [[ $latest_tag =~ ^stable- ]]; then
+            # Increment fix version (c) for stable-to-stable
+            version=$(increment_version "$numeric_version" 3)
+            new_version="stable-v${version}"
           else
             # Default stable
-            new_version="v0.1.0"
-            is_beta="false"
+            new_version="stable-v0.0.1"
           fi
+          
+          is_beta="false"
         fi
         
         echo "New version: $new_version"
