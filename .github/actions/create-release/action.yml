@@ -52,6 +52,16 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    # Validate version input before proceeding
+    - name: Validate Version
+      shell: bash
+      run: |
+        if [[ -z "${{ inputs.version }}" ]]; then
+          echo "::error::Version input is empty. Please provide a valid version."
+          exit 1
+        fi
+        echo "Using version: ${{ inputs.version }}"
+
     # Check if release exists first
     - name: Check if release exists
       id: check_release

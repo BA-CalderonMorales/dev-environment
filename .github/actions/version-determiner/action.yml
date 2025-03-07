@@ -34,7 +34,7 @@ runs:
           local position=$2  # proud=1, default=2, fix=3
           
           IFS='.' read -ra parts <<< "$version"
-          parts[$((position-1))]=$((parts[$((position-1))]+1))
+          parts[$((position-1))]=$((parts[$((position-1))+1]))
           
           # Reset subsequent numbers to 0
           for ((i=position; i<${#parts[@]}; i++)); do
@@ -91,6 +91,17 @@ runs:
           fi
           
           is_beta="false"
+        else
+          # Fallback for unknown branches - use beta
+          new_version="beta-v0.0.1"
+          is_beta="true"
+          echo "::warning::Unknown branch. Defaulting to initial beta version."
+        fi
+        
+        # Final validation to ensure we have a valid version
+        if [[ -z "$new_version" ]]; then
+          new_version="beta-v0.0.1"
+          echo "::warning::Version determination failed. Using default version."
         fi
         
         echo "New version: $new_version"

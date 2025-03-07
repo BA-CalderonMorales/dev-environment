@@ -202,10 +202,20 @@ jobs:
         run: |
           echo "${{ needs.determine_version.outputs.new_version }}" > VERSION
 
+      # Debug step to check version output
+      - name: Debug Version Output
+        run: |
+          echo "Determined version: ${{ needs.determine_version.outputs.new_version }}"
+          echo "Is beta: ${{ needs.determine_version.outputs.is_beta }}"
+          echo "Process queue version: ${{ needs.process_queue.outputs.version }}"
+          echo "VERSION file content:"
+          cat VERSION
+
       - name: Create Release
         uses: ./.github/actions/create-release
         with:
-          version: ${{ needs.determine_version.outputs.new_version }}
+          # Explicitly use the new_version output from determine_version
+          version: ${{ needs.determine_version.outputs.new_version || 'beta-v0.0.1' }}
           prerelease: ${{ needs.process_queue.outputs.prerelease || 'true' }}  # Default to prerelease for beta
           release_sha: ${{ needs.process_queue.outputs.sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
