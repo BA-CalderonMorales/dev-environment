@@ -192,6 +192,9 @@ jobs:
       (github.event_name == 'workflow_dispatch' && needs.branch_check.outputs.allowed == 'true') ||
       (github.event_name == 'schedule' && needs.branch_check.outputs.allowed == 'true' && needs.process_queue.outputs.can_proceed == 'true')
     runs-on: ubuntu-22.04
+    outputs:
+      release_url: ${{ steps.create_release_action.outputs.release_url }}
+      version: ${{ needs.determine_version.outputs.new_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -204,19 +207,74 @@ jobs:
 
       # Debug step to check version output
       - name: Debug Version Output
+        id: debug
         run: |
           echo "Determined version: ${{ needs.determine_version.outputs.new_version }}"
           echo "Is beta: ${{ needs.determine_version.outputs.is_beta }}"
           echo "Process queue version: ${{ needs.process_queue.outputs.version }}"
           echo "VERSION file content:"
           cat VERSION
+          
+          # Check if a release already exists for this version
+          echo "Checking if release for version ${{ needs.determine_version.outputs.new_version }} exists..."
+          if gh release view "${{ needs.determine_version.outputs.new_version }}" &>/dev/null; then
+            echo "release_exists=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Release for version ${{ needs.determine_version.outputs.new_version }} already exists"
+          else
+            echo "release_exists=false" >> $GITHUB_OUTPUT
+            echo "✅ No existing release found for ${{ needs.determine_version.outputs.new_version }}"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Check for conflicting releases and decide whether to create a new one
+      - name: Check Conflicts and Prepare Version
+        id: version_check
+        run: |
+          if [[ "${{ steps.debug.outputs.release_exists }}" == "true" ]]; then
+            echo "Existing release found. Checking if we need to create a new release..."
+            
+            # Access latest tags
+            git fetch --tags
+            
+            # If we're on beta branch, try to increment version
+            if [[ "${{ needs.branch_check.outputs.branch }}" == "beta" ]]; then
+              echo "On beta branch, will create a new beta version with a fix increment"
+              latest_tag=$(git describe --tags --abbrev=0 --match "beta-v*" 2>/dev/null)
+              
+              if [[ -n "$latest_tag" && "$latest_tag" =~ beta-v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+                # Increment the fix (c) version
+                major="${BASH_REMATCH[1]}"
+                minor="${BASH_REMATCH[2]}"
+                fix=$((BASH_REMATCH[3] + 1))
+                new_version="beta-v${major}.${minor}.${fix}"
+                echo "Incremented version: $new_version"
+                echo "use_version=$new_version" >> $GITHUB_OUTPUT
+                echo "should_create=true" >> $GITHUB_OUTPUT
+              else
+                echo "Could not parse latest beta tag or no beta tag exists"
+                echo "use_version=${{ needs.determine_version.outputs.new_version }}" >> $GITHUB_OUTPUT
+                echo "should_create=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              # For main branch or other branches, don't create a new release
+              echo "use_version=${{ needs.determine_version.outputs.new_version }}" >> $GITHUB_OUTPUT
+              echo "should_create=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # No existing release, proceed normally
+            echo "use_version=${{ needs.determine_version.outputs.new_version }}" >> $GITHUB_OUTPUT
+            echo "should_create=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Create Release
+        id: create_release_action
         uses: ./.github/actions/create-release
+        if: steps.version_check.outputs.should_create == 'true'
         with:
-          # Explicitly use the new_version output from determine_version
-          version: ${{ needs.determine_version.outputs.new_version || 'beta-v0.0.1' }}
-          prerelease: ${{ needs.process_queue.outputs.prerelease || 'true' }}  # Default to prerelease for beta
+          # Use the version that was determined or adjusted
+          version: ${{ steps.version_check.outputs.use_version }}
+          prerelease: ${{ needs.determine_version.outputs.is_beta || 'true' }}
           release_sha: ${{ needs.process_queue.outputs.sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           bot_gpg_private_key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
@@ -225,6 +283,15 @@ jobs:
           bot_name: ${{ secrets.BOT_NAME || 'GitHub Actions' }}
           allow_unsigned: ${{ github.event.inputs.allow_unsigned || 'true' }}
           generate_release_notes: 'true'
+          skip_if_exists: 'true'  # Skip if the tag already exists
+
+      - name: Set Output for Skipped Release
+        if: steps.version_check.outputs.should_create != 'true'
+        run: |
+          echo "Skipping release creation for version ${{ steps.version_check.outputs.use_version }}"
+          release_url="https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ steps.version_check.outputs.use_version }}"
+          echo "release_url=$release_url" >> $GITHUB_OUTPUT
+        id: skipped_release
 
   #####################################################################
   # Handle Failure
