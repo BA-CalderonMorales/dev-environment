@@ -14,23 +14,23 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install Rust
+    - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
+
+    - name: Build workflow scripts
       shell: bash
+      run: |
+        cd .github/scripts
+        cargo build --release
 
-    - name: Cache Rust dependencies
-      uses: Swatinem/rust-cache@v2
-      with:
-        key: cache-cleanup-action-deps
-
-    - name: Build and run cache cleanup
+    - name: Run cache cleanup
       env:
         GITHUB_TOKEN: ${{ github.token }}
         MAX_AGE: ${{ inputs.max-age }}
         MAX_SIZE: ${{ inputs.max-size }}
       shell: bash
       run: |
-        cd ${{ github.action_path }}/../../scripts
+        cd ${{ github.workspace }}/.github/scripts
         echo "Running cache cleanup with max age: $MAX_AGE days, max size: $MAX_SIZE GB"
         cargo run --bin step_cache_cleanup -- \
           --max-age "$MAX_AGE" \
