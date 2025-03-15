@@ -30,7 +30,7 @@ outputs:
     value: ${{ steps.queue_check.outputs.sha }}
   branch:
     description: 'Branch to release from'
-    value: ${{ inputs.source_branch }}
+    value: ${{ steps.branch_setup.outputs.branch }}
   can_proceed:
     description: 'Whether to proceed with release'
     value: ${{ steps.queue_check.outputs.can_proceed }}
@@ -48,26 +48,64 @@ runs:
       with:
         fetch-depth: 0
 
+    # New step to install GitHub CLI directly in the action
+    - name: Install GitHub CLI
+      shell: bash
+      run: |
+        echo "🔧 Installing GitHub CLI..."
+        type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt update
+        sudo apt install gh -y
+        echo "✅ GitHub CLI installed successfully"
+
+    # New step to handle branch setup and validation
+    - id: branch_setup
+      shell: bash
+      run: |
+        # Validate and set branch information
+        BRANCH="${{ inputs.source_branch }}"
+        
+        # For scheduled runs where branch might be empty, set a default value
+        if [[ -z "$BRANCH" && "${{ inputs.is_scheduled }}" == "true" ]]; then
+          echo "⚠️ No branch specified for scheduled run, defaulting to beta"
+          BRANCH="beta"
+        fi
+        
+        # Validate branch - must be either beta or main
+        if [[ "$BRANCH" != "beta" && "$BRANCH" != "main" ]]; then
+          echo "❌ ERROR: Invalid branch: '$BRANCH'. Must be either 'beta' or 'main'"
+          exit 1
+        fi
+        
+        echo "✅ Using branch: $BRANCH"
+        echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
     - id: queue_check
       shell: bash
       run: |
+        # Get validated branch from previous step
+        BRANCH="${{ steps.branch_setup.outputs.branch }}"
+        
         # Improved debugging
         echo "🔍 Starting release queue check..."
-        echo "Branch: ${{ inputs.source_branch }}"
+        echo "Branch: $BRANCH"
         echo "Force process: ${{ inputs.force_process }}"
         echo "Is scheduled: ${{ inputs.is_scheduled }}"
 
         # Get queue file path from branch
-        if [[ "${{ inputs.source_branch }}" == "beta" ]]; then
+        if [[ "$BRANCH" == "beta" ]]; then
           QUEUE_FILE=".github/release_queue/beta.json"
           MIN_QUEUE_SIZE=3  # For testing, reduce to 3 items
           MIN_AGE_DAYS=0     # No waiting period for beta
-        elif [[ "${{ inputs.source_branch }}" == "main" ]]; then
+        elif [[ "$BRANCH" == "main" ]]; then
           QUEUE_FILE=".github/release_queue/main.json"
           MIN_QUEUE_SIZE=5  # For testing, reduce to 5 items
           MIN_AGE_DAYS=7    # One week stability period
         else
-          echo "Invalid branch: ${{ inputs.source_branch }}"
+          echo "❌ ERROR: Invalid branch: $BRANCH"
           exit 1
         fi
 
@@ -94,12 +132,12 @@ runs:
         echo "🔍 Scanning for release queue PRs..."
         
         # List all open PRs targeting this branch first - for diagnostic purposes
-        echo "All open PRs to ${{ inputs.source_branch }}:"
-        gh pr list --base "${{ inputs.source_branch }}" --json number,title,labels | tee all_prs.json
+        echo "All open PRs to $BRANCH:"
+        gh pr list --base "$BRANCH" --json number,title,labels | tee all_prs.json
         
         # Now filter for just those with the release-queue label
         prs=$(gh pr list \
-          --base "${{ inputs.source_branch }}" \
+          --base "$BRANCH" \
           --label "release-queue" \
           --json number,title,headRefName,labels,mergeable \
           --state open)
@@ -221,7 +259,7 @@ runs:
       uses: ./.github/actions/version-determiner
       with:
         github_token: ${{ inputs.github_token }}
-        ref: ${{ inputs.source_branch }}
+        ref: ${{ steps.branch_setup.outputs.branch }}
         initial_version: ${{ inputs.initial_version }}
 
     - name: Debug Version Output
