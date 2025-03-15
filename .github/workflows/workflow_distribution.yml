@@ -14,28 +14,13 @@ on:
       - 'pipeline/*'
       - 'bugfix/*'
       - 'feature/*'
+      - 'security/*'
     paths:
       - 'distributions/dockerhub/**'
       - 'distributions/direct_download/**'
       - 'startup/**'
       - '.github/workflows/**'
       - 'docs/**'
-
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - 'distributions/dockerhub/**'
-      - 'distributions/direct_download/**'
-      - 'startup/**'
-      - '.github/workflows/**'
-      - 'docs/**'
-    branches:
-      - develop
-      - hotfix/*
-      - bugfix/*
-      - feature/*
-      - documentation/*
-      - pipeline/*
 
   workflow_dispatch:
     inputs:
