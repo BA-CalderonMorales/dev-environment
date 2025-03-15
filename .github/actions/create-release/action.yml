@@ -1,10 +1,18 @@
 name: 'Create GitHub Release'
-description: 'Creates a GitHub release with optional signing'
+description: 'Creates a GitHub release with optional signing and branch-specific version determination'
 
 inputs:
   version:
-    description: 'Version to release (tag name)'
+    description: 'Version to release (tag name) or "auto" for automatic determination'
+    required: false
+    default: 'auto'
+  source_branch:
+    description: 'Source branch for versioning (beta or main)'
     required: true
+  initial_version:
+    description: 'Initial version to use if no tags exist'
+    required: false
+    default: 'beta-v0.0.1'
   prerelease:
     description: 'Whether this is a prerelease'
     required: false
@@ -48,22 +56,84 @@ outputs:
   release_url:
     description: 'URL of the created release'
     value: ${{ steps.create_release.outputs.release_url }}
+  version:
+    description: 'The final version used for the release'
+    value: ${{ steps.determine_version.outputs.use_version }}
 
 runs:
   using: 'composite'
   steps:
-    # Validate version input before proceeding
-    - name: Validate Version
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Determine Release Version
+      id: determine_version
       shell: bash
       run: |
-        VERSION="${{ inputs.version }}"
-        if [[ -z "$VERSION" ]]; then
-          echo "::error::Version input is empty. Please provide a valid version."
-          echo "Falling back to default version"
-          VERSION="beta-v0.0.1"
+        BRANCH="${{ inputs.source_branch }}"
+        echo "Source branch: $BRANCH"
+        if [[ "$BRANCH" == "beta" ]]; then
+          PREFIX="beta-v"
+        elif [[ "$BRANCH" == "main" ]]; then
+          PREFIX="stable-v"
+        else
+          echo "::error::Invalid branch: $BRANCH. Must be 'beta' or 'main'"
+          exit 1
         fi
-        echo "Using version: $VERSION"
-        echo "version=$VERSION" >> $GITHUB_ENV  # Make it available to all steps
+
+        # Auto-determine version if requested
+        if [[ "${{ inputs.version }}" == "auto" ]]; then
+          git fetch --tags
+          # For main branch, only match stable tags; for beta, match beta tags
+          LATEST=$(git tag -l "${PREFIX}*" | sort -V | tail -n 1)
+          if [[ -n "$LATEST" ]]; then
+            echo "Latest tag ($PREFIX): $LATEST"
+            if [[ "$LATEST" =~ ${PREFIX}([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+              major="${BASH_REMATCH[1]}"
+              minor="${BASH_REMATCH[2]}"
+              patch="${BASH_REMATCH[3]}"
+              patch=$((patch + 1))
+              USE_VERSION="${PREFIX}${major}.${minor}.${patch}"
+              echo "Incremented version: $USE_VERSION"
+            else
+              echo "::warning::Could not parse tag $LATEST; falling back to initial version"
+              USE_VERSION="${{ inputs.initial_version }}"
+              # For main, force stable prefix replacement if needed
+              if [[ "$BRANCH" == "main" ]]; then
+                USE_VERSION="${USE_VERSION/beta-v/stable-v}"
+              fi
+            fi
+          else
+            # For main branch: if no stable tag, try deriving from latest beta tag
+            if [[ "$BRANCH" == "main" ]]; then
+              LATEST_BETA=$(git tag -l "beta-v*" | sort -V | tail -n 1)
+              if [[ -n "$LATEST_BETA" && "$LATEST_BETA" =~ beta-v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+                major="${BASH_REMATCH[1]}"
+                minor="${BASH_REMATCH[2]}"
+                patch="${BASH_REMATCH[3]}"
+                USE_VERSION="stable-v${major}.${minor}.$((patch+1))"
+                echo "Derived stable version from beta tag: $USE_VERSION"
+              else
+                USE_VERSION="${{ inputs.initial_version/beta-v/stable-v}}"
+                echo "No beta tag found; using default stable version: $USE_VERSION"
+              fi
+            else
+              USE_VERSION="${{ inputs.initial_version }}"
+              echo "No tag found; using default version: $USE_VERSION"
+            fi
+          fi
+        else
+          USE_VERSION="${{ inputs.version }}"
+          if [[ "$BRANCH" == "main" && ! "$USE_VERSION" =~ ^stable-v ]]; then
+            USE_VERSION="${USE_VERSION/beta-v/stable-v}"
+            echo "Adjusted provided version for main branch: $USE_VERSION"
+          fi
+        fi
+
+        echo "Determined release version: $USE_VERSION"
+        echo "use_version=$USE_VERSION" >> $GITHUB_OUTPUT
 
     # Check if release exists first
     - name: Check if release exists
@@ -126,16 +196,31 @@ runs:
         fi
 
     # Run the release creation script
-    - name: Create GitHub Release
-      if: steps.check_release.outputs.release_exists != 'true'
+    - name: Check if release exists and create if needed
       id: create_release
       shell: bash
-      run: ${{ github.workspace }}/.github/scripts/target/debug/step_create_release
+      run: |
+        # If the release exists, the script (or gh cli) will set a non-zero exit code (or we can test here)
+        if gh release view "$use_version" &>/dev/null; then
+          echo "Release for version $use_version already exists."
+          exit 0
+        else
+          # Call our release creation script. This script is assumed to capture the full releasing process.
+          echo "Creating release for version $use_version..."
+          ${{ github.workspace }}/.github/scripts/target/debug/step_create_release
+        fi
       env:
-        INPUT_VERSION: ${{ env.version }}
-        INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        use_version: ${{ steps.determine_version.outputs.use_version }}
         INPUT_RELEASE_SHA: ${{ inputs.release_sha }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_PRERELEASE: ${{ inputs.prerelease }}
         INPUT_DRAFT: ${{ inputs.draft }}
         INPUT_GENERATE_RELEASE_NOTES: ${{ inputs.generate_release_notes }}
         INPUT_ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
+
+    # Set final output
+    - name: Set Version Output
+      shell: bash
+      run: |
+        echo "Final release version: ${{ steps.determine_version.outputs.use_version }}"
+        echo "version=${{ steps.determine_version.outputs.use_version }}" >> $GITHUB_OUTPUT
