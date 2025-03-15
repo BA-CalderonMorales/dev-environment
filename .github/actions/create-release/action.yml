@@ -2,17 +2,14 @@ name: 'Create GitHub Release'
 description: 'Creates a GitHub release with optional signing and branch-specific version determination'
 
 inputs:
-  version:
-    description: 'Version to release (tag name) or "auto" for automatic determination'
-    required: false
-    default: 'auto'
-  source_branch:
-    description: 'Source branch for versioning (beta or main)'
+  new_version:
+    description: 'New version to release (if not using auto)'
     required: true
-  initial_version:
-    description: 'Initial version to use if no tags exist'
-    required: false
-    default: 'beta-v0.0.1'
+    default: 'develop-v0.0.1'
+  is_beta:
+    description: 'Whether the release is a beta version'
+    required: true
+    default: 'false'
   prerelease:
     description: 'Whether this is a prerelease'
     required: false
@@ -35,14 +32,6 @@ inputs:
   bot_name:
     description: 'Name for git config'
     required: true
-  draft:
-    description: 'Whether to create as a draft release'
-    required: false
-    default: 'false'
-  skip_if_exists:
-    description: 'Skip if tag/release already exists'
-    required: false
-    default: 'false'
   allow_unsigned:
     description: 'Allow unsigned tags if GPG signing fails'
     required: false
@@ -58,7 +47,7 @@ outputs:
     value: ${{ steps.create_release.outputs.release_url }}
   version:
     description: 'The final version used for the release'
-    value: ${{ steps.determine_version.outputs.use_version }}
+    value: ${{ inputs.new_version }}
 
 runs:
   using: 'composite'
@@ -67,124 +56,22 @@ runs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-
+    
     - name: Determine Release Version
-      id: determine_version
       shell: bash
+      id: determine_version
+      # Ensure we use the version coming in from determine_version job within workflow_create_release.yml
       run: |
-        BRANCH="${{ inputs.source_branch }}"
-        echo "Source branch: $BRANCH"
-        if [[ "$BRANCH" == "beta" ]]; then
-          PREFIX="beta-v"
-        elif [[ "$BRANCH" == "main" ]]; then
-          PREFIX="stable-v"
+        if [ "${{ inputs.new_version }}" != "develop-v0.0.1" ]; then
+          echo "use_version=${{ inputs.new_version }}" >> $GITHUB_OUTPUT
         else
-          echo "::error::Invalid branch: $BRANCH. Must be 'beta' or 'main'"
+          # Cancel the workflow here since we're not using the auto versioning logic
+          # Output that we're cancelling due to a misconfiguration or incorrect input
+          echo "version=develop-v0.0.1" >> $GITHUB_OUTPUT
+          echo "This action is configured to use a specific version and not auto-detect. Cancelling." >> $GITHUB_OUTPUT
           exit 1
         fi
-
-        # Auto-determine version if requested
-        if [[ "${{ inputs.version }}" == "auto" ]]; then
-          git fetch --tags
-          # For main branch, only match stable tags; for beta, match beta tags
-          LATEST=$(git tag -l "${PREFIX}*" | sort -V | tail -n 1)
-          if [[ -n "$LATEST" ]]; then
-            echo "Latest tag ($PREFIX): $LATEST"
-            if [[ "$LATEST" =~ ${PREFIX}([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-              major="${BASH_REMATCH[1]}"
-              minor="${BASH_REMATCH[2]}"
-              patch="${BASH_REMATCH[3]}"
-              patch=$((patch + 1))
-              USE_VERSION="${PREFIX}${major}.${minor}.${patch}"
-              echo "Incremented version: $USE_VERSION"
-            else
-              echo "::warning::Could not parse tag $LATEST; falling back to initial version"
-              USE_VERSION="${{ inputs.initial_version }}"
-              # For main, force stable prefix replacement if needed
-              if [[ "$BRANCH" == "main" ]]; then
-                USE_VERSION="${USE_VERSION/beta-v/stable-v}"
-              fi
-            fi
-          else
-            # For main branch: if no stable tag, try deriving from latest beta tag
-            if [[ "$BRANCH" == "main" ]]; then
-              LATEST_BETA=$(git tag -l "beta-v*" | sort -V | tail -n 1)
-              if [[ -n "$LATEST_BETA" && "$LATEST_BETA" =~ beta-v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-                major="${BASH_REMATCH[1]}"
-                minor="${BASH_REMATCH[2]}"
-                patch="${BASH_REMATCH[3]}"
-                USE_VERSION="stable-v${major}.${minor}.$((patch+1))"
-                echo "Derived stable version from beta tag: $USE_VERSION"
-              else
-                USE_VERSION="${{ inputs.initial_version/beta-v/stable-v}}"
-                echo "No beta tag found; using default stable version: $USE_VERSION"
-              fi
-            else
-              USE_VERSION="${{ inputs.initial_version }}"
-              echo "No tag found; using default version: $USE_VERSION"
-            fi
-          fi
-        else
-          USE_VERSION="${{ inputs.version }}"
-          if [[ "$BRANCH" == "main" && ! "$USE_VERSION" =~ ^stable-v ]]; then
-            USE_VERSION="${USE_VERSION/beta-v/stable-v}"
-            echo "Adjusted provided version for main branch: $USE_VERSION"
-          fi
-        fi
-
-        echo "Determined release version: $USE_VERSION"
-        echo "use_version=$USE_VERSION" >> $GITHUB_OUTPUT
-
-    # Check if release exists first
-    - name: Check if release exists
-      id: check_release
-      shell: bash
-      run: |
-        VERSION="${{ env.version }}"
-        echo "Checking for existing tag $VERSION..."
-        if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-          echo "Tag already exists"
-          echo "exists=true" >> $GITHUB_OUTPUT
-
-          # Check if a GitHub release exists for this tag
-          if gh release view "$VERSION" &>/dev/null; then
-            echo "GitHub release for tag $VERSION already exists"
-            echo "release_exists=true" >> $GITHUB_OUTPUT
-            
-            # Get the release URL for output
-            release_url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
-            echo "release_url=$release_url" >> $GITHUB_OUTPUT
-          else
-            echo "GitHub release does not exist yet for tag $VERSION"
-            echo "release_exists=false" >> $GITHUB_OUTPUT
-          fi
-        else
-          echo "Tag does not exist"
-          echo "exists=false" >> $GITHUB_OUTPUT
-          echo "release_exists=false" >> $GITHUB_OUTPUT
-        fi
-      env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-
-    # Set up release URL output if the release already exists
-    - name: Set existing release URL
-      if: steps.check_release.outputs.release_exists == 'true'
-      id: existing_release
-      shell: bash
-      run: echo "release_url=${{ steps.check_release.outputs.release_url }}" >> $GITHUB_OUTPUT
-
-    # Setup Git signing using existing step_setup_gpg.rs script
-    - name: Setup GPG and Git
-      if: steps.check_release.outputs.release_exists != 'true'
-      id: setup_git
-      uses: ./.github/actions/setup-git-signing
-      with:
-        bot_email: ${{ inputs.bot_email }}
-        bot_name: ${{ inputs.bot_name }}
-        bot_gpg_private_key: ${{ inputs.bot_gpg_private_key }}
-        bot_gpg_passphrase: ${{ inputs.bot_gpg_passphrase }}
-        debug_mode: 'true'
-
+    
     # Compile Rust scripts if needed
     - name: Ensure Rust scripts are compiled
       if: steps.check_release.outputs.release_exists != 'true'
@@ -195,22 +82,34 @@ runs:
           cargo build
         fi
 
+    # Setup Git signing using existing step_setup_gpg.rs script
+    - name: Setup GPG and Git
+      if: steps.check_release.outputs.release_exists != 'true'
+      id: setup_git
+      uses: ./setup-git-signing
+      with:
+        bot_email: ${{ inputs.bot_email }}
+        bot_name: ${{ inputs.bot_name }}
+        bot_gpg_private_key: ${{ inputs.bot_gpg_private_key }}
+        bot_gpg_passphrase: ${{ inputs.bot_gpg_passphrase }}
+        debug_mode: 'true'
+
     # Run the release creation script
     - name: Check if release exists and create if needed
       id: create_release
       shell: bash
       run: |
         # If the release exists, the script (or gh cli) will set a non-zero exit code (or we can test here)
-        if gh release view "$use_version" &>/dev/null; then
-          echo "Release for version $use_version already exists."
+        if gh release view "$new_version" &>/dev/null; then
+          echo "Release for version $new_version already exists."
           exit 0
         else
           # Call our release creation script. This script is assumed to capture the full releasing process.
-          echo "Creating release for version $use_version..."
+          echo "Creating release for version $new_version..."
           ${{ github.workspace }}/.github/scripts/target/debug/step_create_release
         fi
       env:
-        use_version: ${{ steps.determine_version.outputs.use_version }}
+        use_version: ${{ inputs.new_version }}
         INPUT_RELEASE_SHA: ${{ inputs.release_sha }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_PRERELEASE: ${{ inputs.prerelease }}
@@ -223,4 +122,4 @@ runs:
       shell: bash
       run: |
         echo "Final release version: ${{ steps.determine_version.outputs.use_version }}"
-        echo "version=${{ steps.determine_version.outputs.use_version }}" >> $GITHUB_OUTPUT
+        echo "version=${{ steps.determine_version.outputs.new_version}}" >> $GITHUB_OUTPUT
