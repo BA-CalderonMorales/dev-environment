@@ -196,7 +196,8 @@ jobs:
         id: create_release_action
         uses: ./.github/actions/create-release
         with:
-          version: auto
+          new_verion: ${{ needs.determine_version.outputs.new_version }}
+          is_beta: ${{ needs.determine_version.outputs.is_beta }}
           source_branch: ${{ github.event.inputs.source_branch }}
           initial_version: ${{ env.INITIAL_VERSION }}
           prerelease: ${{ needs.determine_version.outputs.is_beta || 'true' }}
@@ -208,7 +209,6 @@ jobs:
           bot_name: ${{ secrets.BOT_NAME || 'GitHub Actions' }}
           allow_unsigned: ${{ github.event.inputs.allow_unsigned || 'true' }}
           generate_release_notes: 'true'
-          skip_if_exists: 'true'
 
   #####################################################################
   # Handle Failure
