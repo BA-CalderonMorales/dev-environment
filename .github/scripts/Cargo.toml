@@ -73,6 +73,10 @@ path = "src/bin/step_setup_release_gpg.rs"
 name = "step_queue_release"
 path = "src/bin/step_queue_release.rs"
 
+[[bin]]
+name = "step_version_determiner"
+path = "src/bin/step_version_determiner.rs"
+
 [dependencies]
 anyhow = "1.0.79"  # Error handling
 chrono = "0.4.31"  # Date and time handling

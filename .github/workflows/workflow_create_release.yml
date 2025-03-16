@@ -85,7 +85,7 @@ jobs:
     needs: branch_check
     runs-on: ubuntu-latest
     outputs:
-      new_version: ${{ steps.version_action.outputs.version }}
+      new_version: ${{ steps.version_action.outputs.new_version }}
       is_beta: ${{ steps.version_action.outputs.is_beta }}
     steps:
       - uses: actions/checkout@v4
@@ -196,10 +196,8 @@ jobs:
         id: create_release_action
         uses: ./.github/actions/create-release
         with:
-          new_verion: ${{ needs.determine_version.outputs.new_version }}
+          new_version: ${{ needs.determine_version.outputs.new_version }}
           is_beta: ${{ needs.determine_version.outputs.is_beta }}
-          source_branch: ${{ github.event.inputs.source_branch }}
-          initial_version: ${{ env.INITIAL_VERSION }}
           prerelease: ${{ needs.determine_version.outputs.is_beta || 'true' }}
           release_sha: ${{ needs.process_queue.outputs.sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
