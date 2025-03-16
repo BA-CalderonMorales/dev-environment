@@ -1,160 +1,43 @@
 name: 'Version Determiner'
 description: 'Determines the next version number with prefix support'
 
+inputs:
+  source_branch:
+    description: 'Source branch for versioning (beta or main)'
+    required: false
+    default: 'beta'
+  initial_version:
+    description: 'Initial version to use if no tags exist'
+    required: false
+    default: 'beta-v0.0.1'
+
 outputs:
   new_version:
     description: 'The next version number'
-    value: ${{ steps.set_version.outputs.version }}
+    value: ${{ steps.version_script.outputs.version }}
   is_beta:
     description: 'Whether this is a beta version'
-    value: ${{ steps.set_version.outputs.is_beta }}
+    value: ${{ steps.version_script.outputs.is_beta }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Get Latest Tag
-      id: get_latest_tag
+    # Ensure Rust scripts are compiled
+    - name: Compile Rust scripts
       shell: bash
       run: |
-        # Get the latest tag, defaulting to beta-v0.0.1 if none exists
-        latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "beta-v0.0.1")
-        echo "Latest tag: $latest_tag"
-        echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
+        if [ ! -f "${{ github.workspace }}/.github/scripts/target/debug/step_version_determiner" ]; then
+          echo "Compiling Rust scripts..."
+          cd "${{ github.workspace }}/.github/scripts"
+          cargo build
+        fi
 
-    - name: Set Next Version
-      id: set_version
+    # Run the version determiner script
+    - name: Determine version
+      id: version_script
       shell: bash
-      run: |
-        # Ensure we get a valid default version from environment
-        default_version="${{ env.INITIAL_VERSION }}"
-        if [[ -z "$default_version" ]]; then
-          default_version="beta-v0.0.1"
-        fi
-        
-        latest_tag="${{ steps.get_latest_tag.outputs.latest_tag }}"
-        if [[ -z "$latest_tag" ]]; then
-          latest_tag="$default_version"
-          echo "No latest tag found, using default: $latest_tag"
-        fi
-        
-        current_branch=$(git rev-parse --abbrev-ref HEAD)
-        
-        # Get source branch from input or current branch
-        source_branch="${{ github.event.inputs.source_branch }}"
-        if [[ -z "$source_branch" ]]; then
-          source_branch="$current_branch"
-        fi
-        echo "Source branch: $source_branch"
-        
-        # Function to increment version component
-        increment_version() {
-          local version=$1
-          local position=$2  # proud=1, default=2, fix=3
-          
-          IFS='.' read -ra parts <<< "$version"
-          # Ensure we have at least 3 parts
-          while [ ${#parts[@]} -lt 3 ]; do
-            parts+=("0")
-          done
-          
-          parts[$((position-1))]=$((parts[$((position-1))+1]))
-          
-          # Reset subsequent numbers to 0
-          for ((i=position; i<${#parts[@]}; i++)); do
-            parts[$i]=0
-          done
-          
-          echo "${parts[*]}" | tr ' ' '.'
-        }
-        
-        # Extract the numeric version part, ignoring prefix
-        extract_version() {
-          local tag=$1
-          if [[ $tag =~ (stable|beta)-v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            echo "${BASH_REMATCH[2]}"
-          elif [[ $tag =~ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            echo "${BASH_REMATCH[1]}"
-          else
-            echo "0.0.1"  # Default if no match
-          fi
-        }
-        
-        # Get all tags sorted by version
-        get_latest_version_for_prefix() {
-          local prefix=$1
-          local latest=""
-          local highest_version="0.0.0"
-          
-          # Get all tags matching the prefix
-          git tag -l "${prefix}*" | while read -r tag; do
-            if [[ $tag =~ ${prefix}-v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-              local ver="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
-              # Very simple version comparison - would need more robust solution for real semver
-              if [[ "$ver" > "$highest_version" ]]; then
-                highest_version="$ver"
-                latest="$tag"
-              fi
-            fi
-          done
-          
-          echo "$latest"
-        }
-
-        # Get the latest tags for each prefix
-        latest_beta_tag=$(get_latest_version_for_prefix "beta")
-        latest_stable_tag=$(get_latest_version_for_prefix "stable")
-        
-        echo "Latest beta tag: $latest_beta_tag"
-        echo "Latest stable tag: $latest_stable_tag"
-        
-        if [[ "$source_branch" == "beta" ]]; then
-          # Beta release path - we need to get the latest beta tag
-          if [[ -n "$latest_beta_tag" ]]; then
-            # We have a beta tag, increment its fix version (c)
-            numeric_version=$(extract_version "$latest_beta_tag")
-            version=$(increment_version "$numeric_version" 3)
-            new_version="beta-v${version}"
-          elif [[ -n "$latest_stable_tag" ]]; then
-            # No beta tag but we have stable - increment default version (b)
-            numeric_version=$(extract_version "$latest_stable_tag")
-            version=$(increment_version "$numeric_version" 2)
-            new_version="beta-v${version}"
-          else
-            # No tags at all, use initial beta
-            new_version="beta-v0.0.1"
-          fi
-          
-          is_beta="true"
-        elif [[ "$source_branch" == "main" ]]; then
-          # Stable release path
-          if [[ -n "$latest_beta_tag" ]]; then
-            # Promoting latest beta to stable
-            numeric_version=$(extract_version "$latest_beta_tag")
-            new_version="stable-v${numeric_version}"
-          elif [[ -n "$latest_stable_tag" ]]; then
-            # Increment fix version (c) for stable-to-stable
-            numeric_version=$(extract_version "$latest_stable_tag")
-            version=$(increment_version "$numeric_version" 3)
-            new_version="stable-v${version}"
-          else
-            # Default stable
-            new_version="stable-v0.0.1"
-          fi
-          
-          is_beta="false"
-        else
-          # Fallback for unknown branches - use beta
-          new_version="beta-v0.0.1"
-          is_beta="true"
-          echo "::warning::Unknown branch '$source_branch'. Defaulting to initial beta version."
-        fi
-        
-        # Final validation to ensure we have a valid version
-        if [[ -z "$new_version" ]]; then
-          new_version="beta-v0.0.1"
-          echo "::warning::Version determination failed. Using default version."
-        fi
-        
-        echo "New version: $new_version"
-        echo "version=$new_version" >> $GITHUB_OUTPUT
-        echo "is_beta=$is_beta" >> $GITHUB_OUTPUT
+      run: ${{ github.workspace }}/.github/scripts/target/debug/step_version_determiner
+      env:
+        INPUT_SOURCE_BRANCH: ${{ inputs.source_branch }}
+        INPUT_INITIAL_VERSION: ${{ inputs.initial_version }}
+        RUST_LOG: debug  # Set logging level
