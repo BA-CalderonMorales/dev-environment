@@ -60,17 +60,20 @@ runs:
     - name: Determine Release Version
       shell: bash
       id: determine_version
-      # Ensure we use the version coming in from determine_version job within workflow_create_release.yml
       run: |
-        if [ "${{ inputs.new_version }}" != "develop-v0.0.1" ]; then
-          echo "use_version=${{ inputs.new_version }}" >> $GITHUB_OUTPUT
-        else
-          # Cancel the workflow here since we're not using the auto versioning logic
-          # Output that we're cancelling due to a misconfiguration or incorrect input
-          echo "version=develop-v0.0.1" >> $GITHUB_OUTPUT
-          echo "This action is configured to use a specific version and not auto-detect. Cancelling." >> $GITHUB_OUTPUT
+        # Use the version from the parameter
+        VERSION="${{ inputs.new_version }}"
+        echo "Received version: $VERSION"
+        
+        # Make sure we're not using the default
+        if [[ "$VERSION" == "develop-v0.0.1" ]]; then
+          echo "::error::Invalid version provided: $VERSION"
           exit 1
         fi
+        
+        # Set the version for later steps
+        echo "use_version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Using version: $VERSION"
     
     # Compile Rust scripts if needed
     - name: Ensure Rust scripts are compiled
@@ -86,7 +89,7 @@ runs:
     - name: Setup GPG and Git
       if: steps.check_release.outputs.release_exists != 'true'
       id: setup_git
-      uses: ./setup-git-signing
+      uses: ./.github/actions/setup-git-signing
       with:
         bot_email: ${{ inputs.bot_email }}
         bot_name: ${{ inputs.bot_name }}
@@ -95,27 +98,43 @@ runs:
         debug_mode: 'true'
 
     # Run the release creation script
-    - name: Check if release exists and create if needed
+    - name: Create GitHub Release
       id: create_release
       shell: bash
       run: |
-        # If the release exists, the script (or gh cli) will set a non-zero exit code (or we can test here)
-        if gh release view "$new_version" &>/dev/null; then
-          echo "Release for version $new_version already exists."
+        VERSION="${{ steps.determine_version.outputs.use_version }}"
+        
+        # Install GitHub CLI if needed
+        if ! command -v gh &> /dev/null; then
+          echo "Installing GitHub CLI..."
+          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+            && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+            && sudo apt update \
+            && sudo apt install gh -y
+        fi
+        
+        # Check if a release already exists
+        if gh release view "$VERSION" &>/dev/null; then
+          echo "Release for version $VERSION already exists."
+          release_url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
+          echo "release_url=$release_url" >> $GITHUB_OUTPUT
           exit 0
         else
-          # Call our release creation script. This script is assumed to capture the full releasing process.
-          echo "Creating release for version $new_version..."
+          echo "Creating release for version $VERSION..."
+          # Set the version in the environment for the Rust script
+          export INPUT_VERSION="$VERSION"
           ${{ github.workspace }}/.github/scripts/target/debug/step_create_release
         fi
       env:
-        use_version: ${{ inputs.new_version }}
+        INPUT_VERSION: ${{ steps.determine_version.outputs.use_version }}
         INPUT_RELEASE_SHA: ${{ inputs.release_sha }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_PRERELEASE: ${{ inputs.prerelease }}
-        INPUT_DRAFT: ${{ inputs.draft }}
         INPUT_GENERATE_RELEASE_NOTES: ${{ inputs.generate_release_notes }}
         INPUT_ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
 
     # Set final output
     - name: Set Version Output
