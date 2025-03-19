@@ -14,17 +14,23 @@ struct VersionDeterminer {
 impl VersionDeterminer {
     /// Create a new VersionDeterminer with inputs from environment
     fn new() -> Result<Self> {
-        let logger = get_logger(false);
+        let logger = get_logger(true); // Enable verbose logging for debugging
         
-        // Get the source branch for versioning
+        // Get the source branch for versioning with better error handling
         let source_branch = env::var("INPUT_SOURCE_BRANCH")
-            .unwrap_or_else(|_| "beta".to_string());
+            .unwrap_or_else(|_| {
+                logger.warn("INPUT_SOURCE_BRANCH environment variable not set, defaulting to 'beta'");
+                "beta".to_string()
+            });
             
         // Get the default version in case no tags exist
         let default_version = env::var("INPUT_INITIAL_VERSION")
-            .unwrap_or_else(|_| "beta-v0.0.1".to_string());
+            .unwrap_or_else(|_| {
+                logger.warn("INPUT_INITIAL_VERSION environment variable not set, defaulting to 'beta-v0.0.1'");
+                "beta-v0.0.1".to_string()
+            });
         
-        logger.info(&format!("Initializing VersionDeterminer: branch={}, default={}", 
+        logger.info(&format!("Initializing VersionDeterminer: branch='{}', default='{}'", 
             &source_branch, &default_version));
         
         Ok(Self {
@@ -74,6 +80,9 @@ impl VersionDeterminer {
         
         // Split into lines and sort by version
         let mut tags: Vec<&str> = tags_output.lines().collect();
+        
+        // Log all found tags for debugging
+        self.logger.debug(&format!("Found {} tags with prefix {}: {:?}", tags.len(), prefix, tags));
         
         // Custom sort function that understands semantic versioning
         tags.sort_by(|a, b| {
@@ -173,9 +182,29 @@ impl VersionDeterminer {
         Ok(new_version)
     }
     
+    fn get_normalized_branch(&self) -> Result<String> {
+        let branch = self.source_branch.to_lowercase();
+        
+        // Debug branch name to ensure we're working with correct value
+        self.logger.info(&format!("Normalizing branch name: '{}'", branch));
+        
+        // Only allow main and beta branches (with normalization)
+        if branch == "main" {
+            return Ok("main".to_string());
+        } else if branch == "beta" {
+            return Ok("beta".to_string());
+        }
+        
+        // Any other branch name is invalid and should prevent releases
+        self.logger.error(&format!("⛔ Invalid branch: '{}'. Only 'main' and 'beta' are allowed for releases", branch));
+        anyhow::bail!("Invalid branch for release: '{}'", branch)
+    }
+    
     /// Determine the next version based on branch and existing tags
     async fn determine_version(&self) -> Result<(String, bool)> {
-        self.logger.info("Starting version determination process");
+        // Get normalized branch with strict validation
+        let normalized_branch = self.get_normalized_branch()?;
+        self.logger.info(&format!("Determining version for branch: '{}'", normalized_branch));
         
         // Make sure we have all tags
         self.fetch_tags()?;
@@ -188,7 +217,9 @@ impl VersionDeterminer {
         self.logger.info(&format!("Latest stable tag: {:?}", latest_stable_tag));
         
         // Determine the next version based on branch and tags
-        let (new_version, is_beta) = if self.source_branch == "beta" {
+        // Since we've validated the branch above, we know it's either "main" or "beta"
+        let (new_version, is_beta) = if normalized_branch == "beta" {
+            self.logger.info("Using beta branch versioning logic");
             if let Some(tag) = &latest_beta_tag {
                 // Increment patch version of latest beta
                 let version = self.extract_version(tag)?;
@@ -203,7 +234,9 @@ impl VersionDeterminer {
                 // No tags at all
                 (self.default_version.clone(), true)
             }
-        } else if self.source_branch == "main" {
+        } else {
+            // This must be main branch due to our validation
+            self.logger.info("Using main branch versioning logic");
             if let Some(tag) = &latest_beta_tag {
                 // Promote beta to stable
                 let version = self.extract_version(tag)?;
@@ -216,14 +249,12 @@ impl VersionDeterminer {
             } else {
                 // No tags at all
                 let default_stable = self.default_version.replace("beta-v", "stable-v");
+                self.logger.info(&format!("No tags found, using default stable version: {}", default_stable));
                 (default_stable, false)
             }
-        } else {
-            self.logger.warn(&format!("Unknown branch: {}. Defaulting to beta.", &self.source_branch));
-            (self.default_version.clone(), true)
         };
         
-        self.logger.info(&format!("Determined new version: {}", &new_version));
+        self.logger.info(&format!("Determined new version: {} (is_beta: {})", &new_version, is_beta));
         Ok((new_version, is_beta))
     }
     
