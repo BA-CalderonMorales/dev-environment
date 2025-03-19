@@ -94,6 +94,9 @@ jobs:
       
       - id: version_action
         uses: ./.github/actions/version-determiner
+        with:
+          source_branch: ${{ github.event.inputs.source_branch || needs.branch_check.outputs.branch }}
+          initial_version: ${{ env.INITIAL_VERSION }}
 
   #####################################################################
   # Validate GPG Keys

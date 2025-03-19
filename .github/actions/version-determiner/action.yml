@@ -4,7 +4,7 @@ description: 'Determines the next version number with prefix support'
 inputs:
   source_branch:
     description: 'Source branch for versioning (beta or main)'
-    required: false
+    required: true
     default: 'beta'
   initial_version:
     description: 'Initial version to use if no tags exist'
@@ -22,6 +22,14 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    # Show diagnostic information about the branch
+    - name: Display branch information
+      shell: bash
+      run: |
+        echo "Source branch: ${{ inputs.source_branch }}"
+        echo "Current ref: ${{ github.ref }}"
+        echo "Repository: ${{ github.repository }}"
+        
     # Ensure Rust scripts are compiled
     - name: Compile Rust scripts
       shell: bash
