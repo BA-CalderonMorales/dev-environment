@@ -24,7 +24,7 @@ runs:
         # Define valid tags and their branch patterns
         declare -A TAG_MAPPING=(
           ["pipeline"]="^(pipeline|pipeline/.+)$"
-          ["dev"]="^(develop|feature/|bugfix/|hotfix/)"
+          ["dev"]="^(develop|feature/|bugfix/|hotfix/|security/)"
           ["beta"]="^beta$"
           ["latest"]="^main$"
         )
@@ -47,7 +47,7 @@ runs:
           echo "tag=$DETERMINED_TAG" >> $GITHUB_OUTPUT
         else
           echo "valid=false" >> $GITHUB_OUTPUT
-          echo "message=❌ Error: Branch '$BRANCH' does not map to any valid tag. Valid patterns are: pipeline, pipeline/*, develop, feature/*, bugfix/*, beta, main" >> $GITHUB_OUTPUT
+          echo "message=❌ Error: Branch '$BRANCH' does not map to any valid tag. Valid patterns are: pipeline, pipeline/*, develop, feature/*, bugfix/*, security/*, beta, main" >> $GITHUB_OUTPUT
           echo "::error::Invalid branch pattern. See workflow summary for details."
           exit 1
         fi
@@ -62,6 +62,6 @@ runs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Tag Mapping Rules" >> $GITHUB_STEP_SUMMARY
         echo "- \`pipeline, pipeline/*\` → :pipeline" >> $GITHUB_STEP_SUMMARY
-        echo "- \`develop, feature/*, bugfix/*\` → :dev" >> $GITHUB_STEP_SUMMARY
+        echo "- \`develop, feature/*, bugfix/*, security/*\` → :dev" >> $GITHUB_STEP_SUMMARY
         echo "- \`beta\` → :beta" >> $GITHUB_STEP_SUMMARY
         echo "- \`main\` → :latest" >> $GITHUB_STEP_SUMMARY
