@@ -5,10 +5,13 @@ This guide is for developers who want to contribute to or maintain the dev-envir
 ## Project Structure
 ```
 dev-environment/
-├── cli/                   # Setup CLI tool
-├── distributions/         # Distribution methods
+├── .github/              # Setup CLI tool
+├── distributions/        # Distribution methods
+├── docs/                 # Consolidate all docs related to project
 ├── e2e/                  # End-to-end tests
-└── startup/              # Environment scripts
+├── projects/             # Placeholder for projects to provide a "consistent" environment
+├── scripts/              # Helper for distributions/ and .github/ modules - also used for overall cleanup scripts.
+└── startup/              # Dev-Environment specific scripts
 ```
 
 ## Development Requirements

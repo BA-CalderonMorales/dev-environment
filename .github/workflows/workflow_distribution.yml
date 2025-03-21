@@ -5,8 +5,9 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  # Only trigger on push if there's no active PR for the branch
+
   push:
+    # Only trigger on push if there's no active PR for the branch
     branches: 
       - main
       - beta
@@ -15,12 +16,17 @@ on:
       - 'bugfix/*'
       - 'feature/*'
       - 'security/*'
+    
+    # Only trigger on push if there are changes in specific directories
     paths:
-      - 'distributions/dockerhub/**'
-      - 'distributions/direct_download/**'
+      - '.github/**'
+      - 'distributions/**'
+      # Do not add docs/ to paths as we don't want to trigger on documentation changes
+      - 'e2e/**'
+      - 'projects/**'
+      - 'scripts/**'
       - 'startup/**'
-      - '.github/workflows/**'
-      - 'docs/**'
+      - './docker-compose.yml'
 
   workflow_dispatch:
     inputs:
