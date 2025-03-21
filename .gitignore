@@ -1,22 +1,24 @@
+# Environment variables and secrets
 .env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
 
+# Project dependencies and build artifacts
 projects/**/node_modules/
-
 projects/**/target/
-
 projects/**/dist/
-
 projects/**/.venv/
-
 projects/**/__pycache__/
 
+# Server and cache directories
 .vscode-server/
-
 npm-cache/
-
 cargo-cache/
-
 go-cache/
+.cache/
 
 # IDE and Editor files
 .idea/
@@ -31,21 +33,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Environment files (though you already have .env)
-.env.local
-.env.*.local
-.env.development
-.env.test
-.env.production
-
-# Testing
-coverage/
-.nyc_output/
-
 # Temporary files
 *.tmp
 *.temp
-.cache/
 
 # Build outputs
 *.tsbuildinfo
@@ -53,7 +43,7 @@ coverage/
 .nuxt/
 .output/
 
-# Rust specific (more comprehensive patterns)
+# Rust specific patterns
 .github/scripts/target/
 **/*.rs.bk
 **/*.rmeta
@@ -70,6 +60,7 @@ coverage/
 **/CACHEDIR.TAG
 **/target/
 **/Cargo.lock
+
 # Distribution artifacts
 distributions/direct_download/dev-environment.tar
 distributions/direct_download/checksum.txt

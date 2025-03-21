@@ -45,12 +45,12 @@ runs:
             ;;
           *)
             # Enhanced pattern matching for branch types
-            if [[ "$BRANCH" =~ ^(feature|bugfix|hotfix|security|merge)/ || "$BRANCH" =~ ^[0-9]+/(merge|rebase|feature|bugfix|hotfix) ]]; then
+            if [[ "$BRANCH" =~ ^(feature|bugfix|hotfix|security|merge|cleanup)/ || "$BRANCH" =~ ^[0-9]+/(merge|rebase|feature|bugfix|hotfix) ]]; then
               echo "environment=development" >> $GITHUB_OUTPUT
               echo "base_tag=dev" >> $GITHUB_OUTPUT
               echo "docker_tag=dev" >> $GITHUB_OUTPUT
             else
-              echo "::error::Branch '$BRANCH' does not conform to quantum naming conventions. Allowed patterns: main, beta, develop, pipeline/*, feature/*, bugfix/*, hotfix/*, security/*, merge/*, NUM/merge"
+              echo "::error::Branch '$BRANCH' does not conform to quantum naming conventions. Allowed patterns: main, beta, develop, pipeline/*, feature/*, bugfix/*, hotfix/*, security/*, merge/*, cleanup/*, NUM/merge"
               exit 1
             fi
             ;;

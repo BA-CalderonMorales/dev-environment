@@ -1,60 +1,57 @@
-# Release Schedule & Process
+# Release Schedule and Process
 
-## Branch Roles & Automation
+This document describes the release process and schedule for the Development Environment.
 
-- **develop**: Aggregates work from multiple pull requests
-- **beta**: Beta release branch
-  - Triggers release queue on merges from develop
-  - Creates beta releases after queue processing
-- **main**: Production release branch
-  - Triggers release queue on merges from beta
-  - Creates stable releases after queue processing
+## Release Workflow Overview
 
-## Automated Release Flow
+Our project uses a structured release workflow to ensure quality and stability:
 
-1. **Develop to Beta (Beta Releases)**
-   - When develop is merged into beta:
-     1. Queue-release job triggers automatically
-     2. Creates PR to update release queue
-     3. Adds commit to beta release queue
-     4. Weekly automation processes beta queue
+1. **Develop → Beta**: Changes merged to `develop` branch automatically create PRs to `beta`
+2. **Beta Releases**: Weekly releases from `beta` branch (every Saturday)
+3. **Beta → Main**: Stable releases from `beta` to `main` every 2 weeks
 
-2. **Beta to Main (Stable Releases)**
-   - When beta is merged into main:
-     1. Queue-release job triggers automatically
-     2. Creates PR to update release queue
-     3. Adds commit to main release queue
-     4. Bi-weekly automation processes main queue
+## Release Queue System
 
-## Queue Processing
+### How It Works
 
-- **Beta Queue**:
-  - Processed weekly (Saturday 10:00 AM CST)
-  - Minimum 10 items needed for release
-  - Creates beta release tags
+1. When code is merged to `develop`, a PR is automatically created to the `beta` branch
+2. These PRs are tagged with `release-queue` label
+3. The release automation processes these queued PRs in batches
 
-- **Main Queue**:
-  - Processed bi-weekly
-  - Minimum 15 items needed for release
-  - Creates stable release tags
+### Queue Processing Rules
 
-## Manual Triggers
+- **Beta Releases**: Process when 3+ PRs are queued OR on weekly schedule (Saturday)
+- **Main Releases**: Process when 5+ PRs are in queue AND minimum 7 days since last release
 
-- Workflow dispatch on beta/main branches will:
-  1. Queue release if conditions met
-  2. Skip optional jobs (dockerhub_build, etc.)
-  3. Process queue based on branch rules
+### Manual Intervention
 
-## Queue Validation
+To force-process a release queue:
 
-Each queue addition:
-1. Validates branch conditions
-2. Verifies essential tests passed
-3. Creates signed commit
-4. Opens PR for queue update
+1. Go to Actions → "Create Release" workflow
+2. Click "Run workflow" 
+3. Select the branch (`beta` or `main`)
+4. Check "Force queue processing" option
+5. Click "Run workflow"
 
-## Next Steps
+## Troubleshooting
 
-- [ ] Implement queue size notifications
-- [ ] Add release schedule dashboard
-- [ ] Automate changelog generation
+### Common Issues
+
+- **PRs not being processed**: Ensure PRs have the `release-queue` label
+- **Empty queue warning**: Check if PRs are properly labeled and targeting the correct branch
+- **Failed releases**: Check the Actions log for details and errors
+
+### Fixing Queue Issues
+
+If the queue gets stuck or contains invalid entries:
+
+1. Go to `.github/release_queue/{branch}.json` file
+2. Edit the file to remove problematic entries
+3. Commit changes directly to the branch
+
+## Release Schedule
+
+| Branch | Schedule | Min Items | Age Requirement |
+|--------|----------|-----------|----------------|
+| Beta   | Weekly (Sat) | 3 | None |
+| Main   | Bi-weekly | 5 | 7 days |
