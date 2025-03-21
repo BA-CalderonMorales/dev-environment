@@ -12,6 +12,7 @@ on:
       - main
       - beta
       - develop
+      - 'cleanup/*'  # despite the name, cleanup can sometimes cause some errors - enforcing a check on it
       - 'pipeline/*'
       - 'bugfix/*'
       - 'feature/*'
