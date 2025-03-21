@@ -2,8 +2,8 @@ name: Cache Cleanup
 
 on:
   schedule:
-    # Runs at 00:00 UTC every day
-    - cron: '0 0 * * *'
+    # Runs at 8:00 PM CST every Saturday (2:00 AM UTC Sunday)
+    - cron: '0 2 * * 0'
   workflow_dispatch:
 
 permissions:
