@@ -113,7 +113,7 @@ fn report_results(results: &[TestResult]) -> Result<bool> {
 }
 
 pub async fn run_creator_workflow(
-    dockerfile: &PathBuf,
+    dockerfile: &Path,
     repo: &str,
     download_url: &str,
 ) -> Result<bool> {
