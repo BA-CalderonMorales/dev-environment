@@ -32,8 +32,17 @@ runs:
         echo "Contents of release directory:"
         ls -la .github/scripts/target/release/ || echo "Directory not found"
         
-        # Check if we have workflow binaries
-        if [ -d ".github/scripts/target/release" ] && [ "$(ls -A .github/scripts/target/release)" ]; then
+        # Check if we have the expected workflow binaries
+        expected_binaries=("binary1" "binary2" "binary3") # Replace with actual binary names
+        all_binaries_exist=true
+        for binary in "${expected_binaries[@]}"; do
+          if [ ! -f ".github/scripts/target/release/$binary" ]; then
+            all_binaries_exist=false
+            break
+          fi
+        done
+        
+        if [ "$all_binaries_exist" = true ]; then
           echo "artifact_exists=true" >> $GITHUB_OUTPUT
           # Make all binaries executable
           chmod +x .github/scripts/target/release/*
@@ -42,7 +51,6 @@ runs:
           echo "artifact_exists=false" >> $GITHUB_OUTPUT
           echo "No pre-built artifacts found, will build locally"
         fi
-
     # Fall back to setting up Rust and building workflow scripts if needed
     - name: Setup Rust
       if: steps.check_artifact.outputs.artifact_exists != 'true'
