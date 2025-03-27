@@ -11,12 +11,15 @@ The fastest way to get started with good internet connectivity.
 <hr/>
 
 ## Steps
+
 <details>
+
 1. Ensure Docker Desktop is running
     - Literally click on the icon and open it.
     - If you don't have it, then you'll have to download it.
 
 2. Pull and run the environment:
+
 ```bash
 # Pull the latest image
 docker pull cmoe640/dev-environment:latest
