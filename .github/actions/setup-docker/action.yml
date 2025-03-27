@@ -43,10 +43,20 @@ runs:
       id: check_artifact
       shell: bash
       run: |
-        if [ -f ".github/scripts/target/release/step-setup-docker-env" ]; then
+        # List available binaries for debugging
+        echo "Contents of release directory:"
+        ls -la .github/scripts/target/release/ || echo "Directory not found"
+        
+        # Check for binary with underscore (standard naming convention)
+        if [ -f ".github/scripts/target/release/step_setup_docker_env" ]; then
+          echo "artifact_exists=true" >> $GITHUB_OUTPUT
+          chmod +x .github/scripts/target/release/step_setup_docker_env
+          echo "Using pre-built Rust binary: step_setup_docker_env"
+        # Check for binary with hyphen (alternative naming)
+        elif [ -f ".github/scripts/target/release/step-setup-docker-env" ]; then
           echo "artifact_exists=true" >> $GITHUB_OUTPUT
           chmod +x .github/scripts/target/release/step-setup-docker-env
-          echo "Using pre-built Rust binary from artifact"
+          echo "Using pre-built Rust binary: step-setup-docker-env"
         else
           echo "artifact_exists=false" >> $GITHUB_OUTPUT
           echo "No pre-built artifact found, will build locally"

@@ -15,10 +15,41 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Try to download pre-built binaries first for workflow scripts
+    - name: Download Rust binaries artifact
+      id: download_artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: rust-binaries
+        path: .github/scripts/target/release
+      continue-on-error: true
+    
+    - name: Check if artifact was downloaded
+      id: check_artifact
+      shell: bash
+      run: |
+        # List available binaries for debugging
+        echo "Contents of release directory:"
+        ls -la .github/scripts/target/release/ || echo "Directory not found"
+        
+        # Check if we have workflow binaries
+        if [ -d ".github/scripts/target/release" ] && [ "$(ls -A .github/scripts/target/release)" ]; then
+          echo "artifact_exists=true" >> $GITHUB_OUTPUT
+          # Make all binaries executable
+          chmod +x .github/scripts/target/release/*
+          echo "Using pre-built Rust workflow binaries"
+        else
+          echo "artifact_exists=false" >> $GITHUB_OUTPUT
+          echo "No pre-built artifacts found, will build locally"
+        fi
+
+    # Fall back to setting up Rust and building workflow scripts if needed
     - name: Setup Rust
+      if: steps.check_artifact.outputs.artifact_exists != 'true'
       uses: dtolnay/rust-toolchain@stable
 
     - name: Build Test Scripts
+      if: steps.check_artifact.outputs.artifact_exists != 'true'
       shell: bash
       run: |
         cd .github/scripts
