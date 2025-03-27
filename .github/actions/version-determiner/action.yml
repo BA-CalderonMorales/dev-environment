@@ -30,22 +30,57 @@ runs:
         echo "Current ref: ${{ github.ref }}"
         echo "Repository: ${{ github.repository }}"
         
-    # Ensure Rust scripts are compiled
-    - name: Compile Rust scripts
+    # Try to download pre-built binaries first
+    - name: Download Rust binaries artifact
+      id: download_artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: rust-binaries
+        path: ${{ github.workspace }}/.github/scripts/target/release
+      continue-on-error: true
+    
+    - name: Check if artifact was downloaded
+      id: check_artifact
       shell: bash
       run: |
-        if [ ! -f "${{ github.workspace }}/.github/scripts/target/debug/step_version_determiner" ]; then
-          echo "Compiling Rust scripts..."
-          cd "${{ github.workspace }}/.github/scripts"
-          cargo build
+        if [ -f "${{ github.workspace }}/.github/scripts/target/release/step_version_determiner" ]; then
+          echo "artifact_exists=true" >> $GITHUB_OUTPUT
+          chmod +x ${{ github.workspace }}/.github/scripts/target/release/step_version_determiner
+          echo "Using pre-built Rust binary from artifact"
+        else
+          echo "artifact_exists=false" >> $GITHUB_OUTPUT
+          echo "No pre-built artifact found, will build locally"
         fi
 
-    # Run the version determiner script
+    # Fall back to compiling if no artifact is available
+    - name: Setup Rust
+      if: steps.check_artifact.outputs.artifact_exists != 'true'
+      uses: dtolnay/rust-toolchain@stable
+      
+    - name: Compile Rust scripts
+      if: steps.check_artifact.outputs.artifact_exists != 'true'
+      shell: bash
+      run: |
+        echo "Compiling Rust scripts..."
+        cd "${{ github.workspace }}/.github/scripts"
+        cargo build --release
+
+    # Run the version determiner script using the release binary
     - name: Determine version
       id: version_script
       shell: bash
-      run: ${{ github.workspace }}/.github/scripts/target/debug/step_version_determiner
+      run: ${{ github.workspace }}/.github/scripts/target/release/step_version_determiner
       env:
         INPUT_SOURCE_BRANCH: ${{ inputs.source_branch }}
         INPUT_INITIAL_VERSION: ${{ inputs.initial_version }}
         RUST_LOG: debug  # Set logging level
+        
+    # Report the version determination outcome
+    - name: Report Version
+      shell: bash
+      run: |
+        echo "## 📊 Version Determination Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **New Version:** \`${{ steps.version_script.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Is Beta:** \`${{ steps.version_script.outputs.is_beta }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Used Pre-built Binary:** \`${{ steps.check_artifact.outputs.artifact_exists == 'true' }}\`" >> $GITHUB_STEP_SUMMARY

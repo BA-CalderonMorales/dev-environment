@@ -30,10 +30,35 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # Try to download pre-built binaries first
+    - name: Download Rust binaries artifact
+      id: download_artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: rust-binaries
+        path: .github/scripts/target/release
+      continue-on-error: true
+    
+    - name: Check if artifact was downloaded
+      id: check_artifact
+      shell: bash
+      run: |
+        if [ -f ".github/scripts/target/release/step-setup-docker-env" ]; then
+          echo "artifact_exists=true" >> $GITHUB_OUTPUT
+          chmod +x .github/scripts/target/release/step-setup-docker-env
+          echo "Using pre-built Rust binary from artifact"
+        else
+          echo "artifact_exists=false" >> $GITHUB_OUTPUT
+          echo "No pre-built artifact found, will build locally"
+        fi
+
+    # Fall back to setting up Rust and building locally if needed
     - name: Setup Rust
+      if: steps.check_artifact.outputs.artifact_exists != 'true'
       uses: dtolnay/rust-toolchain@stable
 
     - name: Build workflow scripts
+      if: steps.check_artifact.outputs.artifact_exists != 'true'
       shell: bash
       run: |
         cd .github/scripts
@@ -178,6 +203,7 @@ runs:
         echo "- **Environment:** \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
         echo "- **Target Tag:** \`${{ steps.check_base.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
         echo "- **Source Tag:** \`${{ steps.check_base.outputs.source_tag }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Used Pre-built Binary:** \`${{ steps.check_artifact.outputs.artifact_exists == 'true' }}\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         # Build Strategy
