@@ -52,29 +52,6 @@ permissions:
 
 jobs:
   #####################################################################
-  # PR Status Check
-  # --------------
-  # Purpose: Prevents duplicate workflow runs when a PR exists for a branch
-  # 
-  # Flow:
-  # 1. Runs on push events only
-  # 2. Checks GitHub API for open PRs targeting the current branch
-  # 3. Sets should_run=false if PR exists, true otherwise
-  #
-  # Dependencies: None
-  # Outputs: should_run (boolean)
-  # Used by: All subsequent jobs via conditional execution
-  #####################################################################
-  check_pr_status:
-    runs-on: ubuntu-22.04
-    outputs:
-      should_run: ${{ steps.check_pr.outputs.should_run }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/check-pr-status
-        id: check_pr
-
-  #####################################################################
   # Tag Validation
   # -------------
   # Purpose: Ensures Docker image tags follow semantic versioning
@@ -91,11 +68,6 @@ jobs:
   # Used by: validate_branch, dockerhub_build
   #####################################################################
   validate_tags:
-    needs: check_pr_status
-    if: |
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      needs.check_pr_status.outputs.should_run == 'true'
     runs-on: ubuntu-22.04
     outputs:
       is_valid: ${{ steps.validate_tag.outputs.is_valid }}
@@ -105,7 +77,7 @@ jobs:
       - uses: ./.github/actions/validate-tag
         id: validate_tag
         with:
-          tag: ${{ github.event.pull_request && 'pipeline' || github.ref_name }}
+          tag: ${{ github.ref_name }}
 
   #####################################################################
   # Branch Validation
@@ -125,11 +97,7 @@ jobs:
   # Used by: setup_docker, dockerhub_build
   #####################################################################
   validate_branch:
-    needs: [check_pr_status, validate_tags]
-    if: |
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      needs.check_pr_status.outputs.should_run == 'true'
+    needs: [validate_tags]
     runs-on: ubuntu-22.04
     outputs:
       environment: ${{ steps.validate.outputs.environment }}
@@ -228,7 +196,6 @@ jobs:
           environment: ${{ needs.validate_branch.outputs.environment }}
           base_tag: ${{ needs.validate_branch.outputs.base_tag }}
           docker_tag: ${{ needs.validate_branch.outputs.docker_tag }}
-          dockerfile_changed: ${{ needs.detect_changes.outputs.dockerfile_changed }}
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -309,13 +276,7 @@ jobs:
   #####################################################################
   e2e_tests:
     runs-on: ubuntu-22.04
-    needs: [check_pr_status, validate_branch, detect_changes, setup_docker, dockerhub_build, direct_download]
-    if: |
-      always() && (
-        github.event_name == 'pull_request' ||
-        github.event_name == 'workflow_dispatch' ||
-        needs.check_pr_status.outputs.should_run == 'true'
-      )
+    needs: [validate_branch, detect_changes, setup_docker, dockerhub_build, direct_download]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-tests
@@ -343,7 +304,6 @@ jobs:
   security_scan:
     runs-on: ubuntu-22.04
     needs: e2e_tests
-    if: always() # Run security scans regardless
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/security-scan
@@ -431,9 +391,7 @@ jobs:
   cleanup_images:
     runs-on: ubuntu-22.04
     if: |
-      always() && 
-      github.event_name == 'pull_request' && 
-      github.event.action == 'closed'
+      always() 
     needs: [validate_branch, dockerhub_build]
     steps:
       - uses: actions/checkout@v4
@@ -532,8 +490,6 @@ jobs:
           event_name: ${{ github.event_name }}
           ref: ${{ github.ref }}
           head_commit_message: ${{ github.event.head_commit.message }}
-          base_ref: ${{ github.event.base.ref }}
-          head_ref: ${{ github.event.head.ref }}
           validate_branch_result: ${{ needs.validate_branch.result }}
           e2e_tests_result: 'not_required'  # Simplified dependency
           security_scan_result: 'not_required'  # Simplified dependency
@@ -544,8 +500,6 @@ jobs:
         with:
           event_name: ${{ github.event_name }}
           event_sha: ${{ github.sha }}
-          pr_head_sha: ${{ github.event.pull_request.head.sha }}
-          pr_base_ref: ${{ github.event.pull_request.base.ref }}
           ref_name: ${{ github.ref_name }}
 
       - uses: ./.github/actions/queue-release
@@ -569,7 +523,5 @@ jobs:
         uses: ./.github/actions/notify-release-status
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          teams_webhook: ${{ secrets.TEAMS_WEBHOOK }}  # Optional
-          slack_webhook: ${{ secrets.SLACK_WEBHOOK }}  # Optional
           position: ${{ steps.queue_release.outputs.queue_position }}
           estimated_time: ${{ steps.queue_release.outputs.estimated_time }}
