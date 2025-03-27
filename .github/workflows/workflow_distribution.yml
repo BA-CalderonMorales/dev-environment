@@ -311,7 +311,9 @@ jobs:
   #####################################################################
   e2e_tests:
     runs-on: ubuntu-22.04
-    needs: [validate_branch, detect_changes, setup_docker] 
+    if: |
+      always()
+    needs: [validate_branch, detect_changes, setup_docker, dockerhub_build, direct_download] 
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/e2e-tests
