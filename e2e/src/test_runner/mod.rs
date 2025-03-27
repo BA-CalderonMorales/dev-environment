@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use anyhow::{anyhow, Result};
 use tokio::time::timeout;
+use std::process::Command;
 
 use crate::distribution::DistributionTest;
 use crate::ide::IdeTest;
@@ -16,6 +17,7 @@ const DOCKERHUB_TIMEOUT: u64 = 300;
 const DIRECT_DOWNLOAD_TIMEOUT: u64 = 180;
 const IDE_TIMEOUT: u64 = 30;
 const DEV_TOOLS_TIMEOUT: u64 = 60;
+const ENV_VALIDATION_TIMEOUT: u64 = 30;
 
 #[derive(Debug)]
 pub struct TestResult {
@@ -42,6 +44,93 @@ async fn test_with_timeout(
         duration: start.elapsed(),
         error: result.err().map(|e| e.to_string()),
     })
+}
+
+// Validate Docker image environment setup
+async fn validate_docker_env(image: &str) -> Result<()> {
+    let logger = get_logger();
+    logger.info(&format!("Validating Docker image environment for: {}", image));
+    
+    // Extract the tag from the image name
+    let tag = image.split(':').nth(1).unwrap_or("latest");
+    logger.info(&format!("Image tag: {}", tag));
+
+    // Check if image exists
+    let pull_output = Command::new("docker")
+        .args(&["pull", image])
+        .output()?;
+    
+    if !pull_output.status.success() {
+        return Err(anyhow!("Failed to pull Docker image: {}", image));
+    }
+    
+    // Run a container with the image
+    let container_id = Command::new("docker")
+        .args(&["run", "-d", image, "tail", "-f", "/dev/null"])
+        .output()?;
+    
+    if !container_id.status.success() {
+        return Err(anyhow!("Failed to start Docker container"));
+    }
+    
+    let container_id = String::from_utf8_lossy(&container_id.stdout).trim().to_string();
+    logger.debug(&format!("Started container: {}", container_id));
+    
+    // Clone container_id for cleanup to avoid ownership issues
+    let container_id_for_cleanup = container_id.clone();
+    
+    // Defer cleanup of the container
+    let _cleanup = defer::defer(move || {
+        let _ = Command::new("docker")
+            .args(&["rm", "-f", &container_id_for_cleanup])
+            .output();
+    });
+
+    // Validate .bashrc syntax
+    let bashrc_check = Command::new("docker")
+        .args(&["exec", &container_id, "bash", "-c", "bash -n /home/devuser/.bashrc"])
+        .output()?;
+    
+    if !bashrc_check.status.success() {
+        let error = String::from_utf8_lossy(&bashrc_check.stderr);
+        return Err(anyhow!("Syntax error in .bashrc file: {}", error));
+    }
+    
+    // Check if environment can be sourced
+    let env_check = Command::new("docker")
+        .args(&["exec", &container_id, "bash", "-c", "source /home/devuser/.bashrc"])
+        .output()?;
+    
+    if !env_check.status.success() {
+        let error = String::from_utf8_lossy(&env_check.stderr);
+        return Err(anyhow!("Failed to source environment: {}", error));
+    }
+
+    // Verify expected tools are installed
+    let tools = vec!["node", "go", "rustc", "git"];
+    for tool in tools {
+        let tool_check = Command::new("docker")
+            .args(&["exec", &container_id, "bash", "-c", &format!("command -v {} || echo 'Not found'", tool)])
+            .output()?;
+        
+        let output = String::from_utf8_lossy(&tool_check.stdout).trim().to_string();
+        if output == "Not found" || !tool_check.status.success() {
+            return Err(anyhow!("Required tool '{}' not found in image", tool));
+        }
+    }
+    
+    // Check version display script
+    let version_check = Command::new("docker")
+        .args(&["exec", &container_id, "bash", "-c", "cat /etc/motd || echo 'No motd found'"])
+        .output()?;
+    
+    logger.debug(&format!(
+        "Version info: {}", 
+        String::from_utf8_lossy(&version_check.stdout).trim()
+    ));
+
+    logger.info("Docker environment validation passed");
+    Ok(())
 }
 
 async fn validate_dockerfile(dockerfile: &Path) -> Result<()> {
@@ -156,6 +245,11 @@ pub async fn run_user_workflow(
     
     let results = vec![
         test_with_timeout(
+            "Docker Environment Validation",
+            validate_docker_env(image),
+            ENV_VALIDATION_TIMEOUT
+        ).await?,
+        test_with_timeout(
             "DockerHub Installation", 
             distribution_test.test_dockerhub_install(image), 
             DOCKERHUB_TIMEOUT
@@ -178,4 +272,25 @@ pub async fn run_user_workflow(
     ];
 
     report_results(&results)
+}
+
+// Add a helper module for the defer pattern
+mod defer {
+    use std::ops::Drop;
+    
+    pub struct Defer<F: FnOnce()> {
+        f: Option<F>,
+    }
+    
+    impl<F: FnOnce()> Drop for Defer<F> {
+        fn drop(&mut self) {
+            if let Some(f) = self.f.take() {
+                f()
+            }
+        }
+    }
+    
+    pub fn defer<F: FnOnce()>(f: F) -> Defer<F> {
+        Defer { f: Some(f) }
+    }
 }
