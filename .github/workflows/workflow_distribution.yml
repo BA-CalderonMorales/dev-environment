@@ -271,6 +271,44 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   #####################################################################
+  # Optimize Docker Image
+  # --------------------
+  # Purpose: Optimizes the Docker image using Docker Slim
+  #
+  # Flow:
+  # 1. Slims down the Docker image
+  # 2. Pushes the slimmed image to DockerHub
+  # 3. Reports the slimming results
+  #
+  # Dependencies: dockerhub_build, e2e_tests
+  # Outputs: None
+  # Used by: direct_download
+  #####################################################################
+  optimize_docker_image:
+    runs-on: ubuntu-22.04
+    needs: [dockerhub_build, e2e_tests]
+    if: |
+      success() && 
+      needs.dockerhub_build.outputs.image_changed == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/docker-slim
+        id: slim
+        with:
+          image: cmoe640/dev-environment:${{ needs.setup_docker.outputs.test_tag }}
+          output_tag: ${{ needs.setup_docker.outputs.test_tag }}-slim
+          push_image: 'true'
+          dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Report Slimming Results
+        shell: bash
+        run: |
+          echo "Original image: cmoe640/dev-environment:${{ needs.setup_docker.outputs.test_tag }}"
+          echo "Slimmed image: ${{ steps.slim.outputs.slim_image }}"
+          echo "Size reduction: ${{ steps.slim.outputs.size_reduction }}"
+
+  #####################################################################
   # Direct Download Build
   # ------------------- 
   # Purpose: Creates downloadable artifacts for non-Docker users

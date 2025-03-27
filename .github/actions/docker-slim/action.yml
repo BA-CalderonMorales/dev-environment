@@ -1,0 +1,115 @@
+name: 'Docker Slim'
+description: 'Reduces Docker image size using docker-slim'
+
+inputs:
+  image:
+    description: 'Docker image to slim'
+    required: true
+  output_tag:
+    description: 'Tag for the slimmed image'
+    required: false
+    default: 'slim'
+  include_paths:
+    description: 'Paths to include in the slimmed image (space-separated)'
+    required: false
+    default: '/usr/src/projects /usr/src/startup /home/devuser/.bashrc /home/devuser/.cargo'
+  preserve_perms:
+    description: 'Preserve file permissions'
+    required: false
+    default: 'true'
+  dockerhub_username:
+    description: 'DockerHub username'
+    required: false
+  dockerhub_token:
+    description: 'DockerHub token'
+    required: false
+  push_image:
+    description: 'Push slimmed image to registry'
+    required: false
+    default: 'false'
+
+outputs:
+  slim_image:
+    description: 'The slimmed image name'
+    value: ${{ steps.slim.outputs.slim_image }}
+  size_reduction:
+    description: 'Size reduction percentage'
+    value: ${{ steps.slim.outputs.size_reduction }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install docker-slim
+      shell: bash
+      run: |
+        echo "Installing docker-slim..."
+        curl -sL https://raw.githubusercontent.com/docker-slim/docker-slim/master/scripts/install-dockerslim.sh | bash -
+        echo "PATH=$HOME/bin:$PATH" >> $GITHUB_ENV
+
+    - name: Login to DockerHub
+      if: inputs.dockerhub_username != '' && inputs.dockerhub_token != ''
+      shell: bash
+      run: |
+        echo "${{ inputs.dockerhub_token }}" | docker login -u "${{ inputs.dockerhub_username }}" --password-stdin
+
+    - name: Apply docker-slim
+      id: slim
+      shell: bash
+      run: |
+        # Ensure the image exists locally
+        docker pull ${{ inputs.image }}
+        
+        # Prepare output image name
+        IMAGE_NAME="${{ inputs.image }}"
+        OUTPUT_TAG="${{ inputs.output_tag }}"
+        OUTPUT_IMAGE="${IMAGE_NAME%:*}:${OUTPUT_TAG}"
+        
+        echo "Slimming image $IMAGE_NAME to $OUTPUT_IMAGE"
+        
+        # Convert include_paths to docker-slim format
+        INCLUDE_ARGS=""
+        for path in ${{ inputs.include_paths }}; do
+          INCLUDE_ARGS="$INCLUDE_ARGS --include-path $path"
+        done
+        
+        # Run docker-slim
+        docker-slim build \
+          --http-probe=false \
+          --continue-after=900 \
+          --preserve-path-perms=${{ inputs.preserve_perms }} \
+          $INCLUDE_ARGS \
+          --tag $OUTPUT_IMAGE \
+          --dockerfile-tweaks-only=false \
+          --cmd "/bin/bash" \
+          --entrypoint "/bin/bash" \
+          $IMAGE_NAME
+        
+        # Report image sizes
+        ORIGINAL_SIZE=$(docker image ls --format "{{.Size}}" $IMAGE_NAME)
+        SLIM_SIZE=$(docker image ls --format "{{.Size}}" $OUTPUT_IMAGE)
+        
+        # Calculate size reduction percentage
+        ORIGINAL_KB=$(echo $ORIGINAL_SIZE | sed 's/[^0-9]//g')
+        SLIM_KB=$(echo $SLIM_SIZE | sed 's/[^0-9]//g')
+        
+        if [ "$ORIGINAL_KB" -gt 0 ]; then
+          REDUCTION=$(( (ORIGINAL_KB - SLIM_KB) * 100 / ORIGINAL_KB ))
+        else
+          REDUCTION=0
+        fi
+        
+        echo "slim_image=$OUTPUT_IMAGE" >> $GITHUB_OUTPUT
+        echo "size_reduction=$REDUCTION%" >> $GITHUB_OUTPUT
+        
+        # Push slimmed image if requested
+        if [ "${{ inputs.push_image }}" = "true" ]; then
+          echo "Pushing slimmed image to registry..."
+          docker push $OUTPUT_IMAGE
+        fi
+        
+        # Add summary
+        echo "## 🐳 Docker Slim Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- Original Image: \`$IMAGE_NAME\` - Size: $ORIGINAL_SIZE" >> $GITHUB_STEP_SUMMARY
+        echo "- Slimmed Image: \`$OUTPUT_IMAGE\` - Size: $SLIM_SIZE" >> $GITHUB_STEP_SUMMARY
+        echo "- Size Reduction: $REDUCTION%" >> $GITHUB_STEP_SUMMARY
