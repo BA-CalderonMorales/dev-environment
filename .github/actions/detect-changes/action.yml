@@ -12,6 +12,17 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Fetch git history
+      shell: bash
+      run: |
+        # Attempt to fetch more history for better change detection
+        git fetch --prune --unshallow || git fetch --prune
+        
+        # Debug git info
+        echo "Current commit: $(git rev-parse HEAD)"
+        echo "Before commit: ${{ github.event.before }}"
+        git log -n 5 --oneline || echo "Could not get git log"
+
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
 

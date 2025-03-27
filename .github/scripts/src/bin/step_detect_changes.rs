@@ -41,47 +41,71 @@ impl ChangeDetector {
         })
     }
 
-    // Get changed files between commits
+    // Get changed files between commits with multiple fallback strategies
     fn get_changed_files(&self) -> Result<Vec<String>> {
         self.logger.info(&format!("📄 Getting changed files between {} and {}", 
                           self.before_commit, self.current_commit));
         
-        // Use git diff to get changed files
+        // Strategy 1: Try git diff with the provided commits
+        let diff_result = self.try_git_diff(&[
+            "diff", "--name-only", &self.before_commit, &self.current_commit
+        ]);
+        
+        if let Ok(files) = diff_result {
+            self.logger.info(&format!("✅ Found {} changed files using direct diff", files.len()));
+            return Ok(files);
+        }
+        
+        // Strategy 2: Try diff with HEAD only (for single commit checkout)
+        let head_diff_result = self.try_git_diff(&[
+            "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"
+        ]);
+        
+        if let Ok(files) = head_diff_result {
+            self.logger.info(&format!("✅ Found {} changed files using HEAD diff-tree", files.len()));
+            return Ok(files);
+        }
+        
+        // Strategy 3: Try to get the list of all files in tracked Docker directories
+        let ls_result = self.try_git_diff(&[
+            "ls-files", "distributions/dockerhub/"
+        ]);
+        
+        if let Ok(files) = ls_result {
+            self.logger.info(&format!(
+                "⚠️ Couldn't determine specific changes - using all {} files in Docker directory", 
+                files.len()
+            ));
+            return Ok(files);
+        }
+        
+        // Strategy 4: Last resort - return Docker path as a fallback
+        self.logger.warn("❌ All git commands failed - assuming Docker files changed as a precaution");
+        Ok(vec!["distributions/dockerhub/Dockerfile".to_string()])
+    }
+    
+    // Helper method to try different git commands and handle errors
+    fn try_git_diff(&self, args: &[&str]) -> Result<Vec<String>> {
+        let cmd_str = format!("git {}", args.join(" "));
+        self.logger.info(&format!("Trying: {}", cmd_str));
+        
         let output = Command::new("git")
-            .args(&["diff", "--name-only", &self.before_commit, &self.current_commit])
+            .args(args)
             .output()
-            .context("Failed to execute git diff command")?;
+            .context(format!("Failed to execute: {}", cmd_str))?;
             
         if !output.status.success() {
-            self.logger.warn(&format!("Git diff command failed: {}", 
-                            String::from_utf8_lossy(&output.stderr)));
-                            
-            // Try with a simpler approach if the specific commits failed
-            let fallback_output = Command::new("git")
-                .args(&["diff", "--name-only", "HEAD^", "HEAD"])
-                .output()
-                .context("Failed to execute fallback git diff command")?;
-                
-            if !fallback_output.status.success() {
-                anyhow::bail!(
-                    "All git diff commands failed: {}",
-                    String::from_utf8_lossy(&fallback_output.stderr)
-                );
-            }
-            
-            return Ok(String::from_utf8_lossy(&fallback_output.stdout)
-                .lines()
-                .map(|s| s.to_string())
-                .collect());
+            let error = String::from_utf8_lossy(&output.stderr);
+            self.logger.warn(&format!("Command failed: {} ({})", cmd_str, error));
+            anyhow::bail!("Git command failed: {}", error)
         }
         
         // Parse the output into a vector of strings
-        let changed_files = String::from_utf8_lossy(&output.stdout)
+        Ok(String::from_utf8_lossy(&output.stdout)
             .lines()
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
-            .collect();
-            
-        Ok(changed_files)
+            .collect())
     }
 
     // Check if Docker-related files changed
@@ -146,12 +170,19 @@ impl ChangeDetector {
         Ok(())
     }
 
-    // Run the detection process
+    // Run the detection process with better error handling
     async fn run(&self) -> Result<()> {
         self.logger.info("🔎 Starting change detection...");
         
-        // Get changed files
-        let changed_files = self.get_changed_files()?;
+        // Get changed files with graceful fallback
+        let changed_files = match self.get_changed_files() {
+            Ok(files) => files,
+            Err(e) => {
+                // Log the error but continue with a fallback assumption
+                self.logger.warn(&format!("⚠️ Error getting changed files: {}. Assuming Docker files changed as a precaution.", e));
+                vec!["distributions/dockerhub/Dockerfile".to_string()]
+            }
+        };
         
         // Log the number of changed files
         self.logger.info(&format!("Found {} changed files", changed_files.len()));
