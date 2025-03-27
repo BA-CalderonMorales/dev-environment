@@ -376,37 +376,6 @@ jobs:
           BOT_DOMAIN: ${{ secrets.BOT_DOMAIN }}
 
   #####################################################################
-  # Cleanup Images
-  # ------------- 
-  # Purpose: Removes temporary Docker images after PR closure
-  #
-  # Flow:
-  # 1. Removes PR-specific Docker images
-  # 2. Cleans up temporary tags
-  #
-  # Dependencies: validate_branch, dockerhub_build
-  # Outputs: None
-  # Conditions: Only runs when PRs are closed
-  #####################################################################
-  cleanup_images:
-    runs-on: ubuntu-22.04
-    if: |
-      always() 
-    needs: [validate_branch, dockerhub_build]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Delete PR-specific image
-        if: needs.validate_branch.outputs.docker_tag != needs.validate_branch.outputs.base_tag
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          IMAGE_TAG: ${{ needs.validate_branch.outputs.docker_tag }}
-        run: |
-          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
-          docker image rm "cmoe640/dev-environment:$IMAGE_TAG" || true
-          docker push "cmoe640/dev-environment:$IMAGE_TAG" || true
-
-  #####################################################################
   # Notify Success
   # ------------- 
   # Purpose: Creates deployment summary and notifications
