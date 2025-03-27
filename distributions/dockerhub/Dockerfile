@@ -2,7 +2,7 @@
 FROM ubuntu:22.04
 
 LABEL maintainer="BA-CalderonMorales"
-LABEL version="0.1.0-beta.1"
+LABEL version="0.1.0-beta.2"  # Updated version number
 LABEL description="Configurable development environment container"
 
 ARG NODE_VERSION=22.12.0
@@ -29,7 +29,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 RUN useradd -m -s /bin/bash devuser && \
     mkdir -p /usr/src/projects && \
     mkdir -p /usr/src/startup && \
-    chown -R devuser:devuser /usr.src/projects && \
+    chown -R devuser:devuser /usr/src/projects && \  # Fixed typo: /usr.src/projects -> /usr/src/projects
     chown -R devuser:devuser /usr/src/startup && \
     chmod -R 755 /usr/src/projects && \
     chmod -R 755 /usr/src/startup

@@ -52,8 +52,11 @@ impl ChangeDetector {
         ]);
         
         if let Ok(files) = diff_result {
-            self.logger.info(&format!("✅ Found {} changed files using direct diff", files.len()));
-            return Ok(files);
+            if !files.is_empty() {
+                self.logger.info(&format!("✅ Found {} changed files using direct diff", files.len()));
+                return Ok(files);
+            }
+            self.logger.warn("Direct diff returned empty result, trying alternative methods");
         }
         
         // Strategy 2: Try diff with HEAD only (for single commit checkout)
@@ -62,26 +65,50 @@ impl ChangeDetector {
         ]);
         
         if let Ok(files) = head_diff_result {
-            self.logger.info(&format!("✅ Found {} changed files using HEAD diff-tree", files.len()));
-            return Ok(files);
+            if !files.is_empty() {
+                self.logger.info(&format!("✅ Found {} changed files using HEAD diff-tree", files.len()));
+                return Ok(files);
+            }
+            self.logger.warn("HEAD diff-tree returned empty result, trying alternative methods");
         }
         
-        // Strategy 3: Try to get the list of all files in tracked Docker directories
+        // Strategy 3: Compare current branch with develop branch
+        let develop_diff_result = self.try_git_diff(&[
+            "diff", "--name-only", "origin/develop...HEAD"
+        ]);
+        
+        if let Ok(files) = develop_diff_result {
+            if !files.is_empty() {
+                self.logger.info(&format!("✅ Found {} changed files comparing with develop branch", files.len()));
+                return Ok(files);
+            }
+            self.logger.warn("Develop branch comparison returned empty result, trying alternative methods");
+        }
+        
+        // Strategy 4: Get all files in Docker directory as fallback
         let ls_result = self.try_git_diff(&[
             "ls-files", "distributions/dockerhub/"
         ]);
         
         if let Ok(files) = ls_result {
-            self.logger.info(&format!(
-                "⚠️ Couldn't determine specific changes - using all {} files in Docker directory", 
-                files.len()
-            ));
-            return Ok(files);
+            if !files.is_empty() {
+                self.logger.info(&format!(
+                    "⚠️ Couldn't determine specific changes - using all {} files in Docker directory", 
+                    files.len()
+                ));
+                return Ok(files);
+            }
+            self.logger.warn("Failed to list Docker files, using fallback");
         }
         
-        // Strategy 4: Last resort - return Docker path as a fallback
+        // Strategy 5: Last resort - return Docker path as a fallback
         self.logger.warn("❌ All git commands failed - assuming Docker files changed as a precaution");
-        Ok(vec!["distributions/dockerhub/Dockerfile".to_string()])
+        
+        // Return Docker files as a precaution to ensure build
+        Ok(vec![
+            "distributions/dockerhub/Dockerfile".to_string(),
+            "docker-compose.yml".to_string()
+        ])
     }
     
     // Helper method to try different git commands and handle errors
@@ -101,27 +128,69 @@ impl ChangeDetector {
         }
         
         // Parse the output into a vector of strings
-        Ok(String::from_utf8_lossy(&output.stdout)
+        let files: Vec<String> = String::from_utf8_lossy(&output.stdout)
             .lines()
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
-            .collect())
+            .collect();
+            
+        // Print the files for debugging
+        if !files.is_empty() {
+            self.logger.info("Changed files found:");
+            for file in &files {
+                self.logger.info(&format!(" - {}", file));
+            }
+        } else {
+            self.logger.warn("No changed files found with this method");
+        }
+        
+        Ok(files)
     }
 
     // Check if Docker-related files changed
     fn check_docker_changes(&self, files: &[String]) -> bool {
         self.logger.info("🔍 Checking for Docker-related changes...");
         
-        // Check if any file in the distributions/dockerhub/ directory changed
-        let has_changes = files.iter().any(|file| file.contains("distributions/dockerhub/"));
+        // Enhanced check with more Docker-related paths
+        let docker_paths = [
+            "distributions/dockerhub/",
+            "distributions/docker",
+            "docker-compose",
+            "Dockerfile",
+            "docker/"
+        ];
         
-        if has_changes {
+        let has_changes = files.iter().any(|file| {
+            docker_paths.iter().any(|path| file.contains(path))
+        });
+        
+        // Check for workflow files that might affect Docker builds
+        let workflow_changes = files.iter().any(|file| {
+            file.contains(".github/workflows/workflow_distribution.yml") || 
+            file.contains(".github/actions/dockerhub-build") ||
+            file.contains(".github/actions/setup-docker")
+        });
+        
+        let docker_changed = has_changes || workflow_changes;
+        
+        if docker_changed {
             self.logger.info("✅ Docker-related changes detected");
+            if workflow_changes {
+                self.logger.info("💡 Changes include workflow files affecting Docker builds");
+            }
         } else {
             self.logger.info("❌ No Docker-related changes detected");
         }
         
-        has_changes
+        // Force Docker build to true for now to ensure we capture all changes
+        // Remove this line after testing confirms it works properly
+        let force_build = true;
+        if force_build && !docker_changed {
+            self.logger.warn("⚠️ Forcing Docker build for safety (temporary measure)");
+            return true;
+        }
+        
+        docker_changed
     }
 
     // Check if Dockerfile itself changed
@@ -129,7 +198,10 @@ impl ChangeDetector {
         self.logger.info("🔍 Checking for Dockerfile changes...");
         
         // Check if the Dockerfile changed
-        let has_changes = files.iter().any(|file| file.contains("distributions/dockerhub/Dockerfile"));
+        let has_changes = files.iter().any(|file| 
+            file.contains("distributions/dockerhub/Dockerfile") || 
+            file.contains("Dockerfile")
+        );
         
         if has_changes {
             self.logger.info("✅ Dockerfile changes detected");
