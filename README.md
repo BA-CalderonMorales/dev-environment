@@ -3,6 +3,9 @@
 # Development Environment 🧪
 
 [![Experimental](https://img.shields.io/badge/Status-Experimental-orange.svg)](https://shields.io/)
+
+<!-- Fetch the latest stable version from the repository and display it here -->
+
 [![Version](https://img.shields.io/badge/Version-0.0.1-blue.svg)](https://shields.io/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](docs/CONTRIBUTING.md)
 
@@ -10,12 +13,11 @@
 
 </div>
 
-> This project is in very early development (v0.0.1). While we encourage experimentation and feedback, please note:
-> - No production stability guarantees
-> - Breaking changes may occur without warning
-> - Features may be incomplete or change significantly
-> - Documentation is actively evolving
-> 
+> This project is in very early development. While we encourage experimentation and feedback, please note:
+> - No production stability guarantees - some stability with stable-v# releases.
+> - Breaking changes may occur without warning - typically with the beta-v# releases.
+> - Features may be incomplete or change significantly - again, typically with the beta-v# releases.
+> - Documentation is actively evolving - if you spot something that doesn't make sense, raise a pr.
 
 <div align="center">
   
@@ -25,7 +27,7 @@
 
 ## What is This?
 
-A containerized development environment that "just works" - giving you a consistent, reliable workspace across any machine. Think of it as your development environment in a box, but cooler.
+A containerized development environment that "just works" - giving you a consistent, reliable workspace across any machine. Think of it as your development environment in a box, but cooler. Think of this as a configurable "Coder"-like setup. Mostly used to gauge conversations with other devs and employers alike. There is some potential to utilize this for production down the road, but would need heavy tweaking by the community to make it a real deal sort of thing.
 
 ## Getting Started
 
@@ -48,7 +50,7 @@ For detailed setup instructions, see our [Quick Start Guide](docs/QUICK_START/RE
   - Language-specific images
   - Enhanced functionality
 - 🦀 Infrastructure Modernization
-  - Converting bash to Rust
+  - Converting Bash scripts to Rust
   - CLI tool development
 - 🌐 Documentation & Accessibility
   - Documentation website
