@@ -77,6 +77,10 @@ path = "src/bin/step_queue_release.rs"
 name = "step_version_determiner"
 path = "src/bin/step_version_determiner.rs"
 
+[[bin]]
+name = "step_detect_changes"
+path = "src/bin/step_detect_changes.rs"
+
 [dependencies]
 anyhow = "1.0.79"  # Error handling
 chrono = "0.4.31"  # Date and time handling
