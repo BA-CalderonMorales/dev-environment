@@ -52,6 +52,38 @@ permissions:
 
 jobs:
   #####################################################################
+  # Build Rust Scripts
+  # ----------------
+  # Purpose: Compiles all Rust scripts used in the workflow
+  #
+  # Flow:
+  # 1. Sets up Rust toolchain
+  # 2. Builds workflow scripts
+  # 3. Uploads compiled binaries as artifacts for reuse
+  #
+  # Dependencies: None (runs first)
+  # Outputs: None
+  # Used by: All subsequent jobs requiring Rust scripts
+  #####################################################################
+  build_rust_scripts:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build workflow scripts
+        shell: bash
+        run: |
+          cd .github/scripts
+          cargo build --release
+      - name: Upload Rust binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: rust-binaries
+          path: .github/scripts/target/release
+          retention-days: 1
+
+  #####################################################################
   # Tag Validation
   # -------------
   # Purpose: Ensures Docker image tags follow semantic versioning
@@ -68,6 +100,7 @@ jobs:
   # Used by: validate_branch, dockerhub_build
   #####################################################################
   validate_tags:
+    needs: [build_rust_scripts]
     runs-on: ubuntu-22.04
     outputs:
       is_valid: ${{ steps.validate_tag.outputs.is_valid }}
@@ -123,7 +156,7 @@ jobs:
   #####################################################################
   detect_changes:
     runs-on: ubuntu-22.04
-    needs: validate_branch
+    needs: [validate_branch, build_rust_scripts]
     outputs:
       docker_changed: ${{ steps.changes.outputs.docker_changed }}
     steps:

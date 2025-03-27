@@ -23,10 +23,33 @@ runs:
         echo "Before commit: ${{ github.event.before }}"
         git log -n 5 --oneline || echo "Could not get git log"
 
+    - name: Download Rust binaries artifact
+      id: download_artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: rust-binaries
+        path: .github/scripts/target/release
+      continue-on-error: true
+    
+    - name: Check if artifact was downloaded
+      id: check_artifact
+      shell: bash
+      run: |
+        if [ -f ".github/scripts/target/release/step_detect_changes" ]; then
+          echo "artifact_exists=true" >> $GITHUB_OUTPUT
+          chmod +x .github/scripts/target/release/step_detect_changes
+          echo "Using pre-built Rust binary from artifact"
+        else
+          echo "artifact_exists=false" >> $GITHUB_OUTPUT
+          echo "No pre-built artifact found, will build locally"
+        fi
+
     - name: Setup Rust
+      if: steps.check_artifact.outputs.artifact_exists != 'true'
       uses: dtolnay/rust-toolchain@stable
 
     - name: Build workflow scripts
+      if: steps.check_artifact.outputs.artifact_exists != 'true'
       shell: bash
       run: |
         cd .github/scripts
@@ -49,3 +72,4 @@ runs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "- **Docker Changed:** \`${{ steps.changes.outputs.docker_changed }}\`" >> $GITHUB_STEP_SUMMARY
         echo "- **Dockerfile Changed:** \`${{ steps.changes.outputs.dockerfile_changed }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Used Pre-built Binary:** \`${{ steps.check_artifact.outputs.artifact_exists == 'true' }}\`" >> $GITHUB_STEP_SUMMARY
