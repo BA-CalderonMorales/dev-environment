@@ -1,5 +1,5 @@
 name: 'Detect Changes'
-description: 'Detects changes in relevant paths'
+description: 'Detects changes in relevant paths using Rust implementation'
 
 outputs:
   docker_changed:
@@ -12,20 +12,40 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Fetch git history
+      shell: bash
+      run: |
+        # Attempt to fetch more history for better change detection
+        git fetch --prune --unshallow || git fetch --prune
+        
+        # Debug git info
+        echo "Current commit: $(git rev-parse HEAD)"
+        echo "Before commit: ${{ github.event.before }}"
+        git log -n 5 --oneline || echo "Could not get git log"
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build workflow scripts
+      shell: bash
+      run: |
+        cd .github/scripts
+        cargo build --release
+
     - name: Get Changed Files
       id: changes
       shell: bash
+      env:
+        GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+        GITHUB_SHA: ${{ github.sha }}
       run: |
-        # Check for any Docker-related changes
-        if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "distributions/dockerhub/"; then
-          echo "docker_changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "docker_changed=false" >> $GITHUB_OUTPUT
-        fi
-        
-        # Specifically check Dockerfile changes
-        if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "distributions/dockerhub/Dockerfile"; then
-          echo "dockerfile_changed=true" >> $GITHUB_OUTPUT
-        else
-          echo "dockerfile_changed=false" >> $GITHUB_OUTPUT
-        fi
+        cd .github/scripts
+        ./target/release/step_detect_changes
+
+    - name: Report Changes
+      shell: bash
+      run: |
+        echo "## 🔍 Change Detection Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Docker Changed:** \`${{ steps.changes.outputs.docker_changed }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dockerfile Changed:** \`${{ steps.changes.outputs.dockerfile_changed }}\`" >> $GITHUB_STEP_SUMMARY
