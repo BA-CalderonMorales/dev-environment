@@ -1,26 +1,32 @@
 name: 'DockerHub Build'
-description: 'Builds and pushes Docker images to DockerHub'
+description: 'Builds and pushes Docker images to registry with version awareness'
 
 inputs:
   environment:
-    description: 'Target environment'
+    description: 'Target environment (dev/beta/prod)'
     required: true
   base_image:
-    description: 'Base image to use'
+    description: 'Base image tag to use'
     required: true
   version:
-    description: 'Version tag'
-    required: false
-    default: ''
+    description: 'Version to tag image with'
+    required: true
 
 outputs:
   image_changed:
-    description: 'Whether image was changed'
-    value: ${{ steps.build.outputs.changed }}
+    description: 'Whether the image was changed'
+    value: ${{ steps.build.outputs.image_changed }}
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
+    # Secure Docker login - avoid output to logs
+    - name: Login to DockerHub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ env.DOCKERHUB_USERNAME }}
+        password: ${{ env.DOCKERHUB_TOKEN }}
+
     - name: Setup Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -28,92 +34,62 @@ runs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: cmoe640/dev-environment
+        images: ba-calderonmorales/dev-environment
         tags: |
-          type=raw,value=${{ inputs.base_image }}
-          type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}},value=${{ inputs.version }}
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          type=raw,value=beta,enable=${{ github.ref == 'refs/heads/beta' }}
+          type=raw,value=pipeline,enable=${{ github.ref == 'refs/heads/main' }}
+          type=raw,value=dev,enable=${{ github.ref == 'refs/heads/beta' }}
 
-    # Debug step to check files and directories
-    - name: Debug directories and files
+    # Check if Dockerfile exists without generating debug output
+    - name: Prepare Docker build
       shell: bash
       run: |
-        echo "🔍 Checking for Dockerfile existence:"
-        ls -la distributions/dockerhub/ || echo "Dockerhub directory not found"
-        if [ -f "distributions/dockerhub/Dockerfile" ]; then
-          echo "✅ Dockerfile exists at expected path"
-        else
-          echo "❌ Dockerfile NOT found at expected path"
-          ls -la distributions/ || echo "distributions directory not found"
-        fi
-        
-        # Ensure directory exists
-        mkdir -p distributions/dockerhub/generated
-
-    # Copy or create Dockerfile as needed
-    - name: Prepare Dockerfile directory
-      shell: bash
-      run: |
-        # Create output directory if it doesn't exist
+        # Create directory for generated Dockerfile
         mkdir -p distributions/dockerhub/generated
         
-        # Ensure Dockerfile is available
+        # Copy Dockerfile to environment-specific path
         if [ -f "distributions/dockerhub/Dockerfile" ]; then
-          # Copy the main Dockerfile to "generated" as fallback
           cp distributions/dockerhub/Dockerfile distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
-          echo "✅ Copied Dockerfile to generated location"
         else
-          echo "⚠️ Could not find source Dockerfile to copy"
-          # Create a minimal valid Dockerfile as absolute fallback
-          echo "FROM ubuntu:22.04" > distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
-          echo "LABEL maintainer=\"BA-CalderonMorales\"" >> distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
-          echo "LABEL version=\"${{ inputs.version }}\"" >> distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
-          echo "LABEL description=\"Fallback development environment container\"" >> distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
-          echo "CMD [\"echo\", \"Fallback image - build error occurred\"]" >> distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
-          echo "⚠️ Created minimal fallback Dockerfile"
-        fi
-        
-        echo "📄 Dockerfile content:"
-        cat distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
-
-    - name: Verify base image exists
-      shell: bash
-      run: |
-        echo "🔍 Verifying base image exists: ${{ inputs.base_image }}"
-        if ! docker manifest inspect cmoe640/dev-environment:${{ inputs.base_image }} > /dev/null 2>&1; then
-          echo "::warning::Base image cmoe640/dev-environment:${{ inputs.base_image }} not found in registry. Will build from scratch."
-          echo "base_image_exists=false" >> $GITHUB_ENV
-        else
-          echo "✅ Base image verified"
-          echo "base_image_exists=true" >> $GITHUB_ENV
+          # Create minimal Dockerfile if the original doesn't exist
+          cat > distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }} << EOF
+# Generated fallback Dockerfile
+FROM ubuntu:22.04
+LABEL maintainer="BA-CalderonMorales"
+LABEL version="${{ inputs.version }}"
+LABEL description="Fallback development environment container"
+CMD ["/bin/bash"]
+EOF
         fi
 
-    - name: Build and push Docker image
+    - name: Build and push
       id: build
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
-        push: true
+        push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        provenance: mode=max
-        builder-id: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # Explicitly set outputs but no debug/logging of secrets
+        outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=personal dev environment for easy setup/work from anywhere.
 
-    - name: Set output
-      id: output
+    # Set output without exposing secrets
+    - name: Set build output
+      id: build
       shell: bash
       run: |
-        echo "changed=true" >> $GITHUB_OUTPUT
-
-    - name: Report build results
-      shell: bash
-      run: |
-        echo "## 🏗️ Docker Build Results" >> $GITHUB_STEP_SUMMARY
+        echo "image_changed=true" >> $GITHUB_OUTPUT
+        
+        # Add summary without exposing any sensitive data
+        echo "## 🐳 Docker Build Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Build Details" >> $GITHUB_STEP_SUMMARY
-        echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Image: \`cmoe640/dev-environment:${{ inputs.base_image }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Using Dockerfile: \`./distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Status: ✨ New image built and pushed" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment:** \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version Tag:** \`${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status:** ✅ Image built successfully" >> $GITHUB_STEP_SUMMARY
