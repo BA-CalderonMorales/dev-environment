@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1
 FROM ubuntu:22.04
 
+# Metadata labels
 LABEL maintainer="BA-CalderonMorales"
-LABEL version="0.1.0-beta.2"  # Updated version number
+# Updated version number
+LABEL version="0.1.0-beta.2"
 LABEL description="Configurable development environment container"
 
 ARG NODE_VERSION=22.12.0
@@ -17,19 +19,22 @@ RUN apt-get update && apt-get install -y \
 
 # Install system dependencies first
 RUN apt-get update && \
-    apt-get install -y wget sqlite3 ca-certificates
+    apt-get install -y wget sqlite3 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Node.js directly
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get update && \
     apt-get install -y nodejs && \
     npm install -g npm@10.8.1 && \
-    npm cache clean --force
+    npm cache clean --force && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create user and setup directories with proper permissions
 RUN useradd -m -s /bin/bash devuser && \
     mkdir -p /usr/src/projects && \
     mkdir -p /usr/src/startup && \
-    chown -R devuser:devuser /usr/src/projects && \  # Fixed typo: /usr.src/projects -> /usr/src/projects
+    chown -R devuser:devuser /usr/src/projects && \
     chown -R devuser:devuser /usr/src/startup && \
     chmod -R 755 /usr/src/projects && \
     chmod -R 755 /usr/src/startup
