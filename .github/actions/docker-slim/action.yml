@@ -39,18 +39,71 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - name: Install docker-slim
-      shell: bash
-      run: |
-        echo "Installing docker-slim..."
-        curl -sL https://raw.githubusercontent.com/docker-slim/docker-slim/master/scripts/install-dockerslim.sh | bash -
-        echo "PATH=$HOME/bin:$PATH" >> $GITHUB_ENV
-
-    - name: Login to DockerHub
+    # Docker login when credentials are provided
+    - name: Docker Login
       if: inputs.dockerhub_username != '' && inputs.dockerhub_token != ''
       shell: bash
       run: |
         echo "${{ inputs.dockerhub_token }}" | docker login -u "${{ inputs.dockerhub_username }}" --password-stdin
+        echo "Successfully logged in to DockerHub"
+
+    # Install docker-slim using direct download instead of piped script execution
+    - name: Install docker-slim
+      shell: bash
+      run: |
+        echo "Installing docker-slim..."
+        
+        # Create directory for installation
+        mkdir -p ~/bin
+        
+        # Download the installation script to a file first
+        INSTALL_SCRIPT=$(mktemp)
+        
+        if ! curl -sSL -o "$INSTALL_SCRIPT" https://raw.githubusercontent.com/docker-slim/docker-slim/master/scripts/install-dockerslim.sh; then
+          echo "Failed to download docker-slim installation script"
+          exit 1
+        fi
+        
+        # Make it executable
+        chmod +x "$INSTALL_SCRIPT"
+        
+        # Run the installation script
+        bash "$INSTALL_SCRIPT" || {
+          echo "Failed to install docker-slim"
+          exit 1
+        }
+        
+        # Clean up
+        rm -f "$INSTALL_SCRIPT"
+        
+        # Add to PATH
+        echo "PATH=$HOME/bin:$PATH" >> $GITHUB_ENV
+        
+        # Verify installation
+        if command -v docker-slim &>/dev/null; then
+          echo "docker-slim installed successfully"
+        else
+          echo "docker-slim installation failed - trying alternative method"
+          
+          # Direct download of binary as fallback
+          DOCKERSLIM_RELEASE="1.40.0"
+          DOCKERSLIM_URL="https://downloads.dockerslim.com/releases/${DOCKERSLIM_RELEASE}/dist_linux.tar.gz"
+          
+          TEMP_DIR=$(mktemp -d)
+          curl -sSL "$DOCKERSLIM_URL" | tar -xz -C "$TEMP_DIR"
+          
+          if [ -f "$TEMP_DIR/dist_linux/docker-slim" ]; then
+            cp "$TEMP_DIR/dist_linux/docker-slim" "$HOME/bin/"
+            cp "$TEMP_DIR/dist_linux/docker-slim-sensor" "$HOME/bin/"
+            chmod +x "$HOME/bin/docker-slim" "$HOME/bin/docker-slim-sensor"
+            echo "docker-slim installed via direct download"
+          else
+            echo "Failed to install docker-slim via direct download"
+            exit 1
+          fi
+          
+          rm -rf "$TEMP_DIR"
+        fi
 
     - name: Apply docker-slim
       id: slim
@@ -64,7 +117,7 @@ runs:
         OUTPUT_TAG="${{ inputs.output_tag }}"
         OUTPUT_IMAGE="${IMAGE_NAME%:*}:${OUTPUT_TAG}"
         
-        echo "Slimming image $IMAGE_NAME to $OUTPUT_IMAGE"
+        echo "Processing image $IMAGE_NAME to $OUTPUT_IMAGE"
         
         # Convert include_paths to docker-slim format
         INCLUDE_ARGS=""
@@ -72,8 +125,8 @@ runs:
           INCLUDE_ARGS="$INCLUDE_ARGS --include-path $path"
         done
         
-        # Run docker-slim
-        docker-slim build \
+        # Run docker-slim with proper error handling
+        if ! docker-slim build \
           --http-probe=false \
           --continue-after=900 \
           --preserve-path-perms=${{ inputs.preserve_perms }} \
@@ -83,6 +136,16 @@ runs:
           --cmd "/bin/bash" \
           --entrypoint "/bin/bash" \
           $IMAGE_NAME
+        then
+          echo "docker-slim execution failed"
+          exit 1
+        fi
+        
+        # Verify the slimmed image exists
+        if ! docker image inspect $OUTPUT_IMAGE &>/dev/null; then
+          echo "Slimmed image was not created successfully"
+          exit 1
+        fi
         
         # Report image sizes
         ORIGINAL_SIZE=$(docker image ls --format "{{.Size}}" $IMAGE_NAME)
@@ -92,7 +155,7 @@ runs:
         ORIGINAL_KB=$(echo $ORIGINAL_SIZE | sed 's/[^0-9]//g')
         SLIM_KB=$(echo $SLIM_SIZE | sed 's/[^0-9]//g')
         
-        if [ "$ORIGINAL_KB" -gt 0 ]; then
+        if [ -n "$ORIGINAL_KB" ] && [ "$ORIGINAL_KB" -gt 0 ]; then
           REDUCTION=$(( (ORIGINAL_KB - SLIM_KB) * 100 / ORIGINAL_KB ))
         else
           REDUCTION=0
@@ -104,7 +167,10 @@ runs:
         # Push slimmed image if requested
         if [ "${{ inputs.push_image }}" = "true" ]; then
           echo "Pushing slimmed image to registry..."
-          docker push $OUTPUT_IMAGE
+          if ! docker push $OUTPUT_IMAGE; then
+            echo "Failed to push slimmed image"
+            exit 1
+          fi
         fi
         
         # Add summary
