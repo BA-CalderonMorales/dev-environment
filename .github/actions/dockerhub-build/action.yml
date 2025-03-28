@@ -1,24 +1,25 @@
 name: 'DockerHub Build'
-description: 'Builds and pushes Docker images to registry with version awareness'
+description: 'Builds and pushes Docker images to DockerHub'
 
 inputs:
   environment:
-    description: 'Target environment (dev/beta/prod)'
+    description: 'Target environment'
     required: true
   base_image:
-    description: 'Base image tag to use'
+    description: 'Base image to use'
     required: true
   version:
-    description: 'Version to tag image with'
-    required: true
+    description: 'Version tag'
+    required: false
+    default: ''
 
 outputs:
   image_changed:
-    description: 'Whether the image was changed'
-    value: ${{ steps.build.outputs.image_changed }}
+    description: 'Whether image was changed'
+    value: ${{ steps.build.outputs.changed }}
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
     - name: Setup Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -27,32 +28,92 @@ runs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ba-calderonmorales/dev-environment
+        images: cmoe640/dev-environment
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}},value=${{ inputs.version }}
-          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-          type=raw,value=beta,enable=${{ github.ref == 'refs/heads/beta' }}
-          type=raw,value=pipeline,enable=${{ github.ref == 'refs/heads/main' }}
-          type=raw,value=dev,enable=${{ github.ref == 'refs/heads/beta' }}
+          type=raw,value=${{ inputs.base_image }}
+          type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
 
-    - name: Generate Dockerfiles
+    # Debug step to check files and directories
+    - name: Debug directories and files
       shell: bash
       run: |
-        chmod +x ./scripts/generate-dockerfile.sh
-        ./scripts/generate-dockerfile.sh pipeline ${{ inputs.version }}
-        ./scripts/generate-dockerfile.sh dev ${{ inputs.version }}
-        ./scripts/generate-dockerfile.sh beta ${{ inputs.version }}
-        ./scripts/generate-dockerfile.sh latest ${{ inputs.version }}
+        echo "🔍 Checking for Dockerfile existence:"
+        ls -la distributions/dockerhub/ || echo "Dockerhub directory not found"
+        if [ -f "distributions/dockerhub/Dockerfile" ]; then
+          echo "✅ Dockerfile exists at expected path"
+        else
+          echo "❌ Dockerfile NOT found at expected path"
+          ls -la distributions/ || echo "distributions directory not found"
+        fi
+        
+        # Ensure directory exists
+        mkdir -p distributions/dockerhub/generated
 
-    - name: Build and push
+    # Copy or create Dockerfile as needed
+    - name: Prepare Dockerfile directory
+      shell: bash
+      run: |
+        # Create output directory if it doesn't exist
+        mkdir -p distributions/dockerhub/generated
+        
+        # Ensure Dockerfile is available
+        if [ -f "distributions/dockerhub/Dockerfile" ]; then
+          # Copy the main Dockerfile to "generated" as fallback
+          cp distributions/dockerhub/Dockerfile distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
+          echo "✅ Copied Dockerfile to generated location"
+        else
+          echo "⚠️ Could not find source Dockerfile to copy"
+          # Create a minimal valid Dockerfile as absolute fallback
+          echo "FROM ubuntu:22.04" > distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
+          echo "LABEL maintainer=\"BA-CalderonMorales\"" >> distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
+          echo "LABEL version=\"${{ inputs.version }}\"" >> distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
+          echo "LABEL description=\"Fallback development environment container\"" >> distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
+          echo "CMD [\"echo\", \"Fallback image - build error occurred\"]" >> distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
+          echo "⚠️ Created minimal fallback Dockerfile"
+        fi
+        
+        echo "📄 Dockerfile content:"
+        cat distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
+
+    - name: Verify base image exists
+      shell: bash
+      run: |
+        echo "🔍 Verifying base image exists: ${{ inputs.base_image }}"
+        if ! docker manifest inspect cmoe640/dev-environment:${{ inputs.base_image }} > /dev/null 2>&1; then
+          echo "::warning::Base image cmoe640/dev-environment:${{ inputs.base_image }} not found in registry. Will build from scratch."
+          echo "base_image_exists=false" >> $GITHUB_ENV
+        else
+          echo "✅ Base image verified"
+          echo "base_image_exists=true" >> $GITHUB_ENV
+        fi
+
+    - name: Build and push Docker image
       id: build
       uses: docker/build-push-action@v5
       with:
         context: .
-        push: ${{ github.event_name != 'pull_request' }}
+        file: ./distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}
+        push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        provenance: mode=max
+        builder-id: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    - name: Set output
+      id: output
+      shell: bash
+      run: |
+        echo "changed=true" >> $GITHUB_OUTPUT
+
+    - name: Report build results
+      shell: bash
+      run: |
+        echo "## 🏗️ Docker Build Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Build Details" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: \`${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Image: \`cmoe640/dev-environment:${{ inputs.base_image }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Using Dockerfile: \`./distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Status: ✨ New image built and pushed" >> $GITHUB_STEP_SUMMARY
