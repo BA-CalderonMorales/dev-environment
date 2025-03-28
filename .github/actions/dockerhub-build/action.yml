@@ -35,7 +35,7 @@ runs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ba-calderonmorales/dev-environment
+        images: cmoe640/dev-environment
         tags: |
           type=ref,event=branch
           type=ref,event=pr
@@ -72,9 +72,9 @@ runs:
         docker buildx build \
           --push \
           --platform linux/amd64 \
-          --tag ba-calderonmorales/dev-environment:${{ inputs.base_image }} \
+          --tag cmoe640/dev-environment/dev-environment:${{ inputs.base_image }} \
           --file ./distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }} \
-          --cache-from type=registry,ref=ba-calderonmorales/dev-environment:${{ inputs.base_image }} \
+          --cache-from type=registry,ref=cmoe640/dev-environment/dev-environment:${{ inputs.base_image }} \
           --label "org.opencontainers.image.version=${{ inputs.version }}" \
           .
         
