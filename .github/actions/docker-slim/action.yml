@@ -47,69 +47,91 @@ runs:
         echo "${{ inputs.dockerhub_token }}" | docker login -u "${{ inputs.dockerhub_username }}" --password-stdin
         echo "Successfully logged in to DockerHub"
 
-    # Install docker-slim using direct download instead of piped script execution
+    # Install docker-slim directly from GitHub releases
     - name: Install docker-slim
       shell: bash
       run: |
-        echo "Installing docker-slim..."
+        echo "Installing docker-slim directly from GitHub releases..."
         
-        # Create directory for installation
+        # Create bin directory
         mkdir -p ~/bin
         
-        # Download the installation script to a file first
-        INSTALL_SCRIPT=$(mktemp)
+        # Set version - using a known stable version
+        DOCKERSLIM_VERSION="1.40.0"
         
-        if ! curl -sSL -o "$INSTALL_SCRIPT" https://raw.githubusercontent.com/docker-slim/docker-slim/master/scripts/install-dockerslim.sh; then
-          echo "Failed to download docker-slim installation script"
-          exit 1
-        fi
+        # Direct download of binary (more reliable than the install script)
+        echo "Downloading docker-slim ${DOCKERSLIM_VERSION}..."
+        TEMP_DIR=$(mktemp -d)
         
-        # Make it executable
-        chmod +x "$INSTALL_SCRIPT"
-        
-        # Run the installation script
-        bash "$INSTALL_SCRIPT" || {
-          echo "Failed to install docker-slim"
-          exit 1
-        }
-        
-        # Clean up
-        rm -f "$INSTALL_SCRIPT"
-        
-        # Add to PATH
-        echo "PATH=$HOME/bin:$PATH" >> $GITHUB_ENV
-        
-        # Verify installation
-        if command -v docker-slim &>/dev/null; then
-          echo "docker-slim installed successfully"
-        else
-          echo "docker-slim installation failed - trying alternative method"
+        # Download with proper error handling
+        if ! curl -L -o "${TEMP_DIR}/docker-slim.tar.gz" "https://github.com/docker-slim/docker-slim/releases/download/${DOCKERSLIM_VERSION}/dist_linux.tar.gz"; then
+          echo "Failed to download docker-slim from GitHub. Trying DockerHub mirror..."
           
-          # Direct download of binary as fallback
-          DOCKERSLIM_RELEASE="1.40.0"
-          DOCKERSLIM_URL="https://downloads.dockerslim.com/releases/${DOCKERSLIM_RELEASE}/dist_linux.tar.gz"
-          
-          TEMP_DIR=$(mktemp -d)
-          curl -sSL "$DOCKERSLIM_URL" | tar -xz -C "$TEMP_DIR"
-          
-          if [ -f "$TEMP_DIR/dist_linux/docker-slim" ]; then
-            cp "$TEMP_DIR/dist_linux/docker-slim" "$HOME/bin/"
-            cp "$TEMP_DIR/dist_linux/docker-slim-sensor" "$HOME/bin/"
-            chmod +x "$HOME/bin/docker-slim" "$HOME/bin/docker-slim-sensor"
-            echo "docker-slim installed via direct download"
-          else
-            echo "Failed to install docker-slim via direct download"
+          # Try alternative download from DockerHub (as a fallback)
+          if ! curl -L -o "${TEMP_DIR}/docker-slim.tar.gz" "https://downloads.dockerslim.com/releases/${DOCKERSLIM_VERSION}/dist_linux.tar.gz"; then
+            echo "Failed to download docker-slim from all sources"
             exit 1
           fi
-          
-          rm -rf "$TEMP_DIR"
+        fi
+        
+        # Extract and install with error checking
+        if ! tar -xzf "${TEMP_DIR}/docker-slim.tar.gz" -C "${TEMP_DIR}"; then
+          echo "Failed to extract docker-slim archive"
+          exit 1
+        fi
+        
+        # Find and copy the binaries
+        if [ -d "${TEMP_DIR}/dist_linux" ]; then
+          cp "${TEMP_DIR}/dist_linux/docker-slim" "${HOME}/bin/"
+          cp "${TEMP_DIR}/dist_linux/docker-slim-sensor" "${HOME}/bin/"
+          chmod +x "${HOME}/bin/docker-slim" "${HOME}/bin/docker-slim-sensor"
+        else
+          echo "Expected directory structure not found in downloaded archive"
+          find "${TEMP_DIR}" -type f | sort
+          exit 1
+        fi
+        
+        # Update PATH
+        export PATH="${HOME}/bin:${PATH}"
+        echo "PATH=${HOME}/bin:${PATH}" >> $GITHUB_ENV
+        
+        # Verify installation
+        if command -v docker-slim >/dev/null 2>&1; then
+          echo "docker-slim installed successfully at $(which docker-slim)"
+          docker-slim --version
+        else
+          echo "docker-slim installation failed"
+          echo "Contents of bin directory:"
+          ls -la ~/bin/
+          exit 1
+        fi
+        
+        # Clean up
+        rm -rf "${TEMP_DIR}"
+
+    # Use pre-built script if available as a fallback
+    - name: Use existing docker-slim script if available
+      if: failure()
+      shell: bash
+      run: |
+        echo "Trying to use local docker-slim script..."
+        if [ -f "scripts/slim-docker-image.sh" ]; then
+          echo "Found local script, copying it to ~/bin"
+          cp scripts/slim-docker-image.sh ~/bin/docker-slim
+          chmod +x ~/bin/docker-slim
+          echo "PATH=${HOME}/bin:${PATH}" >> $GITHUB_ENV
+          echo "Created docker-slim wrapper from local script"
+        else
+          echo "No local docker-slim script found at scripts/slim-docker-image.sh"
+          exit 1
         fi
 
-    - name: Apply docker-slim
+    - name: Process Docker image with slim
       id: slim
       shell: bash
       run: |
         # Ensure the image exists locally
+        echo "Pulling image ${{ inputs.image }}..."
         docker pull ${{ inputs.image }}
         
         # Prepare output image name
@@ -126,6 +148,11 @@ runs:
         done
         
         # Run docker-slim with proper error handling
+        echo "Running docker-slim..."
+        set -x  # Enable command echo for debugging
+        
+        docker-slim --version || echo "Warning: docker-slim version check failed"
+        
         if ! docker-slim build \
           --http-probe=false \
           --continue-after=900 \
@@ -140,6 +167,8 @@ runs:
           echo "docker-slim execution failed"
           exit 1
         fi
+        
+        set +x  # Disable command echo
         
         # Verify the slimmed image exists
         if ! docker image inspect $OUTPUT_IMAGE &>/dev/null; then
