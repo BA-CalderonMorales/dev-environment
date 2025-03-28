@@ -41,7 +41,7 @@ permissions:
 env:
   MAINTAINER_GITHUB: '@BA-CalderonMorales'
   INITIAL_VERSION: 'beta-v0.0.1'  # Updated to match new versioning scheme
-  DOCKER_IMAGE: 'cmoe640/dev-environment'
+  DOCKER_IMAGE: 'cmoe640'
 
 # NOTE: For full details on our release process, please refer to RELEASE_SCHEDULE.md at the repository root.
 # This file uses branch protection (beta/main) to trigger automations based on merges from develop.
