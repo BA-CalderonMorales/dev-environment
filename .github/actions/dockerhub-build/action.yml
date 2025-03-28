@@ -68,13 +68,13 @@ runs:
       id: build
       shell: bash
       run: |
-        # Build the Docker image
+        # Build the Docker image - fixed repository name
         docker buildx build \
           --push \
           --platform linux/amd64 \
-          --tag cmoe640/dev-environment/dev-environment:${{ inputs.base_image }} \
+          --tag cmoe640/dev-environment:${{ inputs.base_image }} \
           --file ./distributions/dockerhub/generated/Dockerfile.${{ inputs.environment }} \
-          --cache-from type=registry,ref=cmoe640/dev-environment/dev-environment:${{ inputs.base_image }} \
+          --cache-from type=registry,ref=cmoe640/dev-environment:${{ inputs.base_image }} \
           --label "org.opencontainers.image.version=${{ inputs.version }}" \
           .
         
